@@ -1,0 +1,49 @@
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.api.health import router as health_router
+from app.core.config import Settings, get_settings
+from app.core.errors import AppError
+from app.core.logging import configure_logging
+from app.db.session import create_database_engine, create_session_factory, make_database_probe
+from app.integrations.embedding.providers import OpenAICompatibleEmbeddingProvider
+from app.integrations.llm.providers import OpenAICompatibleChatProvider
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
+    configure_logging()
+    app = FastAPI(title=settings.app_name)
+    engine = create_database_engine(settings.database_url)
+    app.state.settings = settings
+    app.state.database_engine = engine
+    app.state.session_factory = create_session_factory(engine)
+    app.state.database_probe = make_database_probe(engine)
+    app.state.chat_provider = OpenAICompatibleChatProvider(
+        settings.chat_base_url,
+        settings.chat_api_key,
+        settings.chat_model,
+    )
+    app.state.embedding_provider = OpenAICompatibleEmbeddingProvider(
+        settings.embedding_base_url,
+        settings.embedding_api_key,
+        settings.embedding_model,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.exception_handler(AppError)
+    async def handle_app_error(_: Request, error: AppError) -> JSONResponse:
+        return JSONResponse(status_code=error.status_code, content=error.to_payload())
+
+    app.include_router(health_router)
+    return app
+
+
+app = create_app()

@@ -1,0 +1,1 @@
+-- Schema extensions are owned by Alembic migrations.
