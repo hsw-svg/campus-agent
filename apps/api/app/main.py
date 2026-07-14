@@ -3,12 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.health import router as health_router
+from app.api.workspaces import router as workspaces_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
 from app.db.session import create_database_engine, create_session_factory, make_database_probe
 from app.integrations.embedding.providers import OpenAICompatibleEmbeddingProvider
 from app.integrations.llm.providers import OpenAICompatibleChatProvider
+from app.workspaces.models import AnonymousWorkspace
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -30,6 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.embedding_api_key,
         settings.embedding_model,
     )
+    app.state.workspace_model = AnonymousWorkspace
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -43,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(status_code=error.status_code, content=error.to_payload())
 
     app.include_router(health_router)
+    app.include_router(workspaces_router)
     return app
 
 
