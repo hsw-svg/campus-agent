@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session, sessionmaker
 def create_database_engine(database_url: str) -> Engine:
     """Create an engine without connecting during application startup."""
 
-    return create_engine(database_url, pool_pre_ping=True)
+    connect_args = {"connect_timeout": 5} if database_url.startswith("postgresql") else {}
+    return create_engine(database_url, pool_pre_ping=True, connect_args=connect_args)
 
 
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:
