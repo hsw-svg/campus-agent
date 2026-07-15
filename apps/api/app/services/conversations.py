@@ -2,6 +2,9 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 from app.agents.registry import is_agent_available_for_role
+from app.attachments.repositories import Retriever
+from app.integrations.embedding.providers import EmbeddingProvider
+from app.services.attachments import retrieve_context
 from app.conversations.models import Conversation, Message
 from app.conversations.streaming import stream_event
 from app.core.errors import AppError
@@ -72,6 +75,8 @@ async def stream_assistant_reply(
     user_content: str,
     agent_id: str | None,
     role: str,
+    retriever: Retriever | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
 ) -> AsyncIterator[str]:
     """Persist the user turn, stream the assistant reply, and persist the result.
 
@@ -98,9 +103,37 @@ async def stream_assistant_reply(
     if agent_id is not None and agent_id != conversation.agent_id:
         conversations.set_agent(conversation, agent_id)
 
-    history = _history_payload(
-        messages.list_for_conversation(workspace_id, conversation.id)
-    )
+    sources: list[dict[str, str | int | None]] = []
+    if retriever is not None and embedding_provider is not None:
+        chunks = retrieve_context(
+            retriever=retriever,
+            embedding_provider=embedding_provider,
+            workspace_id=workspace_id,
+            conversation_id=conversation.id,
+            query=user_content,
+        )
+        sources = [
+            {
+                "attachment_id": str(chunk.attachment_id),
+                "chunk_id": str(chunk.id),
+                "filename": chunk.attachment.filename if chunk.attachment else None,
+                "page_number": chunk.page_number,
+                "excerpt": chunk.content[:240],
+            }
+            for chunk in chunks
+        ]
+    history = _history_payload(messages.list_for_conversation(workspace_id, conversation.id))
+    if sources:
+        context = "\n\n".join(
+            f"[{source['filename']}] {source['excerpt']}" for source in sources
+        )
+        history.insert(
+            0,
+            {
+                "role": "system",
+                "content": "仅使用以下当前角色工作空间资料回答；资料不足时明确说明。\n" + context,
+            },
+        )
 
     async def generator() -> AsyncIterator[str]:
         yield stream_event(
@@ -111,6 +144,9 @@ async def stream_assistant_reply(
                 "agent_id": resolved_agent,
             },
         )
+        if sources:
+            yield stream_event("tool_status", {"status": "retrieved", "count": len(sources)})
+            yield stream_event("artifact", {"type": "sources", "sources": sources})
 
         if not chat_provider.is_configured:
             yield stream_event(
@@ -147,6 +183,7 @@ async def stream_assistant_reply(
             role="assistant",
             content=assistant_content,
             agent_id=resolved_agent,
+            artifacts=[{"type": "sources", "sources": sources}] if sources else None,
         )
         conversations.touch(conversation)
         yield stream_event(

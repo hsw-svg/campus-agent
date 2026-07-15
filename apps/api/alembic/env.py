@@ -7,6 +7,7 @@ from app.db.base import Base
 from app.core.config import get_settings
 from app.workspaces.models import AnonymousWorkspace
 from app.conversations.models import Conversation, Message
+from app.attachments.models import Attachment, MaterialChunk
 
 
 config = context.config

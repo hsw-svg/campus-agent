@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.conversations.dependencies import (
     get_conversation_repository,
     get_message_repository,
+    get_retriever,
 )
 from app.conversations.models import Conversation, Message
 from app.repositories.conversations import ConversationRepository, MessageRepository
@@ -16,7 +17,9 @@ from app.services.conversations import (
     get_owned_conversation,
     stream_assistant_reply,
 )
-from app.workspaces.dependencies import get_chat_provider, get_current_workspace
+from app.workspaces.dependencies import get_chat_provider, get_current_workspace, get_embedding_provider
+from app.attachments.repositories import Retriever
+from app.integrations.embedding.providers import EmbeddingProvider
 from app.workspaces.models import AnonymousWorkspace
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
@@ -108,6 +111,8 @@ async def stream_message(
     conversations: ConversationRepository = Depends(get_conversation_repository),
     messages: MessageRepository = Depends(get_message_repository),
     chat_provider=Depends(get_chat_provider),
+    retriever: Retriever = Depends(get_retriever),
+    embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
 ) -> StreamingResponse:
     conversation = get_owned_conversation(conversations, workspace.id, conversation_id)
     generator = await stream_assistant_reply(
@@ -119,6 +124,8 @@ async def stream_message(
         user_content=payload.content,
         agent_id=payload.agent_id,
         role=workspace.role,
+        retriever=retriever,
+        embedding_provider=embedding_provider,
     )
     return StreamingResponse(
         generator,

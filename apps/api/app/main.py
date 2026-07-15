@@ -6,12 +6,15 @@ from app.api.agents import router as agents_router
 from app.api.conversations import router as conversations_router
 from app.api.health import router as health_router
 from app.api.workspaces import router as workspaces_router
+from app.api.attachments import router as attachments_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
 from app.db.session import create_database_engine, create_session_factory, make_database_probe
 from app.integrations.embedding.providers import OpenAICompatibleEmbeddingProvider
 from app.integrations.llm.providers import OpenAICompatibleChatProvider
+from app.integrations.storage.local import LocalObjectStorage
+from app.attachments.models import Attachment, MaterialChunk  # noqa: F401
 from app.workspaces.models import AnonymousWorkspace
 
 
@@ -34,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.embedding_api_key,
         settings.embedding_model,
     )
+    app.state.object_storage = LocalObjectStorage(settings.local_storage_root)
     app.state.workspace_model = AnonymousWorkspace
     app.add_middleware(
         CORSMiddleware,
@@ -51,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(workspaces_router)
     app.include_router(conversations_router)
     app.include_router(agents_router)
+    app.include_router(attachments_router)
     return app
 
 

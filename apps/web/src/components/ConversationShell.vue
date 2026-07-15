@@ -7,6 +7,8 @@ const emit = defineEmits<{ (event: 'switch-role'): void }>()
 const store = useConversationStore()
 const messageContainerRef = ref<HTMLElement | null>(null)
 const inputText = ref('')
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const attachmentScope = ref<'conversation' | 'workspace'>('conversation')
 
 const roleLabel = computed(() => {
   if (store.role === 'student') return '学生助手'
@@ -46,6 +48,41 @@ function handleKeydown(event: KeyboardEvent): void {
     event.preventDefault()
     handleSend()
   }
+}
+
+function openFilePicker(): void {
+  fileInputRef.value?.click()
+}
+
+async function handleFileSelected(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) await store.uploadFile(file, attachmentScope.value)
+}
+
+function attachmentStatus(status: string): string {
+  return {
+    uploaded: '已上传',
+    parsing: '解析中',
+    indexed: '已索引',
+    degraded: '降级检索',
+    failed: '失败',
+  }[status] ?? status
+}
+
+function sourceItems(message: { artifacts: unknown[] | null }): Array<{ filename: string; excerpt: string }> {
+  const artifact = message.artifacts?.find(
+    (item): item is { type?: unknown; sources?: unknown } =>
+      typeof item === 'object' && item !== null && 'type' in item && (item as { type?: unknown }).type === 'sources',
+  )
+  if (!artifact || !Array.isArray(artifact.sources)) return []
+  return artifact.sources.filter(
+    (source): source is { filename: string; excerpt: string } =>
+      typeof source === 'object' && source !== null &&
+      typeof (source as { filename?: unknown }).filename === 'string' &&
+      typeof (source as { excerpt?: unknown }).excerpt === 'string',
+  )
 }
 </script>
 
@@ -118,6 +155,13 @@ function handleKeydown(event: KeyboardEvent): void {
         >
           <div class="message-role">{{ message.role === 'user' ? '你' : 'AI' }}</div>
           <div class="message-content">{{ message.content }}</div>
+          <div v-if="sourceItems(message).length" class="source-list">
+            <span class="source-heading">资料来源</span>
+            <div v-for="source in sourceItems(message)" :key="`${message.id}-${source.filename}-${source.excerpt}`" class="source-item">
+              <strong>{{ source.filename }}</strong>
+              <span>{{ source.excerpt }}</span>
+            </div>
+          </div>
         </article>
       </div>
 
@@ -126,6 +170,13 @@ function handleKeydown(event: KeyboardEvent): void {
       </div>
 
       <div v-if="store.activeConversation || store.messages.length === 0" class="input-area">
+        <div v-if="store.attachments.length" class="attachment-list" aria-label="附件状态">
+          <div v-for="attachment in store.attachments" :key="attachment.id" class="attachment-item">
+            <span class="attachment-name">{{ attachment.filename }}</span>
+            <span class="attachment-status" :class="attachment.status">{{ attachmentStatus(attachment.status) }}</span>
+            <small v-if="attachment.status_message">{{ attachment.status_message }}</small>
+          </div>
+        </div>
         <textarea
           v-model="inputText"
           class="input-field"
@@ -135,6 +186,12 @@ function handleKeydown(event: KeyboardEvent): void {
           @keydown="handleKeydown"
         />
         <div class="input-actions">
+          <input ref="fileInputRef" class="file-input" type="file" accept=".txt,.md,.docx,.pdf,.xlsx,.csv" @change="handleFileSelected" />
+          <select v-model="attachmentScope" class="scope-select" aria-label="附件保存范围">
+            <option value="conversation">仅用于本次对话</option>
+            <option value="workspace">保存到本角色资料库</option>
+          </select>
+          <button class="attachment-button" type="button" :disabled="store.isStreaming" @click="openFilePicker">添加附件</button>
           <button
             v-if="store.isStreaming"
             class="stop-button"
@@ -296,6 +353,7 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 .message {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -355,9 +413,36 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 .input-actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
   margin-top: 8px;
 }
+.file-input { display: none; }
+.scope-select,
+.attachment-button {
+  border: 1px solid #c9d5cf;
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #52616b;
+  font-size: 13px;
+}
+.attachment-button { cursor: pointer; }
+.attachment-button:hover { border-color: #26734f; color: #26734f; }
+.attachment-button:disabled { cursor: wait; opacity: 0.6; }
+.attachment-list { display: grid; gap: 6px; margin-bottom: 10px; }
+.attachment-item { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-left: 3px solid #c9d5cf; background: #f7f9f7; font-size: 13px; }
+.attachment-name { font-weight: 600; }
+.attachment-status.indexed { color: #26734f; }
+.attachment-status.degraded { color: #a1671c; }
+.attachment-status.failed { color: #9e3434; }
+.attachment-item small { flex-basis: 100%; color: #607079; }
+.source-list { flex-basis: 100%; margin-left: 52px; padding: 10px 12px; border-left: 2px solid #c9d5cf; color: #52616b; font-size: 13px; }
+.source-heading { display: block; margin-bottom: 6px; font-weight: 700; color: #26734f; }
+.source-item { display: grid; gap: 2px; margin-top: 6px; }
+.source-item span { line-height: 1.45; }
 .send-button,
 .stop-button {
   border: 1px solid #26734f;

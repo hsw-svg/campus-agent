@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     embedding_base_url: str = ""
     embedding_api_key: str = ""
     embedding_model: str = ""
+    embedding_dimensions: int = 1536
 
     @property
     def chat_is_configured(self) -> bool:

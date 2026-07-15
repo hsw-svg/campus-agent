@@ -30,6 +30,22 @@ export interface Message {
   created_at: string
 }
 
+export type AttachmentScope = 'conversation' | 'workspace'
+
+export interface Attachment {
+  id: string
+  conversation_id: string | null
+  filename: string
+  content_type: string
+  size_bytes: number
+  scope: AttachmentScope
+  status: 'uploaded' | 'parsing' | 'indexed' | 'degraded' | 'failed'
+  status_message: string | null
+  extracted_chars: number
+  created_at: string
+  updated_at: string
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -88,4 +104,23 @@ export function listMessages(token: string, conversationId: string): Promise<Mes
 
 export function deleteConversation(token: string, conversationId: string): Promise<void> {
   return request<void>(`/conversations/${conversationId}`, token, { method: 'DELETE' })
+}
+
+export function listAttachments(token: string, conversationId: string): Promise<Attachment[]> {
+  return request<Attachment[]>(`/conversations/${conversationId}/attachments`, token)
+}
+
+export async function uploadAttachment(
+  token: string,
+  conversationId: string,
+  file: File,
+  scope: AttachmentScope,
+): Promise<Attachment> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('scope', scope)
+  return request<Attachment>(`/conversations/${conversationId}/attachments`, token, {
+    method: 'POST',
+    body: form,
+  })
 }

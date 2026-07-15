@@ -5,9 +5,13 @@ import {
   createConversation,
   deleteConversation,
   listAgents,
+  listAttachments,
   listConversations,
   listMessages,
+  uploadAttachment,
   type Agent,
+  type Attachment,
+  type AttachmentScope,
   type Conversation,
   type Message,
 } from '../api/conversations'
@@ -21,6 +25,7 @@ export interface DraftMessage {
   role: 'user' | 'assistant'
   content: string
   agent_id: string | null
+  artifacts: unknown[] | null
   pending?: boolean
 }
 
@@ -33,6 +38,7 @@ function toDraft(message: Message): DraftMessage {
     role: message.role,
     content: message.content,
     agent_id: message.agent_id,
+    artifacts: message.artifacts,
   }
 }
 
@@ -41,6 +47,7 @@ export const useConversationStore = defineStore('conversation', () => {
   const role = ref<WorkspaceRole | null>(null)
   const conversations = ref<Conversation[]>([])
   const messages = ref<DraftMessage[]>([])
+  const attachments = ref<Attachment[]>([])
   const agents = ref<Agent[]>([])
   const autoAgentId = ref('auto')
   const activeConversationId = ref<string | null>(null)
@@ -61,6 +68,7 @@ export const useConversationStore = defineStore('conversation', () => {
     role.value = null
     conversations.value = []
     messages.value = []
+    attachments.value = []
     agents.value = []
     autoAgentId.value = 'auto'
     activeConversationId.value = null
@@ -101,6 +109,7 @@ export const useConversationStore = defineStore('conversation', () => {
     streamError.value = null
     const history = await listMessages(token.value, conversationId)
     messages.value = history.map(toDraft)
+    attachments.value = await listAttachments(token.value, conversationId)
     const conversation = conversations.value.find((item) => item.id === conversationId)
     selectedAgentId.value = conversation?.agent_id ?? autoAgentId.value
   }
@@ -108,6 +117,7 @@ export const useConversationStore = defineStore('conversation', () => {
   function beginDraftConversation(): void {
     activeConversationId.value = null
     messages.value = []
+    attachments.value = []
     streamError.value = null
     selectedAgentId.value = autoAgentId.value
   }
@@ -139,12 +149,14 @@ export const useConversationStore = defineStore('conversation', () => {
       role: 'user',
       content,
       agent_id: agentId,
+      artifacts: null,
     }
     const assistantDraft: DraftMessage = {
       id: nextDraftId(),
       role: 'assistant',
       content: '',
       agent_id: agentId,
+      artifacts: null,
       pending: true,
     }
     messages.value = [...messages.value, userDraft, assistantDraft]
@@ -169,6 +181,9 @@ export const useConversationStore = defineStore('conversation', () => {
           const message =
             typeof event.data.message === 'string' ? event.data.message : '生成回复时出错。'
           streamError.value = message
+        } else if (event.type === 'artifact') {
+          assistantDraft.artifacts = [event.data]
+          messages.value = [...messages.value]
         }
       }
     } catch (error) {
@@ -188,10 +203,34 @@ export const useConversationStore = defineStore('conversation', () => {
         try {
           const history = await listMessages(token.value, conversationId)
           messages.value = history.map(toDraft)
+          attachments.value = await listAttachments(token.value, conversationId)
         } catch {
           // A background refresh must never wipe a visible reply.
         }
       }
+    }
+  }
+
+  async function uploadFile(file: File, scope: AttachmentScope): Promise<void> {
+    if (!token.value) return
+    let conversationId = activeConversationId.value
+    if (!conversationId) {
+      try {
+        const created = await createConversation(token.value, resolveAgentSelection())
+        conversations.value = [created, ...conversations.value]
+        activeConversationId.value = created.id
+        conversationId = created.id
+      } catch (error) {
+        streamError.value = error instanceof Error ? error.message : '无法创建对话。'
+        return
+      }
+    }
+    try {
+      const attachment = await uploadAttachment(token.value, conversationId, file, scope)
+      attachments.value = [...attachments.value, attachment]
+      streamError.value = null
+    } catch (error) {
+      streamError.value = error instanceof Error ? error.message : '附件上传失败。'
     }
   }
 
@@ -217,6 +256,7 @@ export const useConversationStore = defineStore('conversation', () => {
     role,
     conversations,
     messages,
+    attachments,
     agents,
     autoAgentId,
     activeConversationId,
@@ -235,5 +275,6 @@ export const useConversationStore = defineStore('conversation', () => {
     sendMessage,
     stopStreaming,
     removeConversation,
+    uploadFile,
   }
 })
