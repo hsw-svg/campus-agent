@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.agents import router as agents_router
+from app.api.conversations import router as conversations_router
 from app.api.health import router as health_router
 from app.api.workspaces import router as workspaces_router
 from app.core.config import Settings, get_settings
@@ -47,6 +49,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(workspaces_router)
+    app.include_router(conversations_router)
+    app.include_router(agents_router)
     return app
 
 

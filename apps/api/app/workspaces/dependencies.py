@@ -15,6 +15,10 @@ def get_session(request: Request) -> Generator[Session, None, None]:
         yield session
 
 
+def get_chat_provider(request: Request):
+    return request.app.state.chat_provider
+
+
 def get_workspace_repository(
     session: Annotated[Session, Depends(get_session)],
 ) -> WorkspaceRepository:

@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from app.db.base import Base
 from app.core.config import get_settings
 from app.workspaces.models import AnonymousWorkspace
+from app.conversations.models import Conversation, Message
 
 
 config = context.config

@@ -1,0 +1,239 @@
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
+import {
+  ApiError,
+  createConversation,
+  deleteConversation,
+  listAgents,
+  listConversations,
+  listMessages,
+  type Agent,
+  type Conversation,
+  type Message,
+} from '../api/conversations'
+import { streamMessage } from '../api/stream'
+import type { WorkspaceRole } from '../workspaces'
+
+// The shell shows in-flight replies before the server-side ids exist, so drafts
+// are the same shape as ``Message`` with a synthetic id and a ``pending`` flag.
+export interface DraftMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  agent_id: string | null
+  pending?: boolean
+}
+
+let draftCounter = 0
+const nextDraftId = (): string => `draft-${(draftCounter += 1)}`
+
+function toDraft(message: Message): DraftMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    agent_id: message.agent_id,
+  }
+}
+
+export const useConversationStore = defineStore('conversation', () => {
+  const token = ref<string | null>(null)
+  const role = ref<WorkspaceRole | null>(null)
+  const conversations = ref<Conversation[]>([])
+  const messages = ref<DraftMessage[]>([])
+  const agents = ref<Agent[]>([])
+  const autoAgentId = ref('auto')
+  const activeConversationId = ref<string | null>(null)
+  const selectedAgentId = ref<string>('auto')
+  const isStreaming = ref(false)
+  const streamError = ref<string | null>(null)
+  const notice = ref<string | null>(null)
+  let activeAbort: AbortController | null = null
+
+  const activeConversation = computed(
+    () => conversations.value.find((item) => item.id === activeConversationId.value) ?? null,
+  )
+  const isDraftConversation = computed(() => activeConversationId.value === null)
+
+  function reset(): void {
+    // Wipe every slot so a role switch never leaks the previous role's context.
+    token.value = null
+    role.value = null
+    conversations.value = []
+    messages.value = []
+    agents.value = []
+    autoAgentId.value = 'auto'
+    activeConversationId.value = null
+    selectedAgentId.value = 'auto'
+    isStreaming.value = false
+    streamError.value = null
+    notice.value = null
+  }
+
+  async function activateRole(nextRole: WorkspaceRole, nextToken: string): Promise<void> {
+    reset()
+    token.value = nextToken
+    role.value = nextRole
+    await Promise.all([refreshConversations(), refreshAgents()])
+  }
+
+  async function refreshAgents(): Promise<void> {
+    if (!token.value) return
+    const response = await listAgents(token.value)
+    agents.value = response.agents
+    autoAgentId.value = response.auto_agent_id
+    if (
+      selectedAgentId.value !== autoAgentId.value &&
+      !agents.value.some((agent) => agent.id === selectedAgentId.value)
+    ) {
+      selectedAgentId.value = autoAgentId.value
+    }
+  }
+
+  async function refreshConversations(): Promise<void> {
+    if (!token.value) return
+    conversations.value = await listConversations(token.value)
+  }
+
+  async function openConversation(conversationId: string): Promise<void> {
+    if (!token.value) return
+    activeConversationId.value = conversationId
+    streamError.value = null
+    const history = await listMessages(token.value, conversationId)
+    messages.value = history.map(toDraft)
+    const conversation = conversations.value.find((item) => item.id === conversationId)
+    selectedAgentId.value = conversation?.agent_id ?? autoAgentId.value
+  }
+
+  function beginDraftConversation(): void {
+    activeConversationId.value = null
+    messages.value = []
+    streamError.value = null
+    selectedAgentId.value = autoAgentId.value
+  }
+
+  function resolveAgentSelection(): string | null {
+    return selectedAgentId.value === autoAgentId.value ? null : selectedAgentId.value
+  }
+
+  async function sendMessage(rawContent: string): Promise<void> {
+    const content = rawContent.trim()
+    if (!content || !token.value || isStreaming.value) return
+
+    let conversationId = activeConversationId.value
+    if (!conversationId) {
+      try {
+        const created = await createConversation(token.value, resolveAgentSelection())
+        conversations.value = [created, ...conversations.value]
+        activeConversationId.value = created.id
+        conversationId = created.id
+      } catch (error) {
+        streamError.value = error instanceof Error ? error.message : '无法创建对话。'
+        return
+      }
+    }
+
+    const agentId = resolveAgentSelection()
+    const userDraft: DraftMessage = {
+      id: nextDraftId(),
+      role: 'user',
+      content,
+      agent_id: agentId,
+    }
+    const assistantDraft: DraftMessage = {
+      id: nextDraftId(),
+      role: 'assistant',
+      content: '',
+      agent_id: agentId,
+      pending: true,
+    }
+    messages.value = [...messages.value, userDraft, assistantDraft]
+    isStreaming.value = true
+    streamError.value = null
+    activeAbort = new AbortController()
+
+    try {
+      for await (const event of streamMessage({
+        token: token.value,
+        conversationId,
+        content,
+        agentId,
+        signal: activeAbort.signal,
+      })) {
+        if (event.type === 'delta') {
+          const text = typeof event.data.text === 'string' ? event.data.text : ''
+          assistantDraft.content += text
+          // Force the list reference to change so Vue re-renders the draft.
+          messages.value = [...messages.value]
+        } else if (event.type === 'error') {
+          const message =
+            typeof event.data.message === 'string' ? event.data.message : '生成回复时出错。'
+          streamError.value = message
+        }
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        streamError.value = '已停止生成。'
+      } else {
+        streamError.value = error instanceof Error ? error.message : '生成回复时出错。'
+      }
+    } finally {
+      assistantDraft.pending = false
+      isStreaming.value = false
+      activeAbort = null
+      // Replace drafts with the server's persisted rows so ids and timestamps
+      // reflect what other tabs would see after a refresh.
+      await refreshConversations()
+      if (activeConversationId.value === conversationId) {
+        try {
+          const history = await listMessages(token.value, conversationId)
+          messages.value = history.map(toDraft)
+        } catch {
+          // A background refresh must never wipe a visible reply.
+        }
+      }
+    }
+  }
+
+  function stopStreaming(): void {
+    activeAbort?.abort()
+  }
+
+  async function removeConversation(conversationId: string): Promise<void> {
+    if (!token.value) return
+    try {
+      await deleteConversation(token.value, conversationId)
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 404) throw error
+    }
+    conversations.value = conversations.value.filter((item) => item.id !== conversationId)
+    if (activeConversationId.value === conversationId) {
+      beginDraftConversation()
+    }
+  }
+
+  return {
+    token,
+    role,
+    conversations,
+    messages,
+    agents,
+    autoAgentId,
+    activeConversationId,
+    selectedAgentId,
+    isStreaming,
+    streamError,
+    notice,
+    activeConversation,
+    isDraftConversation,
+    reset,
+    activateRole,
+    refreshAgents,
+    refreshConversations,
+    openConversation,
+    beginDraftConversation,
+    sendMessage,
+    stopStreaming,
+    removeConversation,
+  }
+})
