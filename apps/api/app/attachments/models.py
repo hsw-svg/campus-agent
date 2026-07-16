@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON, Uuid
 
 from app.conversations.models import JsonColumn
+from app.core.config import get_settings
 from app.db.base import Base
 
 try:
@@ -15,7 +16,9 @@ except ImportError:  # pragma: no cover - the production dependency provides thi
 
 
 EmbeddingColumn = (
-    JSON().with_variant(Vector(1536), "postgresql") if Vector is not None else JsonColumn
+    JSON().with_variant(Vector(get_settings().embedding_dimensions), "postgresql")
+    if Vector is not None
+    else JsonColumn
 )
 
 

@@ -13,7 +13,7 @@ class AttachmentRepository:
     def create(self, **values) -> Attachment:
         attachment = Attachment(**values)
         self.session.add(attachment)
-        self.session.commit()
+        self._commit()
         self.session.refresh(attachment)
         return attachment
 
@@ -55,13 +55,20 @@ class AttachmentRepository:
     def update(self, attachment: Attachment, **values) -> Attachment:
         for key, value in values.items():
             setattr(attachment, key, value)
-        self.session.commit()
+        self._commit()
         self.session.refresh(attachment)
         return attachment
 
     def add_chunks(self, chunks: list[MaterialChunk]) -> None:
         self.session.add_all(chunks)
-        self.session.commit()
+        self._commit()
+
+    def _commit(self) -> None:
+        try:
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
 
 
 class Retriever:
