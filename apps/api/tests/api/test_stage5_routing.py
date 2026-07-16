@@ -1,7 +1,9 @@
 from collections.abc import AsyncIterator, Sequence
+import json
 
 from fastapi.testclient import TestClient
 
+from app.integrations.storage.local import LocalObjectStorage
 from tests.api.conftest import make_workspace
 
 
@@ -32,6 +34,29 @@ class FailingChatProvider:
         if False:
             yield ""
         raise RuntimeError("temporary upstream failure")
+
+
+class AttachmentAwareRouteClassifier:
+    is_configured = True
+
+    def __init__(self) -> None:
+        self.calls: list[list[dict[str, str]]] = []
+
+    async def classify_route(self, messages: list[dict[str, str]]) -> str:
+        self.calls.append(messages)
+        payload = json.loads(messages[1]["content"])
+        attachments = payload.get("attachments", [])
+        has_grade_sheet = any("寰楀垎" in json.dumps(item, ensure_ascii=False) for item in attachments)
+        agent = "learning_analysis" if has_grade_sheet else "lesson_design"
+        return json.dumps(
+            {
+                "agent": agent,
+                "confidence": 0.92,
+                "reason": "route by attachment scope",
+                "missing_inputs": [],
+            },
+            ensure_ascii=False,
+        )
 
 
 def create_conversation(client: TestClient, token: str) -> dict:
@@ -181,3 +206,32 @@ def test_auto_stream_emits_selected_agent_and_run_id(client: TestClient) -> None
     assert events["message_start"]["run_id"]
     assert events["tool_status"]["agent_id"] == "learning_analysis"
     assert events["done"]["run_id"] == events["message_start"]["run_id"]
+
+
+def test_new_conversation_ignores_previous_workspace_attachment_for_routing(
+    client: TestClient, tmp_path
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    token = make_workspace(client, "teacher")
+    first_conversation = create_conversation(client, token)
+    second_conversation = create_conversation(client, token)
+    client.app.state.chat_provider = AttachmentAwareRouteClassifier()
+
+    upload = client.post(
+        f"/api/conversations/{first_conversation['id']}/attachments",
+        files={"file": ("scores.csv", "匿名编号,章节,得分,满分\nA01,函数,72,100", "text/csv")},
+        data={"scope": "workspace"},
+        headers=auth(token),
+    )
+    assert upload.status_code == 201
+
+    response = client.post(
+        f"/api/conversations/{second_conversation['id']}/route",
+        json={"content": "根据本节课目标，生成一份课堂练习"},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["agent"] == "lesson_design"
+    assert body["selection_source"] == "llm"

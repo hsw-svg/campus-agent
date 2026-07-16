@@ -16,7 +16,7 @@ def make_route_context(
 ) -> RouteContext:
     attachment_facts = tuple(
         _attachment_fact(attachment)
-        for attachment in attachments.list_for_conversation(workspace_id, conversation.id)
+        for attachment in attachments.list_current_for_conversation(workspace_id, conversation.id)
     )
     recent_messages = tuple(
         {
