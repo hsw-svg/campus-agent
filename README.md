@@ -1,6 +1,6 @@
 # Campus Agent
 
-An anonymous-workspace campus AI assistant. Stage 1 provides only the runtime foundation: a Vue build, FastAPI health service, PostgreSQL with pgvector, migration support, local object storage, and test commands. It intentionally contains no account, login, JWT, class, workspace, conversation, or cross-role business feature.
+An anonymous-workspace campus AI assistant. The active web client is the React/Vite application in `apps/web`; it uses the FastAPI service for anonymous workspaces, conversations, streaming replies, and attachments.
 
 ## Local Development
 
@@ -15,10 +15,9 @@ uv run alembic upgrade head
 ```
 
 ```powershell
-cd apps/web
-npm.cmd install
-npm.cmd run test:run
-npm.cmd run build
+npm.cmd install --prefix apps/web
+npm.cmd run lint --prefix apps/web
+npm.cmd run build --prefix apps/web
 ```
 
 Copy `.env.example` to `.env` before local Compose startup when you need custom values. Chat and embedding settings are deliberately independent and optional; leaving either blank does not stop the API. Their state is exposed by the health endpoint.
@@ -29,11 +28,11 @@ Invoke-RestMethod http://localhost:8000/api/health
 docker compose down
 ```
 
-The web application is served at `http://localhost:8080`; the API is exposed at `http://localhost:8000`. `GET /api/health` reports database, chat-model, and embedding-model component status.
+The React web application is served at `http://localhost:3000`; the API is exposed at `http://localhost:8000`. `GET /api/health` reports database, chat-model, and embedding-model component status. `start.cmd` starts both services using these defaults.
 
 ## Repository Map
 
-- `apps/web`: Vue 3 application build and component tests.
+- `apps/web`: React/Vite application, visual workspaces, API client, and SSE chat integration.
 - `apps/api`: FastAPI service, database migration, integrations, and tests.
 - `infra`: Docker, Nginx, PostgreSQL, and pgvector deployment assets.
 - `docs`: Product design, architecture guidance, and implementation plans.

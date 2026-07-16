@@ -1,0 +1,491 @@
+import { useState, useRef, useEffect } from 'react';
+import { 
+  GraduationCap, 
+  Calendar, 
+  History, 
+  FolderOpen, 
+  Settings, 
+  MoreVertical, 
+  ShieldCheck, 
+  Search, 
+  Activity, 
+  Bell, 
+  UserRoundCheck, 
+  Send, 
+  Paperclip, 
+  Mic, 
+  Image as ImageIcon, 
+  ShieldAlert, 
+  Sparkles, 
+  Table, 
+  FileSpreadsheet, 
+  FileText, 
+  ArrowRight,
+  ClipboardList,
+  Check,
+  Copy
+} from 'lucide-react';
+import { Message } from '../types';
+import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
+import ConversationHistory from './ConversationHistory';
+
+interface AdminWorkspaceProps {
+  token: string | null;
+  onBackToRoles: () => void;
+}
+
+export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceProps) {
+  const { chatMessages, isAiTyping, sendMessage, clearChat, uploadFile, error, conversations, activeConversationId, openConversation, removeConversation } = useWorkspaceChat(token);
+  const [inputVal, setInputVal] = useState('');
+  const [copied, setCopied] = useState(false);
+  
+  // Custom dashboard tables/calendar states: 'none' | 'table' | 'calendar'
+  const [viewMode, setViewMode] = useState<'none' | 'table' | 'calendar'>('none');
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [inputVal]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, isAiTyping]);
+
+  const handleSendMessage = (textToSend?: string) => {
+    const finalMsg = textToSend || inputVal;
+    if (!finalMsg.trim()) return;
+    setInputVal('');
+    void sendMessage(finalMsg);
+  };
+
+  const copyText = (txt: string) => {
+    navigator.clipboard.writeText(txt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex h-screen w-full font-sans antialiased bg-[#EEF3F0] text-on-surface overflow-hidden">
+      
+      {/* SIDEBAR NAVIGATION */}
+      <aside className="h-screen w-72 flex flex-col fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant py-4 px-3 z-50">
+        <div className="flex items-center gap-3 px-2 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-tertiary flex items-center justify-center text-white shadow-sm">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="font-display text-lg font-extrabold text-tertiary leading-tight">校园智能助手</h1>
+            <p className="text-xs text-on-surface-variant font-medium">教务工作台</p>
+          </div>
+        </div>
+
+        <button 
+          onClick={() => {
+            clearChat();
+            setViewMode('none');
+          }}
+          className="flex items-center justify-center gap-2 w-full py-3 mb-6 bg-tertiary text-on-tertiary rounded-xl font-semibold text-sm hover:opacity-95 transition-all active:scale-95 shadow-sm cursor-pointer"
+        >
+          <Calendar className="w-4.5 h-4.5" />
+          新建课程表
+        </button>
+
+        <nav className="flex-1 space-y-1 overflow-y-auto">
+          <div className="px-3 py-1 mb-1 text-[11px] text-outline font-bold tracking-wider">菜单</div>
+          
+          <button 
+            onClick={() => {
+              clearChat();
+              setViewMode('none');
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
+              viewMode === 'none' && chatMessages.length === 0 
+                ? 'text-tertiary bg-tertiary-container/10 border-r-4 border-tertiary' 
+                : 'text-on-surface-variant hover:bg-surface-container-high'
+            }`}
+          >
+            <Calendar className="w-4.5 h-4.5" />
+            <span>教务中心</span>
+          </button>
+
+          <button 
+            onClick={() => handleSendMessage('生成综合报表')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
+              viewMode === 'table' 
+                ? 'text-tertiary bg-tertiary-container/10 border-r-4 border-tertiary' 
+                : 'text-on-surface-variant hover:bg-surface-container-high'
+            }`}
+          >
+            <Table className="w-4.5 h-4.5" />
+            <span>班级统计报表</span>
+          </button>
+
+          <button 
+            onClick={() => handleSendMessage('设计智能排课课表')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
+              viewMode === 'calendar' 
+                ? 'text-tertiary bg-tertiary-container/10 border-r-4 border-tertiary' 
+                : 'text-on-surface-variant hover:bg-surface-container-high'
+            }`}
+          >
+            <ClipboardList className="w-4.5 h-4.5" />
+            <span>排课矩阵</span>
+          </button>
+
+          <ConversationHistory conversations={conversations} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); setViewMode('none'); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-tertiary" />
+
+          <a className="flex items-center gap-3 px-3 py-2.5 text-on-surface-variant font-semibold text-sm rounded-lg hover:bg-surface-container-high transition-colors" href="#">
+            <Settings className="w-4.5 h-4.5" />
+            <span>系统配置</span>
+          </a>
+        </nav>
+
+        {/* User Info */}
+        <div className="mt-auto p-2 bg-surface-container/50 rounded-xl border border-outline-variant flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-tertiary-container/20 text-tertiary flex items-center justify-center font-bold text-sm shrink-0 border border-outline-variant">
+            教务
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold truncate">教务管理员</p>
+            <p className="text-[10px] text-on-surface-variant truncate font-semibold tracking-wider">教务工作人员</p>
+          </div>
+          <MoreVertical className="w-4 h-4 text-outline cursor-pointer hover:text-tertiary" />
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT CANVAS */}
+      <main className="ml-72 flex-1 flex flex-col bg-background min-h-screen relative overflow-hidden">
+        {error && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error}</div>}
+        
+        {/* Top App Bar */}
+        <header className="sticky top-0 z-40 h-16 bg-surface border-b border-outline-variant flex justify-between items-center px-10 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 px-3 py-1 bg-surface-container-high rounded-full border border-outline-variant shadow-xs">
+              <ShieldCheck className="w-4 h-4 text-tertiary" />
+              <span className="text-xs font-bold text-on-surface-variant">教务工作空间</span>
+            </div>
+          </div>
+
+          <button 
+            onClick={onBackToRoles}
+            className="flex items-center gap-1 px-4 py-2 bg-tertiary-container/20 text-tertiary rounded-full font-semibold text-xs hover:bg-opacity-95 transition-all active:scale-95 cursor-pointer"
+          >
+            <UserRoundCheck className="w-3.5 h-3.5" />
+            切换角色
+          </button>
+        </header>
+
+        {/* Workspace Display Area */}
+        <div className="flex-1 flex overflow-hidden">
+          
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <section className="flex-1 flex flex-col p-6 overflow-y-auto max-w-4xl mx-auto w-full space-y-6">
+            
+            {viewMode === 'none' && chatMessages.length === 0 && (
+              <div className="flex-grow flex flex-col items-center justify-center text-center py-10 space-y-8 max-w-2xl mx-auto">
+                <div className="relative w-32 h-32">
+                  <div className="absolute inset-0 bg-tertiary/5 rounded-full animate-pulse"></div>
+                  <div className="absolute inset-4 bg-tertiary/10 rounded-full flex items-center justify-center">
+                    <ShieldAlert className="w-12 h-12 text-tertiary" />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <h2 className="font-display text-2xl font-bold text-on-surface">教务自动化系统与资源优化</h2>
+                  <p className="text-sm text-on-surface-variant font-medium">
+                    生成本学期的班级指标对比、自动排出多课时无冲突的排课表。或拟定放假通知等日常办公事务。
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full pt-4">
+                  <button 
+                    onClick={() => handleSendMessage('全自动生成班级指标教务对比报表')}
+                    className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-tertiary hover:shadow-md transition-all group cursor-pointer text-center"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-tertiary-container/25 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <Table className="w-6 h-6" />
+                    </div>
+                    <span className="font-bold text-sm text-on-surface">报表自动化</span>
+                  </button>
+
+                  <button 
+                    onClick={() => handleSendMessage('设计智能排课课表')}
+                    className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-tertiary hover:shadow-md transition-all group cursor-pointer text-center"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-tertiary-container/25 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <Calendar className="w-6 h-6" />
+                    </div>
+                    <span className="font-bold text-sm text-on-surface">智能排课</span>
+                  </button>
+
+                  <button 
+                    onClick={() => handleSendMessage('生成一篇放假安排通知模板')}
+                    className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-tertiary hover:shadow-md transition-all group cursor-pointer text-center"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-tertiary-container/25 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <span className="font-bold text-sm text-on-surface">信息分发</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* DYNAMIC RENDERS FOR VIEW MODES */}
+            {viewMode === 'table' && (
+              <div className="bg-white border border-[#D9E4DF] rounded-2xl overflow-hidden shadow-xs">
+                <div className="p-4 border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
+                  <span className="font-bold text-sm text-tertiary">2026春・综合学术教务考核表</span>
+                  <span className="text-[10px] bg-primary-container/20 text-primary-container px-2 py-0.5 rounded-full font-bold">已同步教务系统</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-outline-variant bg-surface-container/40">
+                        <th className="p-3 font-extrabold text-on-surface-variant">班级名称</th>
+                        <th className="p-3 font-extrabold text-on-surface-variant">实到出勤率</th>
+                        <th className="p-3 font-extrabold text-on-surface-variant">平时作业完成度</th>
+                        <th className="p-3 font-extrabold text-on-surface-variant">教学评分（反馈）</th>
+                        <th className="p-3 font-extrabold text-on-surface-variant">冲突隐患</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant/30">
+                      <tr>
+                        <td className="p-3 font-bold">计算机一班</td>
+                        <td className="p-3 text-primary font-bold">95%</td>
+                        <td className="p-3">88%</td>
+                        <td className="p-3">9.6 / 10</td>
+                        <td className="p-3 text-primary font-bold">无</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 font-bold">软件二班</td>
+                        <td className="p-3">91%</td>
+                        <td className="p-3 text-primary font-bold">93%</td>
+                        <td className="p-3">9.2 / 10</td>
+                        <td className="p-3 text-tertiary font-bold">轻度资源拥挤</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 font-bold">物联网一班</td>
+                        <td className="p-3">89%</td>
+                        <td className="p-3">81%</td>
+                        <td className="p-3">8.8 / 10</td>
+                        <td className="p-3 text-error font-bold">需要调课</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {viewMode === 'calendar' && (
+              <div className="bg-white border border-[#D9E4DF] rounded-2xl overflow-hidden shadow-xs">
+                <div className="p-4 border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
+                  <span className="font-bold text-sm text-tertiary">周课程表优化方案（周一至周五）</span>
+                  <span className="text-[10px] bg-tertiary-container/20 text-tertiary-container px-2 py-0.5 rounded-full font-bold">已避开会议重叠</span>
+                </div>
+                <div className="grid grid-cols-5 divide-x divide-outline-variant text-center text-[10px]">
+                  {['周一', '周二', '周三', '周四', '周五'].map((day, dIdx) => (
+                    <div key={day} className="space-y-2 p-2">
+                      <p className="font-bold border-b border-outline-variant/30 pb-1 text-on-surface-variant text-xs">{day}</p>
+                      
+                      {dIdx === 0 && (
+                        <div className="bg-primary/10 text-primary p-2 rounded-lg border border-primary/20">
+                          <p className="font-bold">Python程序</p>
+                          <p className="text-[9px] opacity-75">8:00 - 9:30</p>
+                        </div>
+                      )}
+
+                      {dIdx === 1 && (
+                        <div className="bg-tertiary-container/10 text-tertiary p-2 rounded-lg border border-tertiary/25">
+                          <p className="font-bold">高数复习</p>
+                          <p className="text-[9px] opacity-75">9:50 - 11:20</p>
+                        </div>
+                      )}
+
+                      {dIdx === 2 && (
+                        <div className="bg-primary/10 text-primary p-2 rounded-lg border border-primary/20">
+                          <p className="font-bold">Python程序</p>
+                          <p className="text-[9px] opacity-75">8:00 - 9:30</p>
+                        </div>
+                      )}
+
+                      {dIdx === 3 && (
+                        <div className="bg-secondary-container/10 text-on-secondary-container p-2 rounded-lg border border-secondary/25">
+                          <p className="font-bold">学术组研讨会</p>
+                          <p className="text-[9px] opacity-75">14:00 - 15:30</p>
+                        </div>
+                      )}
+
+                      {dIdx === 4 && (
+                        <div className="bg-[#EEF3F0] text-outline p-2 rounded-lg border border-dashed border-outline/30">
+                          <p className="font-bold">学生活动</p>
+                          <p className="text-[9px] opacity-75">下午整天</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {chatMessages.length > 0 && (
+              <div className="space-y-6">
+                {chatMessages.map((msg, idx) => {
+                  const isUser = msg.sender === 'user';
+                  return (
+                    <div key={msg.id} className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                      {!isUser && (
+                        <div className="w-8 h-8 rounded-full bg-tertiary-container/20 flex items-center justify-center text-tertiary shrink-0 border border-outline-variant">
+                          <ShieldAlert className="w-4 h-4" />
+                        </div>
+                      )}
+                      
+                      <div className={`max-w-[85%] rounded-2xl px-5 py-4 shadow-xs ${
+                        isUser 
+                          ? 'bg-tertiary text-on-tertiary rounded-tr-none' 
+                          : 'bg-[#FBFDFB] border border-[#D9E4DF] text-on-surface rounded-tl-none'
+                      }`}>
+                        <div className="text-xs opacity-70 mb-1 flex items-center justify-between">
+                          <span>{isUser ? '管理员（您）' : '教务智能助手'}</span>
+                          <span>{msg.timestamp}</span>
+                        </div>
+                        <div className="text-sm leading-relaxed whitespace-pre-line prose prose-sm max-w-none">
+                          {msg.content}
+                        </div>
+                        
+                        {!isUser && (
+                          <button 
+                            onClick={() => copyText(msg.content)}
+                            className="mt-3 flex items-center gap-1 px-3 py-1.5 bg-surface-container hover:bg-surface-container-high rounded-lg text-xs font-semibold cursor-pointer border border-outline-variant"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            {copied ? '复制成功！' : '复制数据/大纲'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {isAiTyping && (
+                  <div className="flex gap-3 justify-start items-center">
+                    <div className="w-8 h-8 rounded-full bg-tertiary-container/20 flex items-center justify-center text-tertiary shrink-0">
+                      <ShieldAlert className="w-4 h-4" />
+                    </div>
+                    <div className="bg-[#FBFDFB] border border-[#D9E4DF] rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
+                      <span className="animate-pulse">教务智能助手正在检测冲突并生成最优排课方案</span>
+                      <span className="flex gap-0.5">
+                        <span className="w-1 h-1 bg-tertiary rounded-full animate-bounce"></span>
+                        <span className="w-1 h-1 bg-tertiary rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                        <span className="w-1 h-1 bg-tertiary rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+            )}
+          </section>
+
+          {/* Chat Input Footer */}
+          <div className="mt-auto px-10 pb-8 shrink-0 bg-background pt-2 border-t border-outline-variant/10 z-10">
+            <div className="max-w-4xl mx-auto space-y-3">
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide py-1">
+                <button 
+                  onClick={() => handleSendMessage('全自动生成班级指标教务对比报表')}
+                  className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
+                >
+                  📊 导出教务报表
+                </button>
+                <button 
+                  onClick={() => handleSendMessage('设计智能排课课表')}
+                  className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
+                >
+                  📅 优化本周课表
+                </button>
+                <button 
+                  onClick={() => handleSendMessage('生成放假教务通知')}
+                  className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
+                >
+                  ✉️ 放假安排拟定
+                </button>
+              </div>
+
+              <div className="bg-[#FBFDFB] rounded-2xl shadow-xs border-2 border-outline-variant focus-within:border-tertiary transition-all p-3">
+                <textarea 
+                  ref={textareaRef}
+                  value={inputVal}
+                  onChange={(e) => setInputVal(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  className="w-full bg-transparent border-none outline-none focus:outline-hidden text-sm p-1 resize-none font-sans leading-relaxed text-on-surface min-h-[44px] scrollbar-hide" 
+                  placeholder="提报教务冲突，或输入排课任务..." 
+                  rows={2}
+                />
+                <div className="flex items-center justify-between pt-2 border-t border-outline-variant/35">
+                  <div className="flex gap-1">
+                    <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-outline hover:text-tertiary transition-colors rounded-lg hover:bg-surface-container cursor-pointer">
+                      <Paperclip className="w-4 h-4" />
+                    </button>
+                    <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.xlsx,.xls,.pdf,.doc,.docx,.txt" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file); event.currentTarget.value = ''; }} />
+                    <button className="p-1.5 text-outline hover:text-tertiary transition-colors rounded-lg hover:bg-surface-container cursor-pointer">
+                      <Mic className="w-4 h-4" />
+                    </button>
+                  </div>
+                  
+                  <button 
+                    onClick={() => handleSendMessage()}
+                    className="bg-tertiary text-on-tertiary px-5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-opacity-95 shadow-sm"
+                  >
+                    <span>发送任务</span>
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>
+
+          {/* Right sidebar */}
+          <aside className="w-80 h-full border-l border-outline-variant bg-surface-container-low flex flex-col p-4 gap-6 overflow-y-auto shrink-0 hidden xl:flex">
+            <div className="space-y-3">
+              <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider px-1">全校资源看板</h3>
+              <div className="bg-[#FBFDFB] border border-[#D9E4DF] p-4 rounded-xl space-y-2">
+                <p className="text-xs font-bold text-on-surface">教室状态一览</p>
+                <div className="flex items-center justify-between text-xs">
+                  <span>302阶梯教室</span>
+                  <span className="text-primary font-bold">空闲</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span>软件实验室 504</span>
+                  <span className="text-tertiary font-bold">排课占用</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider px-1">排课引擎进度</h3>
+              <div className="bg-[#FBFDFB] border border-[#D9E4DF] p-4 rounded-xl space-y-2">
+                <div className="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
+                  <div className="h-full bg-tertiary w-full"></div>
+                </div>
+                <p className="text-[10px] text-outline">已锁定最优解。100% 冲突解除。</p>
+              </div>
+            </div>
+          </aside>
+
+        </div>
+      </main>
+
+    </div>
+  );
+}

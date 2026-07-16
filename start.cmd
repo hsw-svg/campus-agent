@@ -21,7 +21,7 @@ if not exist "%WEB_DIR%\node_modules" (
 echo Starting Campus Agent API: http://localhost:8000
 start "Campus Agent API" /d "%API_DIR%" cmd /k ""%PYTHON%" -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-echo Starting Campus Agent Web: http://localhost:5173
+echo Starting Campus Agent Web: http://localhost:3000
 start "Campus Agent Web" /d "%WEB_DIR%" cmd /k "npm.cmd run dev"
 
 echo Launch requests sent. Close an individual service window to stop that service.
