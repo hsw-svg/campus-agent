@@ -118,10 +118,15 @@ export const useConversationStore = defineStore('conversation', () => {
     if (!token.value) return
     activeConversationId.value = conversationId
     streamError.value = null
+    const requestedConversationId = conversationId
     const history = await listMessages(token.value, conversationId)
+    if (activeConversationId.value !== requestedConversationId) return
     messages.value = history.map(toDraft)
-    attachments.value = await listAttachments(token.value, conversationId)
+    const listedAttachments = await listAttachments(token.value, conversationId)
+    if (activeConversationId.value !== requestedConversationId) return
+    attachments.value = listedAttachments
     const conversation = conversations.value.find((item) => item.id === conversationId)
+    if (activeConversationId.value !== requestedConversationId) return
     selectedAgentId.value = conversation?.agent_id ?? autoAgentId.value
   }
 
@@ -275,8 +280,10 @@ export const useConversationStore = defineStore('conversation', () => {
         return
       }
     }
+    const requestedConversationId = conversationId
     try {
       const attachment = await uploadAttachment(token.value, conversationId, file, scope)
+      if (activeConversationId.value !== requestedConversationId) return
       attachments.value = [...attachments.value, attachment]
       streamError.value = null
     } catch (error) {
