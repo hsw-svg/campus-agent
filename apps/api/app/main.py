@@ -7,6 +7,7 @@ from app.api.conversations import router as conversations_router
 from app.api.health import router as health_router
 from app.api.workspaces import router as workspaces_router
 from app.api.attachments import router as attachments_router
+from app.api.agent_runs import router as agent_runs_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
@@ -15,6 +16,7 @@ from app.integrations.embedding.providers import OpenAICompatibleEmbeddingProvid
 from app.integrations.llm.providers import OpenAICompatibleChatProvider
 from app.integrations.storage.local import LocalObjectStorage
 from app.attachments.models import Attachment, MaterialChunk  # noqa: F401
+from app.agents.models import AgentRun  # noqa: F401
 from app.workspaces.models import AnonymousWorkspace
 
 
@@ -56,6 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(conversations_router)
     app.include_router(agents_router)
     app.include_router(attachments_router)
+    app.include_router(agent_runs_router)
     return app
 
 

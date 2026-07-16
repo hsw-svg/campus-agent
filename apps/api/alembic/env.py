@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.workspaces.models import AnonymousWorkspace
 from app.conversations.models import Conversation, Message
 from app.attachments.models import Attachment, MaterialChunk
+from app.agents.models import AgentRun
 
 
 config = context.config

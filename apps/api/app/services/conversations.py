@@ -2,9 +2,13 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 from app.agents.registry import is_agent_available_for_role
-from app.attachments.repositories import Retriever
+from app.agents.models import AgentRun
+from app.agents.repositories import AgentRunRepository
+from app.agents.router import AgentRouter, RouteDecision
+from app.attachments.repositories import AttachmentRepository, Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
 from app.services.attachments import retrieve_context
+from app.services.routing import classify_message
 from app.conversations.models import Conversation, Message
 from app.conversations.streaming import stream_event
 from app.core.errors import AppError
@@ -77,6 +81,11 @@ async def stream_assistant_reply(
     role: str,
     retriever: Retriever | None = None,
     embedding_provider: EmbeddingProvider | None = None,
+    attachments: AttachmentRepository | None = None,
+    agent_runs: AgentRunRepository | None = None,
+    router: AgentRouter | None = None,
+    existing_run: AgentRun | None = None,
+    existing_user_message: Message | None = None,
 ) -> AsyncIterator[str]:
     """Persist the user turn, stream the assistant reply, and persist the result.
 
@@ -84,7 +93,29 @@ async def stream_assistant_reply(
     message and the conversation stay intact so the turn can be retried.
     """
 
-    resolved_agent = agent_id if agent_id is not None else conversation.agent_id
+    route_decision = RouteDecision(
+        agent=agent_id if agent_id is not None else conversation.agent_id,
+        confidence=1.0 if agent_id is not None or conversation.agent_id is not None else 0.0,
+        reason=(
+            "沿用当前选择的智能体。"
+            if agent_id is not None or conversation.agent_id is not None
+            else "未执行阶段5路由。"
+        ),
+        selection_source="manual" if agent_id is not None or conversation.agent_id is not None else "fallback",
+    )
+    if router is not None and attachments is not None and agent_runs is not None:
+        route_decision = await classify_message(
+            router=router,
+            role=role,
+            conversation=conversation,
+            content=user_content,
+            attachments=attachments,
+            messages=messages,
+            workspace_id=workspace_id,
+            manual_agent_id=agent_id if agent_id is not None else conversation.agent_id,
+        )
+
+    resolved_agent = route_decision.agent
     if resolved_agent is not None and not is_agent_available_for_role(role, resolved_agent):
         raise AppError(
             code="agent_not_available",
@@ -92,7 +123,7 @@ async def stream_assistant_reply(
             status_code=400,
         )
 
-    user_message = messages.add(
+    user_message = existing_user_message or messages.add(
         workspace_id=workspace_id,
         conversation_id=conversation.id,
         role="user",
@@ -102,6 +133,31 @@ async def stream_assistant_reply(
         conversations.rename(conversation, derive_title(user_content))
     if agent_id is not None and agent_id != conversation.agent_id:
         conversations.set_agent(conversation, agent_id)
+
+    run: AgentRun | None = None
+    if agent_runs is not None:
+        run_values = {
+            "workspace_id": workspace_id,
+            "conversation_id": conversation.id,
+            "message_id": user_message.id,
+            "agent_id": resolved_agent,
+            "selection_source": route_decision.selection_source,
+            "confidence": route_decision.confidence,
+            "reason": route_decision.reason,
+            "missing_inputs": list(route_decision.missing_inputs),
+            "candidate_agent_ids": list(route_decision.candidates),
+            "status": "awaiting_confirmation"
+            if route_decision.requires_confirmation
+            else "running",
+            "error_code": None,
+            "error_message": None,
+            "artifact_status": "none",
+            "attempt_count": (existing_run.attempt_count + 1) if existing_run else 1,
+        }
+        if existing_run is None:
+            run = agent_runs.create(**run_values)
+        else:
+            run = agent_runs.update(existing_run, **run_values)
 
     sources: list[dict[str, str | int | None]] = []
     if retriever is not None and embedding_provider is not None:
@@ -142,6 +198,65 @@ async def stream_assistant_reply(
                 "conversation_id": str(conversation.id),
                 "user_message_id": str(user_message.id),
                 "agent_id": resolved_agent,
+                "agent_name": _agent_name(role, resolved_agent),
+                "selection_source": route_decision.selection_source,
+                "confidence": route_decision.confidence,
+                "run_id": str(run.id) if run else None,
+            },
+        )
+        if route_decision.requires_confirmation:
+            if run is not None and agent_runs is not None:
+                agent_runs.update(run, status="awaiting_confirmation")
+            yield stream_event(
+                "tool_status",
+                {
+                    "status": "route_confirmation_required",
+                    "run_id": str(run.id) if run else None,
+                    "candidates": list(route_decision.candidates),
+                    "reason": route_decision.reason,
+                },
+            )
+            yield stream_event(
+                "error",
+                {
+                    "code": "route_confirmation_required",
+                    "message": "请确认要调用的智能体后再继续。",
+                    "retryable": False,
+                    "run_id": str(run.id) if run else None,
+                    "candidates": list(route_decision.candidates),
+                },
+            )
+            return
+
+        if route_decision.missing_inputs:
+            if run is not None and agent_runs is not None:
+                agent_runs.update(
+                    run,
+                    status="needs_input",
+                    error_code="agent_input_incomplete",
+                    error_message="目标智能体缺少必要输入。",
+                )
+            yield stream_event(
+                "error",
+                {
+                    "code": "agent_input_incomplete",
+                    "message": "目标智能体缺少必要输入。",
+                    "missing_inputs": list(route_decision.missing_inputs),
+                    "retryable": False,
+                    "run_id": str(run.id) if run else None,
+                },
+            )
+            return
+
+        yield stream_event(
+            "tool_status",
+            {
+                "status": "agent_routed" if resolved_agent else "generic_fallback",
+                "agent_id": resolved_agent,
+                "agent_name": _agent_name(role, resolved_agent),
+                "selection_source": route_decision.selection_source,
+                "confidence": route_decision.confidence,
+                "run_id": str(run.id) if run else None,
             },
         )
         if sources:
@@ -149,12 +264,20 @@ async def stream_assistant_reply(
             yield stream_event("artifact", {"type": "sources", "sources": sources})
 
         if not chat_provider.is_configured:
+            if run is not None and agent_runs is not None:
+                agent_runs.update(
+                    run,
+                    status="failed",
+                    error_code="chat_model_unconfigured",
+                    error_message="The chat model is not configured.",
+                )
             yield stream_event(
                 "error",
                 {
                     "code": "chat_model_unconfigured",
                     "message": "The chat model is not configured. Add credentials and retry.",
                     "retryable": True,
+                    "run_id": str(run.id) if run else None,
                 },
             )
             return
@@ -165,6 +288,13 @@ async def stream_assistant_reply(
                 collected.append(delta)
                 yield stream_event("delta", {"text": delta})
         except Exception as error:  # noqa: BLE001 - surfaced as a retryable stream error
+            if run is not None and agent_runs is not None:
+                agent_runs.update(
+                    run,
+                    status="failed",
+                    error_code="chat_stream_failed",
+                    error_message=str(error),
+                )
             yield stream_event(
                 "error",
                 {
@@ -172,6 +302,7 @@ async def stream_assistant_reply(
                     "message": "The chat model did not complete the response.",
                     "detail": str(error),
                     "retryable": True,
+                    "run_id": str(run.id) if run else None,
                 },
             )
             return
@@ -186,13 +317,28 @@ async def stream_assistant_reply(
             artifacts=[{"type": "sources", "sources": sources}] if sources else None,
         )
         conversations.touch(conversation)
+        if run is not None and agent_runs is not None:
+            agent_runs.update(
+                run,
+                status="completed",
+                result_message_id=assistant_message.id,
+            )
         yield stream_event(
             "done",
             {
                 "message_id": str(assistant_message.id),
                 "conversation_id": str(conversation.id),
                 "agent_id": resolved_agent,
+                "run_id": str(run.id) if run else None,
             },
         )
 
     return generator()
+
+
+def _agent_name(role: str, agent_id: str | None) -> str | None:
+    if agent_id is None:
+        return None
+    from app.agents.registry import list_agents
+
+    return next((agent.name for agent in list_agents(role) if agent.id == agent_id), None)

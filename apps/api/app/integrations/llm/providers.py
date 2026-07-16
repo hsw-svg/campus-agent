@@ -46,3 +46,22 @@ class OpenAICompatibleChatProvider:
             text = getattr(delta, "content", None)
             if text:
                 yield text
+
+    async def classify_route(self, messages: list[dict[str, str]]) -> str:
+        """Return one JSON routing decision from an OpenAI-compatible model."""
+
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
+        response = await client.chat.completions.create(
+            model=self.model,
+            messages=list(messages),
+            temperature=0,
+            response_format={"type": "json_object"},
+        )
+        if not response.choices:
+            raise ValueError("route classifier returned no choices")
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("route classifier returned empty content")
+        return content

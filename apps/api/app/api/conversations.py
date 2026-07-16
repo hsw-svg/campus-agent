@@ -5,6 +5,12 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.dependencies import get_agent_run_repository
+from app.agents.registry import AUTO_AGENT_ID, list_agents
+from app.agents.repositories import AgentRunRepository
+from app.agents.router import AgentRouter
+from app.attachments.dependencies import get_attachment_repository
+from app.attachments.repositories import AttachmentRepository
 from app.conversations.dependencies import (
     get_conversation_repository,
     get_message_repository,
@@ -17,6 +23,7 @@ from app.services.conversations import (
     get_owned_conversation,
     stream_assistant_reply,
 )
+from app.services.routing import classify_message
 from app.workspaces.dependencies import get_chat_provider, get_current_workspace, get_embedding_provider
 from app.attachments.repositories import Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
@@ -54,6 +61,31 @@ class CreateConversationRequest(BaseModel):
 class StreamMessageRequest(BaseModel):
     content: str = Field(min_length=1)
     agent_id: str | None = None
+
+
+class RouteRequest(BaseModel):
+    content: str = Field(min_length=1)
+    agent_id: str | None = None
+
+
+class RouteCandidateResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+
+
+class RouteResponse(BaseModel):
+    run_id: UUID
+    agent: str | None
+    agent_id: str | None
+    confidence: float
+    reason: str
+    missing_inputs: list[str]
+    selection_source: str
+    candidates: list[RouteCandidateResponse]
+    candidate_agent_ids: list[str]
+    requires_confirmation: bool
+    status: str
 
 
 @router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
@@ -103,6 +135,44 @@ def delete_conversation(
     conversations.delete(conversation)
 
 
+@router.post("/{conversation_id}/route", response_model=RouteResponse)
+async def route_message(
+    conversation_id: UUID,
+    payload: RouteRequest,
+    workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    conversations: ConversationRepository = Depends(get_conversation_repository),
+    messages: MessageRepository = Depends(get_message_repository),
+    attachments: AttachmentRepository = Depends(get_attachment_repository),
+    agent_runs: AgentRunRepository = Depends(get_agent_run_repository),
+    chat_provider=Depends(get_chat_provider),
+) -> RouteResponse:
+    conversation = get_owned_conversation(conversations, workspace.id, conversation_id)
+    agent_id = _normalize_agent_id(payload.agent_id)
+    decision = await classify_message(
+        router=AgentRouter(chat_provider),
+        role=workspace.role,
+        conversation=conversation,
+        content=payload.content,
+        attachments=attachments,
+        messages=messages,
+        workspace_id=workspace.id,
+        manual_agent_id=agent_id if agent_id is not None else conversation.agent_id,
+    )
+    run = agent_runs.create(
+        workspace_id=workspace.id,
+        conversation_id=conversation.id,
+        agent_id=decision.agent,
+        selection_source=decision.selection_source,
+        confidence=decision.confidence,
+        reason=decision.reason,
+        missing_inputs=list(decision.missing_inputs),
+        candidate_agent_ids=list(decision.candidates),
+        status="awaiting_confirmation" if decision.requires_confirmation else "routed",
+        attempt_count=0,
+    )
+    return _route_response(workspace.role, decision, run.id, run.status)
+
+
 @router.post("/{conversation_id}/messages/stream")
 async def stream_message(
     conversation_id: UUID,
@@ -113,6 +183,8 @@ async def stream_message(
     chat_provider=Depends(get_chat_provider),
     retriever: Retriever = Depends(get_retriever),
     embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
+    attachments: AttachmentRepository = Depends(get_attachment_repository),
+    agent_runs: AgentRunRepository = Depends(get_agent_run_repository),
 ) -> StreamingResponse:
     conversation = get_owned_conversation(conversations, workspace.id, conversation_id)
     generator = await stream_assistant_reply(
@@ -122,13 +194,46 @@ async def stream_message(
         workspace_id=workspace.id,
         conversation=conversation,
         user_content=payload.content,
-        agent_id=payload.agent_id,
+        agent_id=_normalize_agent_id(payload.agent_id),
         role=workspace.role,
         retriever=retriever,
         embedding_provider=embedding_provider,
+        attachments=attachments,
+        agent_runs=agent_runs,
+        router=AgentRouter(chat_provider),
     )
     return StreamingResponse(
         generator,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _normalize_agent_id(agent_id: str | None) -> str | None:
+    return None if agent_id in {None, AUTO_AGENT_ID} else agent_id
+
+
+def _route_response(role: str, decision, run_id: UUID, status: str) -> RouteResponse:
+    definitions = {agent.id: agent for agent in list_agents(role)}
+    candidates = [
+        RouteCandidateResponse(
+            id=agent_id,
+            name=definitions[agent_id].name,
+            description=definitions[agent_id].description,
+        )
+        for agent_id in decision.candidates
+        if agent_id in definitions
+    ]
+    return RouteResponse(
+        run_id=run_id,
+        agent=decision.agent,
+        agent_id=decision.agent,
+        confidence=decision.confidence,
+        reason=decision.reason,
+        missing_inputs=list(decision.missing_inputs),
+        selection_source=decision.selection_source,
+        candidates=candidates,
+        candidate_agent_ids=list(decision.candidates),
+        requires_confirmation=decision.requires_confirmation,
+        status=status,
     )

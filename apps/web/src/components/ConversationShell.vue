@@ -219,6 +219,10 @@ function sourceItems(message: { artifacts: unknown[] | null }): Array<{ filename
         </div>
       </header>
 
+      <div v-if="store.agentRunLabel" class="route-status" role="status">
+        {{ store.agentRunLabel }}<small v-if="store.activeAgentRunId"> · 运行中</small>
+      </div>
+
       <div v-if="!store.activeConversation" class="empty-state inspira-fade-up">
         <div class="guide-summary">
           <div class="empty-orbit"><span></span><component :is="assistantGuide.icon" /></div>
@@ -281,6 +285,18 @@ function sourceItems(message: { artifacts: unknown[] | null }): Array<{ filename
 
       <div v-if="store.streamError" class="error-banner" role="alert">
         {{ store.streamError }}
+      </div>
+
+      <div v-if="store.routeConfirmation" class="route-confirmation" role="status">
+        <span>自动识别置信度较低，请选择要调用的智能体：</span>
+        <button
+          v-for="agent in store.routeConfirmation.candidates"
+          :key="agent.id"
+          type="button"
+          @click="store.confirmAgent(agent.id)"
+        >
+          {{ agent.name }}
+        </button>
       </div>
 
       <div v-if="store.activeConversation || store.messages.length === 0" class="input-area">
@@ -679,6 +695,11 @@ function sourceItems(message: { artifacts: unknown[] | null }): Array<{ filename
 .stop-button { border-color: #ae4f54; background: #ae4f54; }
 .composer-note { display: flex; justify-content: space-between; padding: 8px 3px 0; color: #9aa8a2; font-size: 11px; }
 .error-banner { margin: 0 22px; border: 1px solid #f1c9c7; border-radius: 8px; background: #fff2f0; }
+.route-status { width: min(calc(100% - 48px), 1180px); margin: 9px auto 0; padding: 8px 12px; border: 1px solid #cfe1d6; border-radius: 8px; background: #edf7f0; color: #26734f; font-size: 12px; }
+.route-status small { color: #72837c; }
+.route-confirmation { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: min(calc(100% - 48px), 1180px); margin: 9px auto 0; padding: 10px 12px; border: 1px solid #ead7b7; border-radius: 8px; background: #fff9ed; color: #7f6335; font-size: 12px; }
+.route-confirmation button { padding: 5px 9px; border: 1px solid #c69b59; border-radius: 6px; background: #fff; color: #805d29; cursor: pointer; font: inherit; }
+.route-confirmation button:hover { background: #fff1d5; }
 .attachment-list { margin-bottom: 9px; }
 .attachment-item { border-color: #c1dccd; border-radius: 7px; background: rgba(235, 246, 239, .72); }
 @media (max-width: 760px) { .conversation-shell { height: auto; min-height: 100vh; padding: 8px; display: block; } .sidebar { width: 100%; min-width: 0; height: auto; max-height: 210px; margin-bottom: 8px; border-radius: 13px; } .conversation-list-wrap { max-height: 48px; } .main-area { min-height: calc(100vh - 226px); border-radius: 13px; } .conversation-meta { padding: 14px 16px; } .empty-state { padding-bottom: 28px; } .template-list { grid-template-columns: 1fr; } .message-container { padding: 20px 14px; } .input-area { padding: 10px; } .agent-options { flex-basis: 100%; order: 3; } .composer-note { display: none; } }

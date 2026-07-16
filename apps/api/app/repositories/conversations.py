@@ -103,3 +103,11 @@ class MessageRepository:
                 .order_by(Message.created_at)
             )
         )
+
+    def get(self, workspace_id: UUID, message_id: UUID) -> Message | None:
+        return self.session.scalar(
+            select(Message).where(
+                Message.id == message_id,
+                Message.workspace_id == workspace_id,
+            )
+        )

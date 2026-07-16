@@ -12,6 +12,26 @@ export interface AgentList {
   agents: Agent[]
 }
 
+export interface RouteCandidate {
+  id: string
+  name: string
+  description: string
+}
+
+export interface RouteResponse {
+  run_id: string
+  agent: string | null
+  agent_id: string | null
+  confidence: number
+  reason: string
+  missing_inputs: string[]
+  selection_source: string
+  candidates: RouteCandidate[]
+  candidate_agent_ids: string[]
+  requires_confirmation: boolean
+  status: string
+}
+
 export interface Conversation {
   id: string
   title: string
@@ -96,6 +116,19 @@ export function createConversation(token: string, agentId: string | null): Promi
 
 export function getConversation(token: string, conversationId: string): Promise<Conversation> {
   return request<Conversation>(`/conversations/${conversationId}`, token)
+}
+
+export function routeMessage(
+  token: string,
+  conversationId: string,
+  content: string,
+  agentId: string | null,
+): Promise<RouteResponse> {
+  return request<RouteResponse>(`/conversations/${conversationId}/route`, token, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, agent_id: agentId }),
+  })
 }
 
 export function listMessages(token: string, conversationId: string): Promise<Message[]> {

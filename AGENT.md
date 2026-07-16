@@ -39,9 +39,9 @@
 
 ## 本地运行
 
-```powershell
+```docker
 # 一键启动 API（8000）和前端（5173）
-.\start.cmd
+docker compose up -d --build
 
 # API 单独运行，使用根目录 .venv
 cd apps/api
@@ -83,3 +83,4 @@ npm.cmd run build
 - 开始前查看 `git status`；保留用户已有的未提交改动，不重置、不覆盖、不删除。
 - 不提交 `.env`、密钥、`node_modules`、`.venv`、构建产物、缓存或 `storage` 数据。
 - 提交保持单一主题，提交前运行与变更范围相称的测试；不要把无关文件混入提交。
+- 不自动提交，完成后由用户手动确认后再提交

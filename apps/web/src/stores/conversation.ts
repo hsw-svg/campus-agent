@@ -29,6 +29,11 @@ export interface DraftMessage {
   pending?: boolean
 }
 
+export interface RouteConfirmation {
+  content: string
+  candidates: Agent[]
+}
+
 let draftCounter = 0
 const nextDraftId = (): string => `draft-${(draftCounter += 1)}`
 
@@ -55,6 +60,9 @@ export const useConversationStore = defineStore('conversation', () => {
   const isStreaming = ref(false)
   const streamError = ref<string | null>(null)
   const notice = ref<string | null>(null)
+  const agentRunLabel = ref<string | null>(null)
+  const activeAgentRunId = ref<string | null>(null)
+  const routeConfirmation = ref<RouteConfirmation | null>(null)
   let activeAbort: AbortController | null = null
 
   const activeConversation = computed(
@@ -76,6 +84,9 @@ export const useConversationStore = defineStore('conversation', () => {
     isStreaming.value = false
     streamError.value = null
     notice.value = null
+    agentRunLabel.value = null
+    activeAgentRunId.value = null
+    routeConfirmation.value = null
   }
 
   async function activateRole(nextRole: WorkspaceRole, nextToken: string): Promise<void> {
@@ -162,6 +173,9 @@ export const useConversationStore = defineStore('conversation', () => {
     messages.value = [...messages.value, userDraft, assistantDraft]
     isStreaming.value = true
     streamError.value = null
+    agentRunLabel.value = null
+    activeAgentRunId.value = null
+    routeConfirmation.value = null
     activeAbort = new AbortController()
 
     try {
@@ -172,15 +186,42 @@ export const useConversationStore = defineStore('conversation', () => {
         agentId,
         signal: activeAbort.signal,
       })) {
-        if (event.type === 'delta') {
+        if (event.type === 'message_start') {
+          if (typeof event.data.run_id === 'string') activeAgentRunId.value = event.data.run_id
+          if (typeof event.data.agent_id === 'string') assistantDraft.agent_id = event.data.agent_id
+          messages.value = [...messages.value]
+        } else if (event.type === 'delta') {
           const text = typeof event.data.text === 'string' ? event.data.text : ''
           assistantDraft.content += text
           // Force the list reference to change so Vue re-renders the draft.
           messages.value = [...messages.value]
+        } else if (event.type === 'tool_status') {
+          const status = event.data.status
+          if (status === 'agent_routed' && typeof event.data.agent_name === 'string') {
+            agentRunLabel.value = `已调用：${event.data.agent_name}`
+          } else if (status === 'route_confirmation_required') {
+            const ids = Array.isArray(event.data.candidates)
+              ? event.data.candidates.filter((id): id is string => typeof id === 'string')
+              : []
+            routeConfirmation.value = {
+              content,
+              candidates: agents.value.filter((agent) => ids.includes(agent.id)),
+            }
+          }
         } else if (event.type === 'error') {
+          const code = event.data.code
           const message =
             typeof event.data.message === 'string' ? event.data.message : '生成回复时出错。'
           streamError.value = message
+          if (code === 'route_confirmation_required' && !routeConfirmation.value) {
+            const ids = Array.isArray(event.data.candidates)
+              ? event.data.candidates.filter((id): id is string => typeof id === 'string')
+              : []
+            routeConfirmation.value = {
+              content,
+              candidates: agents.value.filter((agent) => ids.includes(agent.id)),
+            }
+          }
         } else if (event.type === 'artifact') {
           assistantDraft.artifacts = [event.data]
           messages.value = [...messages.value]
@@ -209,6 +250,15 @@ export const useConversationStore = defineStore('conversation', () => {
         }
       }
     }
+  }
+
+  async function confirmAgent(agentId: string): Promise<void> {
+    const pending = routeConfirmation.value
+    if (!pending || isStreaming.value) return
+    routeConfirmation.value = null
+    streamError.value = null
+    selectedAgentId.value = agentId
+    await sendMessage(pending.content)
   }
 
   async function uploadFile(file: File, scope: AttachmentScope): Promise<void> {
@@ -264,6 +314,9 @@ export const useConversationStore = defineStore('conversation', () => {
     isStreaming,
     streamError,
     notice,
+    agentRunLabel,
+    activeAgentRunId,
+    routeConfirmation,
     activeConversation,
     isDraftConversation,
     reset,
@@ -273,6 +326,7 @@ export const useConversationStore = defineStore('conversation', () => {
     openConversation,
     beginDraftConversation,
     sendMessage,
+    confirmAgent,
     stopStreaming,
     removeConversation,
     uploadFile,
