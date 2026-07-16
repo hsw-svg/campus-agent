@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from uuid import UUID
 
-from app.agents.contracts import AgentContext, ContextSource
+from app.agents.contracts import AgentContext, ContextArtifact, ContextSource
 from app.agents.specs import AgentSpec, get_agent_spec
 from app.artifacts.repositories import ArtifactRepository
 from app.attachments.repositories import AttachmentRepository, Retriever
@@ -134,12 +134,24 @@ class ContextBuilder:
         attachment_chunks = self.attachments.list_chunks_for_attachments(
             workspace_id, conversation.id, selected_ids
         )
+        context_artifacts = tuple(
+            ContextArtifact(
+                id=artifact.id,
+                type=artifact.type,
+                title=artifact.title,
+                content=artifact.content,
+                data=artifact.data,
+                format=artifact.format,
+            )
+            for artifact in selected_artifacts
+        )
         return (
             AgentContext(
                 messages=tuple(messages),
                 sources=sources,
                 attachment_text="\n".join(chunk.content for chunk in attachment_chunks),
                 attachment_filenames=tuple(attachment.filename for attachment in selected),
+                selected_artifacts=context_artifacts,
             ),
             selected_ids,
         )

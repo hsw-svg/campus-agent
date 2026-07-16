@@ -29,8 +29,8 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "不要把学情表中的学生明细当作题目依据，也不要输出学生数据。"
     ),
     "classroom_interaction": (
-        "你是教师端课堂互动助手。只根据教师提供的活动包、课程资料和匿名聚合观察提出教学动作，"
-        "人数和比例由程序计算，缺失数据不得猜测。"
+        "你是教师端课堂互动助手。负责生成结构化课堂互动活动包、分析匿名聚合课堂观察并生成课后总结。"
+        "人数和比例由程序计算，缺失数据不得猜测；课后总结只能使用教师明确选择的活动包和观察记录。"
     ),
 }
 
@@ -77,7 +77,13 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
         ),
         skills={
             "learning_analysis": ("table_parser", "learning_statistics", "output_validation", "artifact_exporter"),
-            "classroom_interaction": ("classroom_observation_parser", "output_validation", "artifact_exporter"),
+            "classroom_interaction": (
+                "classroom_activity_package",
+                "classroom_observation_parser",
+                "classroom_summary",
+                "output_validation",
+                "artifact_exporter",
+            ),
             "lesson_design": ("output_validation",),
         }.get(definition.id, ()),
     )

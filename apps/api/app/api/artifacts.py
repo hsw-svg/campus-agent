@@ -1,7 +1,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from typing import Literal
+
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -58,11 +60,17 @@ def get_artifact(
 @router.get("/{artifact_id}/export", response_class=PlainTextResponse)
 def export_artifact(
     artifact_id: UUID,
+    export_format: Literal["markdown", "csv"] | None = Query(default=None, alias="format"),
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
     artifacts: ArtifactRepository = Depends(get_artifact_repository),
 ) -> PlainTextResponse:
     artifact = get_owned_artifact(artifacts, workspace.id, artifact_id)
-    exported = ArtifactExporterSkill().run((artifact.format, artifact.content))
+    exporter = ArtifactExporterSkill()
+    exported = (
+        exporter.run_csv(artifact.data)
+        if export_format == "csv"
+        else exporter.run(("markdown", artifact.content))
+    )
     return PlainTextResponse(
         exported.content,
         media_type=exported.media_type,

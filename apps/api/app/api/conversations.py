@@ -56,6 +56,21 @@ class MessageResponse(BaseModel):
     created_at: datetime
 
 
+class ConversationArtifactResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    workspace_id: UUID
+    conversation_id: UUID
+    type: str
+    title: str
+    content: str
+    data: dict
+    format: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class CreateConversationRequest(BaseModel):
     agent_id: str | None = None
 
@@ -128,6 +143,17 @@ def list_messages(
 ) -> list[Message]:
     get_owned_conversation(conversations, workspace.id, conversation_id)
     return messages.list_for_conversation(workspace.id, conversation_id)
+
+
+@router.get("/{conversation_id}/artifacts", response_model=list[ConversationArtifactResponse])
+def list_conversation_artifacts(
+    conversation_id: UUID,
+    workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    conversations: ConversationRepository = Depends(get_conversation_repository),
+    artifacts: ArtifactRepository = Depends(get_artifact_repository),
+) -> list:
+    get_owned_conversation(conversations, workspace.id, conversation_id)
+    return artifacts.list_for_conversation(workspace.id, conversation_id)
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)

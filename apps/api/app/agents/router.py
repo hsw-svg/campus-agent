@@ -258,6 +258,19 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
     )
     add("learning_analysis", 6, "任务明确要求进行班级整体学情分析") if explicit_learning_analysis else None
 
+    explicit_classroom_interaction = any(
+        term in content
+        for term in (
+            "课堂互动",
+            "活动包",
+            "课堂观察",
+            "课堂总结",
+            "课后总结",
+            "人选",
+        )
+    )
+    add("classroom_interaction", 6, "任务明确要求生成或分析课堂互动成果") if explicit_classroom_interaction else None
+
     tabular = any(_is_tabular(attachment) for attachment in context.attachments)
     grade_terms = ("成绩", "得分", "分数", "满分", "正确率", "匿名编号", "student_no", "score")
     grade_headers = sum(term in attachment_text for term in grade_terms)
@@ -285,7 +298,18 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
 
     keyword_signals: dict[str, tuple[str, ...]] = {
         "grading": ("批改", "参考答案", "作答", "评分", "评语"),
-        "classroom_interaction": ("课堂互动", "举手", "选项人数", "课堂现象", "追问"),
+        "classroom_interaction": (
+            "课堂互动",
+            "活动包",
+            "活动序列",
+            "举手",
+            "选项人数",
+            "课堂现象",
+            "课堂观察",
+            "课后总结",
+            "课堂总结",
+            "追问",
+        ),
         "course_iteration": ("课程迭代", "旧课件", "更新课件", "教学大纲"),
         "lesson_design": ("教案", "教学设计", "互动题", "评分量规", "课堂练习", "练习题"),
         "teaching_report": ("教学报告", "汇总报告", "教学总结"),

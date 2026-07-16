@@ -34,11 +34,24 @@ class ContextSource:
 
 
 @dataclass(frozen=True)
+class ContextArtifact:
+    """A selected generated result made available to an executor."""
+
+    id: UUID
+    type: str
+    title: str
+    content: str
+    data: dict[str, Any]
+    format: str = "markdown"
+
+
+@dataclass(frozen=True)
 class AgentContext:
     messages: tuple[dict[str, str], ...] = ()
     sources: tuple[ContextSource, ...] = ()
     attachment_text: str = ""
     attachment_filenames: tuple[str, ...] = ()
+    selected_artifacts: tuple[ContextArtifact, ...] = ()
 
 
 @dataclass(frozen=True)
