@@ -9,6 +9,8 @@ from app.agents.dependencies import get_agent_run_repository
 from app.agents.registry import AUTO_AGENT_ID, list_agents
 from app.agents.repositories import AgentRunRepository
 from app.agents.router import AgentRouter
+from app.artifacts.dependencies import get_artifact_repository
+from app.artifacts.repositories import ArtifactRepository
 from app.attachments.dependencies import get_attachment_repository
 from app.attachments.repositories import AttachmentRepository
 from app.conversations.dependencies import (
@@ -185,6 +187,7 @@ async def stream_message(
     embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
     agent_runs: AgentRunRepository = Depends(get_agent_run_repository),
+    artifacts: ArtifactRepository = Depends(get_artifact_repository),
 ) -> StreamingResponse:
     conversation = get_owned_conversation(conversations, workspace.id, conversation_id)
     generator = await stream_assistant_reply(
@@ -200,6 +203,7 @@ async def stream_message(
         embedding_provider=embedding_provider,
         attachments=attachments,
         agent_runs=agent_runs,
+        artifacts=artifacts,
         router=AgentRouter(chat_provider),
     )
     return StreamingResponse(

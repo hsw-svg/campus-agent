@@ -9,6 +9,7 @@ from app.workspaces.models import AnonymousWorkspace
 from app.conversations.models import Conversation, Message
 from app.attachments.models import Attachment, MaterialChunk
 from app.agents.models import AgentRun
+from app.artifacts.models import Artifact
 
 
 config = context.config

@@ -5,10 +5,12 @@ from app.agents.registry import is_agent_available_for_role
 from app.agents.models import AgentRun
 from app.agents.repositories import AgentRunRepository
 from app.agents.router import AgentRouter, RouteDecision
+from app.artifacts.repositories import ArtifactRepository
 from app.attachments.repositories import AttachmentRepository, Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
 from app.services.attachments import retrieve_context
 from app.services.routing import classify_message
+from app.services.teacher_agents import create_learning_analysis_artifact
 from app.conversations.models import Conversation, Message
 from app.conversations.streaming import stream_event
 from app.core.errors import AppError
@@ -83,6 +85,7 @@ async def stream_assistant_reply(
     embedding_provider: EmbeddingProvider | None = None,
     attachments: AttachmentRepository | None = None,
     agent_runs: AgentRunRepository | None = None,
+    artifacts: ArtifactRepository | None = None,
     router: AgentRouter | None = None,
     existing_run: AgentRun | None = None,
     existing_user_message: Message | None = None,
@@ -160,7 +163,7 @@ async def stream_assistant_reply(
             run = agent_runs.update(existing_run, **run_values)
 
     sources: list[dict[str, str | int | None]] = []
-    if retriever is not None and embedding_provider is not None:
+    if resolved_agent != "learning_analysis" and retriever is not None and embedding_provider is not None:
         chunks = retrieve_context(
             retriever=retriever,
             embedding_provider=embedding_provider,
@@ -262,6 +265,105 @@ async def stream_assistant_reply(
         if sources:
             yield stream_event("tool_status", {"status": "retrieved", "count": len(sources)})
             yield stream_event("artifact", {"type": "sources", "sources": sources})
+
+        if resolved_agent == "learning_analysis" and artifacts is not None:
+            if run is not None and agent_runs is not None:
+                agent_runs.update(run, artifact_status="running")
+            try:
+                analysis, artifact = create_learning_analysis_artifact(
+                    workspace_id=workspace_id,
+                    conversation_id=conversation.id,
+                    attachments=attachments,
+                    artifacts=artifacts,
+                )
+            except AppError as error:
+                if run is not None and agent_runs is not None:
+                    agent_runs.update(
+                        run,
+                        status="needs_input" if error.status_code == 422 else "failed",
+                        error_code=error.code,
+                        error_message=error.message,
+                        artifact_status="failed",
+                    )
+                yield stream_event(
+                    "error",
+                    {
+                        "code": error.code,
+                        "message": error.message,
+                        "details": error.details,
+                        "retryable": error.status_code != 422,
+                        "run_id": str(run.id) if run else None,
+                    },
+                )
+                return
+            except Exception as error:  # noqa: BLE001 - preserve a retryable artifact failure
+                if run is not None and agent_runs is not None:
+                    agent_runs.update(
+                        run,
+                        status="failed",
+                        error_code="learning_analysis_failed",
+                        error_message=str(error),
+                        artifact_status="failed",
+                    )
+                yield stream_event(
+                    "error",
+                    {
+                        "code": "learning_analysis_failed",
+                        "message": "The learning analysis could not be completed.",
+                        "detail": str(error),
+                        "retryable": True,
+                        "run_id": str(run.id) if run else None,
+                    },
+                )
+                return
+
+            assistant_message = messages.add(
+                workspace_id=workspace_id,
+                conversation_id=conversation.id,
+                role="assistant",
+                content=analysis.markdown,
+                agent_id=resolved_agent,
+                artifacts=[
+                    {
+                        "type": "learning_analysis",
+                        "artifact_id": str(artifact.id),
+                        "title": artifact.title,
+                    }
+                ],
+            )
+            conversations.touch(conversation)
+            if run is not None and agent_runs is not None:
+                agent_runs.update(
+                    run,
+                    status="completed",
+                    artifact_id=artifact.id,
+                    artifact_status="completed",
+                    result_message_id=assistant_message.id,
+                )
+            yield stream_event(
+                "delta",
+                {"text": analysis.markdown},
+            )
+            yield stream_event(
+                "artifact",
+                {
+                    "type": "learning_analysis",
+                    "artifact_id": str(artifact.id),
+                    "title": artifact.title,
+                    "data": analysis.data,
+                },
+            )
+            yield stream_event(
+                "done",
+                {
+                    "message_id": str(assistant_message.id),
+                    "conversation_id": str(conversation.id),
+                    "agent_id": resolved_agent,
+                    "run_id": str(run.id) if run else None,
+                    "artifact_id": str(artifact.id),
+                },
+            )
+            return
 
         if not chat_provider.is_configured:
             if run is not None and agent_runs is not None:

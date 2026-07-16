@@ -37,6 +37,21 @@ class AttachmentRepository:
             )
         )
 
+    def list_chunks_for_conversation(self, workspace_id: UUID, conversation_id: UUID) -> list[MaterialChunk]:
+        return list(
+            self.session.scalars(
+                select(MaterialChunk)
+                .join(Attachment, MaterialChunk.attachment_id == Attachment.id)
+                .where(
+                    MaterialChunk.workspace_id == workspace_id,
+                    Attachment.workspace_id == workspace_id,
+                    (MaterialChunk.conversation_id == conversation_id)
+                    | (MaterialChunk.conversation_id.is_(None)),
+                )
+                .order_by(Attachment.created_at, MaterialChunk.chunk_index)
+            )
+        )
+
     def update(self, attachment: Attachment, **values) -> Attachment:
         for key, value in values.items():
             setattr(attachment, key, value)

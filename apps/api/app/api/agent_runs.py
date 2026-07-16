@@ -6,6 +6,8 @@ from fastapi.responses import StreamingResponse
 from app.agents.dependencies import get_agent_run_repository
 from app.agents.repositories import AgentRunRepository
 from app.agents.router import AgentRouter
+from app.artifacts.dependencies import get_artifact_repository
+from app.artifacts.repositories import ArtifactRepository
 from app.attachments.dependencies import get_attachment_repository
 from app.attachments.repositories import AttachmentRepository, Retriever
 from app.conversations.dependencies import (
@@ -34,6 +36,7 @@ async def retry_agent_run(
     chat_provider=Depends(get_chat_provider),
     retriever: Retriever = Depends(get_retriever),
     embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
+    artifacts: ArtifactRepository = Depends(get_artifact_repository),
 ) -> StreamingResponse:
     run = agent_runs.get(workspace.id, run_id)
     if run is None:
@@ -83,6 +86,7 @@ async def retry_agent_run(
         embedding_provider=embedding_provider,
         attachments=attachments,
         agent_runs=agent_runs,
+        artifacts=artifacts,
         router=AgentRouter(chat_provider),
         existing_run=run,
         existing_user_message=message,
