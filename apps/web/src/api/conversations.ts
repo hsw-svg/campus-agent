@@ -143,6 +143,10 @@ export function listAttachments(token: string, conversationId: string): Promise<
   return request<Attachment[]>(`/conversations/${conversationId}/attachments`, token)
 }
 
+export function listWorkspaceAttachments(token: string, conversationId: string): Promise<Attachment[]> {
+  return request<Attachment[]>(`/conversations/${conversationId}/workspace-attachments`, token)
+}
+
 export async function uploadAttachment(
   token: string,
   conversationId: string,

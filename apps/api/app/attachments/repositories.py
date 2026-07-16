@@ -1,9 +1,13 @@
+from collections.abc import Sequence
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.attachments.models import Attachment, MaterialChunk
+from app.attachments.policies import is_learning_analysis_material
+from app.core.errors import AppError
 
 
 class AttachmentRepository:
@@ -49,6 +53,61 @@ class AttachmentRepository:
             )
         )
 
+    def list_workspace_for_conversation(
+        self, workspace_id: UUID, conversation_id: UUID
+    ) -> list[Attachment]:
+        return list(
+            self.session.scalars(
+                select(Attachment)
+                .where(
+                    Attachment.workspace_id == workspace_id,
+                    Attachment.conversation_id.is_(None),
+                )
+                .order_by(Attachment.created_at)
+            )
+        )
+
+    def list_selected_for_conversation(
+        self,
+        workspace_id: UUID,
+        conversation_id: UUID,
+        attachment_ids: Sequence[UUID] | None = None,
+    ) -> list[Attachment]:
+        """Return explicitly selected files, defaulting to current uploads.
+
+        Workspace-scoped files are available only when their IDs are supplied;
+        this prevents a generic request from implicitly reading the workspace
+        library.
+        """
+
+        if attachment_ids is None:
+            return self.list_current_for_conversation(workspace_id, conversation_id)
+        unique_ids = tuple(dict.fromkeys(attachment_ids))
+        if not unique_ids:
+            return []
+        selected = list(
+            self.session.scalars(
+                select(Attachment)
+                .where(
+                    Attachment.workspace_id == workspace_id,
+                    Attachment.id.in_(unique_ids),
+                    (Attachment.conversation_id == conversation_id)
+                    | (Attachment.conversation_id.is_(None)),
+                )
+                .order_by(Attachment.created_at)
+            )
+        )
+        found = {attachment.id for attachment in selected}
+        missing = [str(item) for item in unique_ids if item not in found]
+        if missing:
+            raise AppError(
+                code="attachment_selection_invalid",
+                message="One or more selected attachments are not available in this workspace or conversation.",
+                status_code=422,
+                details={"attachment_ids": missing},
+            )
+        return selected
+
     def list_chunks_for_conversation(self, workspace_id: UUID, conversation_id: UUID) -> list[MaterialChunk]:
         return list(
             self.session.scalars(
@@ -59,6 +118,39 @@ class AttachmentRepository:
                     Attachment.workspace_id == workspace_id,
                     (MaterialChunk.conversation_id == conversation_id)
                     | (MaterialChunk.conversation_id.is_(None)),
+                )
+                .order_by(Attachment.created_at, MaterialChunk.chunk_index)
+            )
+        )
+
+    def list_chunks_for_workspace(self, workspace_id: UUID) -> list[MaterialChunk]:
+        return list(
+            self.session.scalars(
+                select(MaterialChunk)
+                .join(Attachment, MaterialChunk.attachment_id == Attachment.id)
+                .where(
+                    MaterialChunk.workspace_id == workspace_id,
+                    Attachment.workspace_id == workspace_id,
+                )
+                .order_by(Attachment.created_at, MaterialChunk.chunk_index)
+            )
+        )
+
+    def list_chunks_for_attachments(
+        self, workspace_id: UUID, conversation_id: UUID, attachment_ids: Sequence[UUID]
+    ) -> list[MaterialChunk]:
+        if not attachment_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(MaterialChunk)
+                .join(Attachment, MaterialChunk.attachment_id == Attachment.id)
+                .where(
+                    MaterialChunk.workspace_id == workspace_id,
+                    Attachment.workspace_id == workspace_id,
+                    Attachment.id.in_(tuple(attachment_ids)),
+                    (Attachment.conversation_id == conversation_id)
+                    | (Attachment.conversation_id.is_(None)),
                 )
                 .order_by(Attachment.created_at, MaterialChunk.chunk_index)
             )
@@ -97,18 +189,19 @@ class Retriever:
         query: str,
         limit: int = 5,
         query_embedding: list[float] | None = None,
+        agent_id: str | None = None,
+        attachment_ids: Sequence[UUID] | None = None,
     ) -> list[MaterialChunk]:
-        chunks = list(
-            self.session.scalars(
-                select(MaterialChunk).where(
-                    MaterialChunk.workspace_id == workspace_id,
-                    (
-                        (MaterialChunk.conversation_id == conversation_id)
-                        | (MaterialChunk.conversation_id.is_(None))
-                    ),
-                )
-            )
-        )
+        conditions = [
+            MaterialChunk.workspace_id == workspace_id,
+            (MaterialChunk.conversation_id == conversation_id)
+            | (MaterialChunk.conversation_id.is_(None)),
+        ]
+        if attachment_ids is not None:
+            conditions.append(MaterialChunk.attachment_id.in_(tuple(attachment_ids)))
+        chunks = list(self.session.scalars(select(MaterialChunk).where(*conditions)))
+        if agent_id != "learning_analysis":
+            chunks = [chunk for chunk in chunks if not is_learning_analysis_material(chunk)]
         normalized_query = query.strip().lower()
         terms = {term.lower() for term in query.split() if len(term.strip()) > 1}
         if len(normalized_query) > 1:

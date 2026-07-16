@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator, Sequence
 import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -17,12 +18,14 @@ class FakeChatProvider:
     def __init__(self, route_response: str | None = None, deltas: Sequence[str] = ("已处理",)) -> None:
         self.route_response = route_response
         self.deltas = list(deltas)
+        self.calls: list[list[dict[str, str]]] = []
 
     async def classify_route(self, messages: list[dict[str, str]]) -> str:
         assert self.route_response is not None
         return self.route_response
 
     async def stream_reply(self, messages: Sequence[dict[str, str]]) -> AsyncIterator[str]:
+        self.calls.append(list(messages))
         for delta in self.deltas:
             yield delta
 
@@ -193,10 +196,11 @@ def test_auto_stream_emits_selected_agent_and_run_id(client: TestClient) -> None
         headers=auth(token),
     )
     assert upload.status_code == 201
+    selected_attachment_id = upload.json()["id"]
 
     response = client.post(
         f"/api/conversations/{conversation['id']}/messages/stream",
-        json={"content": "分析这份成绩表"},
+        json={"content": "分析这份成绩表", "selected_attachment_ids": [selected_attachment_id]},
         headers=auth(token),
     )
 
@@ -209,9 +213,9 @@ def test_auto_stream_emits_selected_agent_and_run_id(client: TestClient) -> None
 
 
 def test_new_conversation_ignores_previous_workspace_attachment_for_routing(
-    client: TestClient, tmp_path
+    client: TestClient,
 ) -> None:
-    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    client.app.state.object_storage = LocalObjectStorage(Path(".tmp-storage"))
     token = make_workspace(client, "teacher")
     first_conversation = create_conversation(client, token)
     second_conversation = create_conversation(client, token)
@@ -234,4 +238,73 @@ def test_new_conversation_ignores_previous_workspace_attachment_for_routing(
     assert response.status_code == 200
     body = response.json()
     assert body["agent"] == "lesson_design"
-    assert body["selection_source"] == "llm"
+    assert body["selection_source"] == "rule"
+
+
+def test_explicit_classroom_practice_intent_wins_over_learning_sheet(client: TestClient) -> None:
+    client.app.state.object_storage = LocalObjectStorage(Path(".tmp-storage"))
+    token = make_workspace(client, "teacher")
+    conversation = create_conversation(client, token)
+    client.app.state.chat_provider = FakeChatProvider(deltas=("课堂练习",))
+
+    upload = client.post(
+        f"/api/conversations/{conversation['id']}/attachments",
+        files={
+            "file": (
+                "learning_scores.csv",
+                "匿名编号,课程,得分,满分\nSTUDENT_SECRET_001,Python,52,100",
+                "text/csv",
+            )
+        },
+        headers=auth(token),
+    )
+    assert upload.status_code == 201
+
+    response = client.post(
+        f"/api/conversations/{conversation['id']}/messages/stream",
+        json={"content": "根据本节课目标，生成一份课堂练习。Python 数组"},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 200
+    events = read_events(response.text)
+    assert events["message_start"]["agent_id"] == "lesson_design"
+
+
+def test_lesson_design_does_not_receive_learning_analysis_sheet_as_context(
+    client: TestClient,
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(Path(".tmp-storage"))
+    token = make_workspace(client, "teacher")
+    conversation = create_conversation(client, token)
+    provider = FakeChatProvider(deltas=("课堂练习",))
+    client.app.state.chat_provider = provider
+
+    upload = client.post(
+        f"/api/conversations/{conversation['id']}/attachments",
+        files={
+            "file": (
+                "learning_scores.csv",
+                "匿名编号,课程,得分,满分\nSTUDENT_SECRET_001,Python,52,100",
+                "text/csv",
+            )
+        },
+        data={"scope": "workspace"},
+        headers=auth(token),
+    )
+    assert upload.status_code == 201
+
+    response = client.post(
+        f"/api/conversations/{conversation['id']}/messages/stream",
+        json={
+            "content": "根据本节课目标生成课堂练习，Python 数组",
+            "agent_id": "lesson_design",
+        },
+        headers=auth(token),
+    )
+
+    assert response.status_code == 200
+    assert provider.calls
+    serialized_prompt = json.dumps(provider.calls[-1], ensure_ascii=False)
+    assert "STUDENT_SECRET_001" not in serialized_prompt
+    assert "learning_scores.csv" not in serialized_prompt

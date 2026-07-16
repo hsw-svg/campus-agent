@@ -39,6 +39,8 @@ class AgentRun(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
     missing_inputs: Mapped[list | None] = mapped_column(JsonColumn, nullable=True)
     candidate_agent_ids: Mapped[list | None] = mapped_column(JsonColumn, nullable=True)
+    selected_attachment_ids: Mapped[list | None] = mapped_column(JsonColumn, nullable=True)
+    selected_artifact_ids: Mapped[list | None] = mapped_column(JsonColumn, nullable=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="routed")
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

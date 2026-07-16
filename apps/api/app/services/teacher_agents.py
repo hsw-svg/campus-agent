@@ -1,4 +1,5 @@
 from uuid import UUID
+from collections.abc import Sequence
 
 from app.agents.teacher.learning_analysis import LearningAnalysisResult, analyze_learning_table
 from app.artifacts.models import Artifact
@@ -13,10 +14,16 @@ def create_learning_analysis_artifact(
     conversation_id: UUID,
     attachments: AttachmentRepository,
     artifacts: ArtifactRepository,
+    selected_attachment_ids: Sequence[UUID] | None = None,
 ) -> tuple[LearningAnalysisResult, Artifact]:
-    """Run class-level analysis over the current workspace/conversation table."""
+    """Run class-level analysis over explicitly selected table material."""
 
-    chunks = attachments.list_chunks_for_conversation(workspace_id, conversation_id)
+    selected = attachments.list_selected_for_conversation(
+        workspace_id, conversation_id, selected_attachment_ids
+    )
+    chunks = attachments.list_chunks_for_attachments(
+        workspace_id, conversation_id, [attachment.id for attachment in selected]
+    )
     text = "\n".join(chunk.content for chunk in chunks)
     filename = next(
         (

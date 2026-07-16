@@ -88,6 +88,8 @@ async def retry_agent_run(
         agent_runs=agent_runs,
         artifacts=artifacts,
         router=AgentRouter(chat_provider),
+        selected_attachment_ids=tuple(UUID(item) for item in (run.selected_attachment_ids or [])),
+        selected_artifact_ids=tuple(UUID(item) for item in (run.selected_artifact_ids or [])),
         existing_run=run,
         existing_user_message=message,
     )

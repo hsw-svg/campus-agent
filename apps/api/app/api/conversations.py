@@ -63,11 +63,14 @@ class CreateConversationRequest(BaseModel):
 class StreamMessageRequest(BaseModel):
     content: str = Field(min_length=1)
     agent_id: str | None = None
+    selected_attachment_ids: list[UUID] | None = None
+    selected_artifact_ids: list[UUID] | None = None
 
 
 class RouteRequest(BaseModel):
     content: str = Field(min_length=1)
     agent_id: str | None = None
+    selected_attachment_ids: list[UUID] | None = None
 
 
 class RouteCandidateResponse(BaseModel):
@@ -158,7 +161,8 @@ async def route_message(
         attachments=attachments,
         messages=messages,
         workspace_id=workspace.id,
-        manual_agent_id=agent_id if agent_id is not None else conversation.agent_id,
+        manual_agent_id=agent_id,
+        selected_attachment_ids=payload.selected_attachment_ids,
     )
     run = agent_runs.create(
         workspace_id=workspace.id,
@@ -169,6 +173,11 @@ async def route_message(
         reason=decision.reason,
         missing_inputs=list(decision.missing_inputs),
         candidate_agent_ids=list(decision.candidates),
+        selected_attachment_ids=(
+            [str(item) for item in payload.selected_attachment_ids]
+            if payload.selected_attachment_ids is not None
+            else None
+        ),
         status="awaiting_confirmation" if decision.requires_confirmation else "routed",
         attempt_count=0,
     )
@@ -205,6 +214,8 @@ async def stream_message(
         agent_runs=agent_runs,
         artifacts=artifacts,
         router=AgentRouter(chat_provider),
+        selected_attachment_ids=payload.selected_attachment_ids,
+        selected_artifact_ids=payload.selected_artifact_ids,
     )
     return StreamingResponse(
         generator,

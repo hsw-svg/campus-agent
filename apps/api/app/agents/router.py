@@ -42,6 +42,8 @@ class RouteContext:
     role: str
     content: str
     attachments: tuple[RouteAttachment, ...] = ()
+    workspace_attachments: tuple[RouteAttachment, ...] = ()
+    selected_attachment_ids: tuple[str, ...] = ()
     recent_messages: tuple[dict[str, Any], ...] = ()
     conversation_agent_id: str | None = None
 
@@ -242,15 +244,30 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
         score, reasons = scores.get(agent, (0, []))
         scores[agent] = (score + amount, [*reasons, evidence])
 
+    # Explicit production requests describe the desired output and must take
+    # precedence over incidental evidence in a workspace attachment.  A
+    # teacher may keep a learning sheet in the workspace while asking for a
+    # classroom exercise; that request is lesson design, not analysis.
+    explicit_lesson_design = any(
+        term in content for term in ("课堂练习", "练习题", "课堂题", "教案", "教学设计")
+    )
+    add("lesson_design", 6, "任务明确要求生成课堂练习或教学设计") if explicit_lesson_design else None
+
+    explicit_learning_analysis = any(
+        term in content for term in ("分析学情", "学情分析", "研判学情", "分析成绩表")
+    )
+    add("learning_analysis", 6, "任务明确要求进行班级整体学情分析") if explicit_learning_analysis else None
+
     tabular = any(_is_tabular(attachment) for attachment in context.attachments)
     grade_terms = ("成绩", "得分", "分数", "满分", "正确率", "匿名编号", "student_no", "score")
     grade_headers = sum(term in attachment_text for term in grade_terms)
-    if tabular:
-        add("learning_analysis", 2, "附件是 CSV/XLSX 等表格")
-    if grade_headers >= 2:
-        add("learning_analysis", 4, "附件表头包含成绩分析字段")
-    if any(term in all_text for term in grade_terms):
-        add("learning_analysis", 2, "任务包含成绩或得分关键词")
+    if not explicit_lesson_design and not explicit_learning_analysis:
+        if tabular:
+            add("learning_analysis", 2, "附件是 CSV/XLSX 等表格")
+        if grade_headers >= 2:
+            add("learning_analysis", 4, "附件表头包含成绩分析字段")
+        if any(term in all_text for term in grade_terms):
+            add("learning_analysis", 2, "任务包含成绩或得分关键词")
 
     if any(term in all_text for term in ("简历", "resume", "cv", "求职")):
         add("resume_helper", 3, "任务或附件指向简历")
@@ -270,7 +287,7 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
         "grading": ("批改", "参考答案", "作答", "评分", "评语"),
         "classroom_interaction": ("课堂互动", "举手", "选项人数", "课堂现象", "追问"),
         "course_iteration": ("课程迭代", "旧课件", "更新课件", "教学大纲"),
-        "lesson_design": ("教案", "教学设计", "互动题", "评分量规"),
+        "lesson_design": ("教案", "教学设计", "互动题", "评分量规", "课堂练习", "练习题"),
         "teaching_report": ("教学报告", "汇总报告", "教学总结"),
         "notice_writer": ("通知", "通告", "润色通知"),
         "summary": ("摘要", "总结材料", "提取要点"),
@@ -383,11 +400,12 @@ def _is_short_follow_up(content: str) -> bool:
 
 
 def _missing_inputs_for_agent(agent_id: str, context: RouteContext) -> list[str]:
-    text = f"{context.content} {' '.join(attachment.filename for attachment in context.attachments)}".lower()
-    if agent_id == "learning_analysis" and not any(
-        _is_tabular(attachment) for attachment in context.attachments
-    ):
-        return ["匿名成绩、作答或练习统计表格"]
+    attachments = context.attachments
+    text = f"{context.content} {' '.join(attachment.filename for attachment in attachments)}".lower()
+    if agent_id == "learning_analysis":
+        if any(_is_tabular(attachment) for attachment in attachments):
+            return []
+        return ["匿名成绩、作业或练习统计表格"]
     if agent_id == "resume_helper" and not any(
         term in text for term in ("简历", "resume", "cv", "项目经历", "教育背景")
     ):

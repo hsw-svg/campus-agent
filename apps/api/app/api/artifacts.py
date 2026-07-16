@@ -9,6 +9,7 @@ from app.artifacts.dependencies import get_artifact_repository
 from app.artifacts.models import Artifact
 from app.artifacts.repositories import ArtifactRepository
 from app.core.errors import AppError
+from app.skills.artifact_export import ArtifactExporterSkill
 from app.workspaces.dependencies import get_current_workspace
 from app.workspaces.models import AnonymousWorkspace
 
@@ -61,8 +62,11 @@ def export_artifact(
     artifacts: ArtifactRepository = Depends(get_artifact_repository),
 ) -> PlainTextResponse:
     artifact = get_owned_artifact(artifacts, workspace.id, artifact_id)
+    exported = ArtifactExporterSkill().run((artifact.format, artifact.content))
     return PlainTextResponse(
-        artifact.content,
-        media_type="text/markdown",
-        headers={"Content-Disposition": f'attachment; filename="{artifact.id}.md"'},
+        exported.content,
+        media_type=exported.media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{artifact.id}.{exported.extension}"'
+        },
     )

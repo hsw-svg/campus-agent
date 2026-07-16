@@ -3,6 +3,7 @@ import type { Message } from './conversations'
 // The fixed event vocabulary shared with the backend streaming contract.
 export type StreamEventType =
   | 'message_start'
+  | 'route_decision'
   | 'delta'
   | 'tool_status'
   | 'artifact'
@@ -19,6 +20,8 @@ export interface StreamMessageOptions {
   conversationId: string
   content: string
   agentId: string | null
+  selectedAttachmentIds?: string[]
+  selectedArtifactIds?: string[]
   signal?: AbortSignal
 }
 
@@ -72,7 +75,12 @@ export async function* streamMessage(
         'Content-Type': 'application/json',
         'X-Workspace-Token': options.token,
       },
-      body: JSON.stringify({ content: options.content, agent_id: options.agentId }),
+      body: JSON.stringify({
+        content: options.content,
+        agent_id: options.agentId,
+        selected_attachment_ids: options.selectedAttachmentIds,
+        selected_artifact_ids: options.selectedArtifactIds,
+      }),
       signal: options.signal,
     },
   )

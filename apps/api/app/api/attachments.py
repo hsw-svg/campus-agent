@@ -100,3 +100,14 @@ def list_attachments(
 ) -> list[AttachmentResponse]:
     get_owned_conversation(conversations, workspace.id, conversation_id)
     return attachments.list_current_for_conversation(workspace.id, conversation_id)
+
+
+@router.get("/{conversation_id}/workspace-attachments", response_model=list[AttachmentResponse])
+def list_workspace_attachments(
+    conversation_id: UUID,
+    workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    conversations: ConversationRepository = Depends(get_conversation_repository),
+    attachments: AttachmentRepository = Depends(get_attachment_repository),
+) -> list[AttachmentResponse]:
+    get_owned_conversation(conversations, workspace.id, conversation_id)
+    return attachments.list_workspace_for_conversation(workspace.id, conversation_id)

@@ -1,16 +1,18 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from uuid import UUID
 
 from app.agents.registry import is_agent_available_for_role
+from app.agents.contracts import AgentRequest
+from app.agents.executors.registry import AgentExecutorRegistry
+from app.agents.context import ContextBuilder
+from app.agents.specs import AgentSpec, get_agent_spec
 from app.agents.models import AgentRun
 from app.agents.repositories import AgentRunRepository
 from app.agents.router import AgentRouter, RouteDecision
 from app.artifacts.repositories import ArtifactRepository
 from app.attachments.repositories import AttachmentRepository, Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
-from app.services.attachments import retrieve_context
 from app.services.routing import classify_message
-from app.services.teacher_agents import create_learning_analysis_artifact
 from app.conversations.models import Conversation, Message
 from app.conversations.streaming import stream_event
 from app.core.errors import AppError
@@ -66,11 +68,6 @@ def derive_title(content: str) -> str:
     return condensed[:TITLE_MAX_LENGTH] + "…"
 
 
-def _history_payload(messages: list[Message]) -> list[dict[str, str]]:
-    trimmed = messages[-MAX_CONTEXT_MESSAGES:]
-    return [{"role": message.role, "content": message.content} for message in trimmed]
-
-
 async def stream_assistant_reply(
     *,
     conversations: ConversationRepository,
@@ -87,6 +84,8 @@ async def stream_assistant_reply(
     agent_runs: AgentRunRepository | None = None,
     artifacts: ArtifactRepository | None = None,
     router: AgentRouter | None = None,
+    selected_attachment_ids: Sequence[UUID] | None = None,
+    selected_artifact_ids: Sequence[UUID] | None = None,
     existing_run: AgentRun | None = None,
     existing_user_message: Message | None = None,
 ) -> AsyncIterator[str]:
@@ -115,7 +114,8 @@ async def stream_assistant_reply(
             attachments=attachments,
             messages=messages,
             workspace_id=workspace_id,
-            manual_agent_id=agent_id if agent_id is not None else conversation.agent_id,
+            manual_agent_id=agent_id,
+            selected_attachment_ids=selected_attachment_ids,
         )
 
     resolved_agent = route_decision.agent
@@ -149,6 +149,16 @@ async def stream_assistant_reply(
             "reason": route_decision.reason,
             "missing_inputs": list(route_decision.missing_inputs),
             "candidate_agent_ids": list(route_decision.candidates),
+            "selected_attachment_ids": (
+                [str(item) for item in selected_attachment_ids]
+                if selected_attachment_ids is not None
+                else None
+            ),
+            "selected_artifact_ids": (
+                [str(item) for item in selected_artifact_ids]
+                if selected_artifact_ids is not None
+                else None
+            ),
             "status": "awaiting_confirmation"
             if route_decision.requires_confirmation
             else "running",
@@ -162,38 +172,6 @@ async def stream_assistant_reply(
         else:
             run = agent_runs.update(existing_run, **run_values)
 
-    sources: list[dict[str, str | int | None]] = []
-    if resolved_agent != "learning_analysis" and retriever is not None and embedding_provider is not None:
-        chunks = retrieve_context(
-            retriever=retriever,
-            embedding_provider=embedding_provider,
-            workspace_id=workspace_id,
-            conversation_id=conversation.id,
-            query=user_content,
-        )
-        sources = [
-            {
-                "attachment_id": str(chunk.attachment_id),
-                "chunk_id": str(chunk.id),
-                "filename": chunk.attachment.filename if chunk.attachment else None,
-                "page_number": chunk.page_number,
-                "excerpt": chunk.content[:240],
-            }
-            for chunk in chunks
-        ]
-    history = _history_payload(messages.list_for_conversation(workspace_id, conversation.id))
-    if sources:
-        context = "\n\n".join(
-            f"[{source['filename']}] {source['excerpt']}" for source in sources
-        )
-        history.insert(
-            0,
-            {
-                "role": "system",
-                "content": "仅使用以下当前角色工作空间资料回答；资料不足时明确说明。\n" + context,
-            },
-        )
-
     async def generator() -> AsyncIterator[str]:
         yield stream_event(
             "message_start",
@@ -204,6 +182,18 @@ async def stream_assistant_reply(
                 "agent_name": _agent_name(role, resolved_agent),
                 "selection_source": route_decision.selection_source,
                 "confidence": route_decision.confidence,
+                "run_id": str(run.id) if run else None,
+            },
+        )
+        yield stream_event(
+            "route_decision",
+            {
+                "agent_id": resolved_agent,
+                "agent_name": _agent_name(role, resolved_agent),
+                "confidence": route_decision.confidence,
+                "reason": route_decision.reason,
+                "selection_source": route_decision.selection_source,
+                "missing_inputs": list(route_decision.missing_inputs),
                 "run_id": str(run.id) if run else None,
             },
         )
@@ -251,172 +241,155 @@ async def stream_assistant_reply(
             )
             return
 
-        yield stream_event(
-            "tool_status",
-            {
-                "status": "agent_routed" if resolved_agent else "generic_fallback",
-                "agent_id": resolved_agent,
-                "agent_name": _agent_name(role, resolved_agent),
-                "selection_source": route_decision.selection_source,
-                "confidence": route_decision.confidence,
-                "run_id": str(run.id) if run else None,
-            },
-        )
-        if sources:
-            yield stream_event("tool_status", {"status": "retrieved", "count": len(sources)})
-            yield stream_event("artifact", {"type": "sources", "sources": sources})
-
-        if resolved_agent == "learning_analysis" and artifacts is not None:
+        try:
+            if retriever is None or embedding_provider is None or attachments is None:
+                raise AppError(
+                    code="agent_context_unavailable",
+                    message="The agent context is not available.",
+                    status_code=500,
+                )
+            context_builder = ContextBuilder(
+                attachments=attachments,
+                messages=messages,
+                retriever=retriever,
+                embedding_provider=embedding_provider,
+                artifacts=artifacts,
+            )
+            context, normalized_attachment_ids = context_builder.build(
+                workspace_id=workspace_id,
+                conversation=conversation,
+                role=role,
+                agent_id=resolved_agent or "generic_chat",
+                content=user_content,
+                selected_attachment_ids=selected_attachment_ids,
+                selected_artifact_ids=selected_artifact_ids or (),
+            )
             if run is not None and agent_runs is not None:
-                agent_runs.update(run, artifact_status="running")
-            try:
-                analysis, artifact = create_learning_analysis_artifact(
-                    workspace_id=workspace_id,
-                    conversation_id=conversation.id,
-                    attachments=attachments,
-                    artifacts=artifacts,
+                agent_runs.update(
+                    run,
+                    selected_attachment_ids=[str(item) for item in normalized_attachment_ids],
                 )
-            except AppError as error:
-                if run is not None and agent_runs is not None:
-                    agent_runs.update(
-                        run,
-                        status="needs_input" if error.status_code == 422 else "failed",
-                        error_code=error.code,
-                        error_message=error.message,
-                        artifact_status="failed",
-                    )
-                yield stream_event(
-                    "error",
-                    {
-                        "code": error.code,
-                        "message": error.message,
-                        "details": error.details,
-                        "retryable": error.status_code != 422,
-                        "run_id": str(run.id) if run else None,
-                    },
-                )
-                return
-            except Exception as error:  # noqa: BLE001 - preserve a retryable artifact failure
-                if run is not None and agent_runs is not None:
-                    agent_runs.update(
-                        run,
-                        status="failed",
-                        error_code="learning_analysis_failed",
-                        error_message=str(error),
-                        artifact_status="failed",
-                    )
-                yield stream_event(
-                    "error",
-                    {
-                        "code": "learning_analysis_failed",
-                        "message": "The learning analysis could not be completed.",
-                        "detail": str(error),
-                        "retryable": True,
-                        "run_id": str(run.id) if run else None,
-                    },
-                )
-                return
-
-            assistant_message = messages.add(
+            yield stream_event(
+                "tool_status",
+                {
+                    "status": "agent_routed" if resolved_agent else "generic_fallback",
+                    "agent_id": resolved_agent,
+                    "agent_name": _agent_name(role, resolved_agent),
+                    "selection_source": route_decision.selection_source,
+                    "confidence": route_decision.confidence,
+                    "run_id": str(run.id) if run else None,
+                },
+            )
+            request = AgentRequest(
                 workspace_id=workspace_id,
                 conversation_id=conversation.id,
-                role="assistant",
-                content=analysis.markdown,
-                agent_id=resolved_agent,
-                artifacts=[
+                role=role,
+                agent_id=resolved_agent or "generic_chat",
+                content=user_content,
+                selected_attachment_ids=normalized_attachment_ids,
+                selected_artifact_ids=tuple(selected_artifact_ids or ()),
+                context=context,
+            )
+            spec = get_agent_spec(role, resolved_agent) if resolved_agent else None
+            if spec is None:
+                spec = AgentSpec(
+                    id=resolved_agent or "generic_chat",
+                    role=role,
+                    name="通用对话",
+                    description="当前角色的通用对话能力",
+                    system_prompt="你是校园智能助手。只使用当前允许的资料回答，资料不足时明确说明。",
+                    executor_id="generic_chat",
+                )
+            executor = AgentExecutorRegistry(chat_provider).resolve(spec)
+            result = await executor.execute(request)
+            source_payload = [
+                {
+                    "attachment_id": str(source.attachment_id),
+                    "filename": source.filename,
+                    "page_number": source.page_number,
+                    "excerpt": source.excerpt,
+                }
+                for source in result.citations
+            ]
+            if source_payload:
+                yield stream_event(
+                    "tool_status",
                     {
-                        "type": "learning_analysis",
-                        "artifact_id": str(artifact.id),
-                        "title": artifact.title,
-                    }
-                ],
-            )
-            conversations.touch(conversation)
-            if run is not None and agent_runs is not None:
-                agent_runs.update(
-                    run,
-                    status="completed",
-                    artifact_id=artifact.id,
-                    artifact_status="completed",
-                    result_message_id=assistant_message.id,
+                        "status": "retrieved",
+                        "count": len(source_payload),
+                        "agent_id": resolved_agent,
+                    },
                 )
-            yield stream_event(
-                "delta",
-                {"text": analysis.markdown},
-            )
-            yield stream_event(
-                "artifact",
-                {
-                    "type": "learning_analysis",
-                    "artifact_id": str(artifact.id),
-                    "title": artifact.title,
-                    "data": analysis.data,
-                },
-            )
-            yield stream_event(
-                "done",
-                {
-                    "message_id": str(assistant_message.id),
-                    "conversation_id": str(conversation.id),
-                    "agent_id": resolved_agent,
-                    "run_id": str(run.id) if run else None,
-                    "artifact_id": str(artifact.id),
-                },
-            )
-            return
-
-        if not chat_provider.is_configured:
-            if run is not None and agent_runs is not None:
-                agent_runs.update(
-                    run,
-                    status="failed",
-                    error_code="chat_model_unconfigured",
-                    error_message="The chat model is not configured.",
-                )
-            yield stream_event(
-                "error",
-                {
-                    "code": "chat_model_unconfigured",
-                    "message": "The chat model is not configured. Add credentials and retry.",
-                    "retryable": True,
-                    "run_id": str(run.id) if run else None,
-                },
-            )
-            return
-
-        collected: list[str] = []
-        try:
-            async for delta in chat_provider.stream_reply(history):
-                collected.append(delta)
-                yield stream_event("delta", {"text": delta})
+                yield stream_event("artifact", {"type": "sources", "sources": source_payload})
         except Exception as error:  # noqa: BLE001 - surfaced as a retryable stream error
+            if isinstance(error, AppError):
+                error_code = error.code
+                error_message = error.message
+                details = error.details
+                retryable = error.status_code != 422
+                status = "needs_input" if error.status_code == 422 else "failed"
+            elif str(error) == "chat_model_unconfigured":
+                error_code = "chat_model_unconfigured"
+                error_message = "The chat model is not configured. Add credentials and retry."
+                details = None
+                retryable = True
+                status = "failed"
+            else:
+                error_code = "chat_stream_failed"
+                error_message = "The chat model did not complete the response."
+                details = str(error)
+                retryable = True
+                status = "failed"
             if run is not None and agent_runs is not None:
                 agent_runs.update(
                     run,
-                    status="failed",
-                    error_code="chat_stream_failed",
-                    error_message=str(error),
+                    status=status,
+                    error_code=error_code,
+                    error_message=error_message,
                 )
             yield stream_event(
                 "error",
                 {
-                    "code": "chat_stream_failed",
-                    "message": "The chat model did not complete the response.",
-                    "detail": str(error),
-                    "retryable": True,
+                    "code": error_code,
+                    "message": error_message,
+                    "details": details,
+                    "retryable": retryable,
                     "run_id": str(run.id) if run else None,
                 },
             )
             return
 
-        assistant_content = "".join(collected)
+        artifact_id = None
+        artifact_payload = None
+        message_artifacts = None
+        if result.artifact is not None and artifacts is not None:
+            artifact = artifacts.create(
+                workspace_id=workspace_id,
+                conversation_id=conversation.id,
+                type=result.artifact.type,
+                title=result.artifact.title,
+                content=result.artifact.content,
+                data=result.artifact.data,
+                format=result.artifact.format,
+            )
+            artifact_id = artifact.id
+            artifact_payload = {
+                "type": result.artifact.type,
+                "artifact_id": str(artifact.id),
+                "title": artifact.title,
+                "data": result.artifact.data,
+            }
+            message_artifacts = [
+                {"type": result.artifact.type, "artifact_id": str(artifact.id), "title": artifact.title}
+            ]
         assistant_message = messages.add(
             workspace_id=workspace_id,
             conversation_id=conversation.id,
             role="assistant",
-            content=assistant_content,
+            content=result.text,
             agent_id=resolved_agent,
-            artifacts=[{"type": "sources", "sources": sources}] if sources else None,
+            artifacts=message_artifacts
+            or ([{"type": "sources", "sources": source_payload}] if source_payload else None),
         )
         conversations.touch(conversation)
         if run is not None and agent_runs is not None:
@@ -424,7 +397,12 @@ async def stream_assistant_reply(
                 run,
                 status="completed",
                 result_message_id=assistant_message.id,
+                artifact_id=artifact_id,
+                artifact_status="completed" if artifact_id else "none",
             )
+        yield stream_event("delta", {"text": result.text})
+        if artifact_payload is not None:
+            yield stream_event("artifact", artifact_payload)
         yield stream_event(
             "done",
             {
@@ -432,6 +410,7 @@ async def stream_assistant_reply(
                 "conversation_id": str(conversation.id),
                 "agent_id": resolved_agent,
                 "run_id": str(run.id) if run else None,
+                "artifact_id": str(artifact_id) if artifact_id else None,
             },
         )
 

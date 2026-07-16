@@ -1,3 +1,6 @@
+from collections.abc import Sequence
+from uuid import UUID
+
 from app.agents.router import AgentRouter, RouteAttachment, RouteContext, RouteDecision
 from app.attachments.models import Attachment
 from app.attachments.repositories import AttachmentRepository
@@ -13,10 +16,22 @@ def make_route_context(
     attachments: AttachmentRepository,
     messages: MessageRepository,
     workspace_id,
+    selected_attachment_ids: Sequence[UUID] | None = None,
 ) -> RouteContext:
+    selected = (
+        attachments.list_selected_for_conversation(
+            workspace_id, conversation.id, selected_attachment_ids
+        )
+        if selected_attachment_ids is not None
+        else []
+    )
     attachment_facts = tuple(
         _attachment_fact(attachment)
-        for attachment in attachments.list_current_for_conversation(workspace_id, conversation.id)
+        for attachment in selected
+    )
+    workspace_attachment_facts = tuple(
+        _attachment_fact(attachment)
+        for attachment in attachments.list_for_conversation(workspace_id, conversation.id)
     )
     recent_messages = tuple(
         {
@@ -30,6 +45,8 @@ def make_route_context(
         role=role,
         content=content,
         attachments=attachment_facts,
+        workspace_attachments=workspace_attachment_facts,
+        selected_attachment_ids=tuple(str(attachment.id) for attachment in selected),
         recent_messages=recent_messages,
         conversation_agent_id=conversation.agent_id,
     )
@@ -65,6 +82,7 @@ async def classify_message(
     messages: MessageRepository,
     workspace_id,
     manual_agent_id: str | None = None,
+    selected_attachment_ids: Sequence[UUID] | None = None,
 ) -> RouteDecision:
     context = make_route_context(
         conversation=conversation,
@@ -73,5 +91,6 @@ async def classify_message(
         attachments=attachments,
         messages=messages,
         workspace_id=workspace_id,
+        selected_attachment_ids=selected_attachment_ids,
     )
     return await router.route(context, manual_agent_id=manual_agent_id)

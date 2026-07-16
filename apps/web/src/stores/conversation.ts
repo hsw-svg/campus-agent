@@ -8,6 +8,7 @@ import {
   listAttachments,
   listConversations,
   listMessages,
+  listWorkspaceAttachments,
   uploadAttachment,
   type Agent,
   type Attachment,
@@ -53,6 +54,7 @@ export const useConversationStore = defineStore('conversation', () => {
   const conversations = ref<Conversation[]>([])
   const messages = ref<DraftMessage[]>([])
   const attachments = ref<Attachment[]>([])
+  const selectedAttachmentIds = ref<string[]>([])
   const agents = ref<Agent[]>([])
   const autoAgentId = ref('auto')
   const activeConversationId = ref<string | null>(null)
@@ -77,6 +79,7 @@ export const useConversationStore = defineStore('conversation', () => {
     conversations.value = []
     messages.value = []
     attachments.value = []
+    selectedAttachmentIds.value = []
     agents.value = []
     autoAgentId.value = 'auto'
     activeConversationId.value = null
@@ -122,9 +125,13 @@ export const useConversationStore = defineStore('conversation', () => {
     const history = await listMessages(token.value, conversationId)
     if (activeConversationId.value !== requestedConversationId) return
     messages.value = history.map(toDraft)
-    const listedAttachments = await listAttachments(token.value, conversationId)
+    const [listedAttachments, workspaceAttachments] = await Promise.all([
+      listAttachments(token.value, conversationId),
+      listWorkspaceAttachments(token.value, conversationId),
+    ])
     if (activeConversationId.value !== requestedConversationId) return
-    attachments.value = listedAttachments
+    attachments.value = [...listedAttachments, ...workspaceAttachments]
+    selectedAttachmentIds.value = []
     const conversation = conversations.value.find((item) => item.id === conversationId)
     if (activeConversationId.value !== requestedConversationId) return
     selectedAgentId.value = conversation?.agent_id ?? autoAgentId.value
@@ -134,6 +141,7 @@ export const useConversationStore = defineStore('conversation', () => {
     activeConversationId.value = null
     messages.value = []
     attachments.value = []
+    selectedAttachmentIds.value = []
     streamError.value = null
     selectedAgentId.value = autoAgentId.value
   }
@@ -189,6 +197,7 @@ export const useConversationStore = defineStore('conversation', () => {
         conversationId,
         content,
         agentId,
+        selectedAttachmentIds: selectedAttachmentIds.value,
         signal: activeAbort.signal,
       })) {
         if (event.type === 'message_start') {
@@ -249,7 +258,11 @@ export const useConversationStore = defineStore('conversation', () => {
         try {
           const history = await listMessages(token.value, conversationId)
           messages.value = history.map(toDraft)
-          attachments.value = await listAttachments(token.value, conversationId)
+          const [currentAttachments, workspaceAttachments] = await Promise.all([
+            listAttachments(token.value, conversationId),
+            listWorkspaceAttachments(token.value, conversationId),
+          ])
+          attachments.value = [...currentAttachments, ...workspaceAttachments]
         } catch {
           // A background refresh must never wipe a visible reply.
         }
@@ -285,6 +298,7 @@ export const useConversationStore = defineStore('conversation', () => {
       const attachment = await uploadAttachment(token.value, conversationId, file, scope)
       if (activeConversationId.value !== requestedConversationId) return
       attachments.value = [...attachments.value, attachment]
+      selectedAttachmentIds.value = [...selectedAttachmentIds.value, attachment.id]
       streamError.value = null
     } catch (error) {
       streamError.value = error instanceof Error ? error.message : '附件上传失败。'
@@ -314,6 +328,7 @@ export const useConversationStore = defineStore('conversation', () => {
     conversations,
     messages,
     attachments,
+    selectedAttachmentIds,
     agents,
     autoAgentId,
     activeConversationId,

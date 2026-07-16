@@ -302,6 +302,10 @@ function sourceItems(message: { artifacts: unknown[] | null }): Array<{ filename
       <div v-if="store.activeConversation || store.messages.length === 0" class="input-area">
         <div v-if="store.attachments.length" class="attachment-list" aria-label="附件状态">
           <div v-for="attachment in store.attachments" :key="attachment.id" class="attachment-item">
+            <label class="attachment-select">
+              <input v-model="store.selectedAttachmentIds" type="checkbox" :value="attachment.id" />
+              <span>使用</span>
+            </label>
             <span class="attachment-name">{{ attachment.filename }}</span>
             <span class="attachment-status" :class="attachment.status">{{ attachmentStatus(attachment.status) }}</span>
             <small v-if="attachment.status_message">{{ attachment.status_message }}</small>

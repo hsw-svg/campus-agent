@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from uuid import UUID
 
 from app.attachments.models import Attachment, MaterialChunk
@@ -79,6 +80,8 @@ def retrieve_context(
     workspace_id: UUID,
     conversation_id: UUID,
     query: str,
+    agent_id: str | None = None,
+    attachment_ids: Sequence[UUID] | None = None,
 ) -> list[MaterialChunk]:
     query_embedding: list[float] | None = None
     if embedding_provider.is_configured:
@@ -91,4 +94,6 @@ def retrieve_context(
         conversation_id=conversation_id,
         query=query,
         query_embedding=query_embedding,
+        agent_id=agent_id,
+        attachment_ids=attachment_ids,
     )
