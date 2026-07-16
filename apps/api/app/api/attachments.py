@@ -99,4 +99,4 @@ def list_attachments(
     attachments: AttachmentRepository = Depends(get_attachment_repository),
 ) -> list[AttachmentResponse]:
     get_owned_conversation(conversations, workspace.id, conversation_id)
-    return attachments.list_for_conversation(workspace.id, conversation_id)
+    return attachments.list_current_for_conversation(workspace.id, conversation_id)

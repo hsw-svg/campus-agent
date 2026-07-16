@@ -37,6 +37,18 @@ class AttachmentRepository:
             )
         )
 
+    def list_current_for_conversation(self, workspace_id: UUID, conversation_id: UUID) -> list[Attachment]:
+        return list(
+            self.session.scalars(
+                select(Attachment)
+                .where(
+                    Attachment.workspace_id == workspace_id,
+                    Attachment.conversation_id == conversation_id,
+                )
+                .order_by(Attachment.created_at)
+            )
+        )
+
     def list_chunks_for_conversation(self, workspace_id: UUID, conversation_id: UUID) -> list[MaterialChunk]:
         return list(
             self.session.scalars(

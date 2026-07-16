@@ -56,7 +56,31 @@ def test_upload_parses_and_indexes_text_with_workspace_scope(client: TestClient,
     listed = client.get(
         f"/api/conversations/{conversation['id']}/attachments", headers=auth(token)
     )
-    assert [item["id"] for item in listed.json()] == [attachment["id"]]
+    assert listed.json() == []
+
+
+def test_workspace_attachments_do_not_appear_as_new_conversation_upload_status(
+    client: TestClient, tmp_path: Path
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    token = make_workspace(client, "teacher")
+    first_conversation = create_conversation(client, token)
+    next_conversation = create_conversation(client, token)
+
+    response = client.post(
+        f"/api/conversations/{first_conversation['id']}/attachments",
+        files={"file": ("learning.xlsx", "匿名编号,作业1\nA01,90", "text/csv")},
+        data={"scope": "workspace"},
+        headers=auth(token),
+    )
+    assert response.status_code == 201
+
+    listed = client.get(
+        f"/api/conversations/{next_conversation['id']}/attachments", headers=auth(token)
+    )
+
+    assert listed.status_code == 200
+    assert listed.json() == []
 
 
 def test_attachment_and_retrieval_are_isolated_by_workspace(client: TestClient, tmp_path: Path) -> None:
