@@ -26,9 +26,11 @@ import {
   Copy
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { downloadBlob, exportArtifact, type Artifact } from '../api';
 import { Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ConversationHistory from './ConversationHistory';
+import ResourcePicker from './ResourcePicker';
 
 interface StudentWorkspaceProps {
   token: string | null;
@@ -36,9 +38,33 @@ interface StudentWorkspaceProps {
 }
 
 export default function StudentWorkspace({ token, onBackToRoles }: StudentWorkspaceProps) {
-  const { chatMessages, isAiTyping, sendMessage, clearChat, uploadFile, error, conversations, activeConversationId, openConversation, removeConversation } = useWorkspaceChat(token);
+  const {
+    chatMessages,
+    isAiTyping,
+    sendMessage,
+    clearChat,
+    uploadFile,
+    error,
+    conversations,
+    activeConversationId,
+    openConversation,
+    removeConversation,
+    attachments,
+    artifacts,
+    citations,
+    selectedAttachmentIds,
+    selectedArtifactIds,
+    toggleAttachment,
+    toggleArtifact,
+    stopStreaming,
+    retryLastMessage,
+    runStatus,
+    toolStatus,
+    route,
+  } = useWorkspaceChat(token);
   const [inputVal, setInputVal] = useState('');
   const [copied, setCopied] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -67,6 +93,31 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const handleExportArtifact = async (artifact: Artifact, format: 'markdown' | 'csv') => {
+    if (!token) return;
+    try {
+      const blob = await exportArtifact(token, artifact.id, format);
+      downloadBlob(blob, `${artifact.title || artifact.id}.${format === 'csv' ? 'csv' : 'md'}`);
+      setExportError(null);
+    } catch (reason) {
+      setExportError(reason instanceof Error ? reason.message : '成果导出失败，请稍后重试。');
+    }
+  };
+
+  const resourcePicker = (
+    <ResourcePicker
+      attachments={attachments}
+      artifacts={artifacts}
+      citations={citations}
+      selectedAttachmentIds={selectedAttachmentIds}
+      selectedArtifactIds={selectedArtifactIds}
+      accentClass="text-secondary"
+      onToggleAttachment={toggleAttachment}
+      onToggleArtifact={toggleArtifact}
+      onExport={handleExportArtifact}
+    />
+  );
 
   return (
     <div className="flex h-screen w-full font-sans antialiased bg-[#EEF3F0] text-on-surface overflow-hidden">
@@ -141,7 +192,16 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
       {/* MAIN CONTENT AREA */}
       <main className="ml-72 flex-1 flex flex-col bg-background min-h-screen relative overflow-hidden">
-        {error && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error}</div>}
+        {(error || exportError) && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error || exportError}</div>}
+        {(toolStatus || route || runStatus === 'failed' || runStatus === 'needs_input') && (
+          <div className="mx-10 mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-secondary/20 bg-secondary-container/10 px-4 py-2 text-xs text-on-surface-variant">
+            {toolStatus && <span className="font-semibold text-secondary">{toolStatus}</span>}
+            {route?.agentName && <span>当前智能体：{route.agentName}</span>}
+            {(runStatus === 'failed' || runStatus === 'needs_input') && !isAiTyping && (
+              <button type="button" onClick={retryLastMessage} className="rounded-lg border border-secondary/30 px-2.5 py-1 font-bold text-secondary hover:bg-secondary-container/25">重试上一次任务</button>
+            )}
+          </div>
+        )}
         
         {/* Top App Bar */}
         <header className="sticky top-0 z-40 h-16 bg-surface border-b border-outline-variant flex justify-between items-center px-10 shrink-0">
@@ -276,6 +336,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           </section>
 
           {/* Input Footer */}
+          <div className="px-6 pb-3 xl:hidden">{resourcePicker}</div>
           <div className="mt-auto px-10 pb-8 shrink-0 bg-background pt-2 border-t border-outline-variant/10 z-10">
             <div className="max-w-4xl mx-auto space-y-3">
               <div className="flex gap-2 overflow-x-auto scrollbar-hide py-1">
@@ -326,11 +387,11 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                   </div>
                   
                   <button 
-                    onClick={() => handleSendMessage()}
+                    onClick={() => isAiTyping ? stopStreaming() : handleSendMessage()}
                     className="bg-secondary text-on-secondary px-5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-opacity-95 shadow-sm"
                   >
-                    <span>发送指令</span>
-                    <Send className="w-3.5 h-3.5" />
+                    <span>{isAiTyping ? '停止生成' : '发送指令'}</span>
+                    {isAiTyping ? <span className="h-3 w-3 rounded-sm bg-on-secondary" /> : <Send className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
@@ -340,6 +401,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
           {/* Right sidebar */}
           <aside className="w-80 h-full border-l border-outline-variant bg-surface-container-low flex flex-col p-4 gap-6 overflow-y-auto shrink-0 hidden xl:flex">
+            {resourcePicker}
             <div className="space-y-3">
               <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider px-1">学习备考资料袋</h3>
               <div className="bg-[#FBFDFB] border border-[#D9E4DF] p-4 rounded-xl space-y-2">

@@ -430,6 +430,10 @@ def _missing_inputs_for_agent(agent_id: str, context: RouteContext) -> list[str]
         if any(_is_tabular(attachment) for attachment in attachments):
             return []
         return ["匿名成绩、作业或练习统计表格"]
+    if agent_id == "course_qa" and not attachments:
+        return ["明确选择的课程资料"]
+    if agent_id == "personal_tutor" and not attachments:
+        return ["明确选择的错题、作业或薄弱点材料"]
     if agent_id == "resume_helper" and not any(
         term in text for term in ("简历", "resume", "cv", "项目经历", "教育背景")
     ):

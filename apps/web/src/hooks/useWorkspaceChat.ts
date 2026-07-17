@@ -4,17 +4,20 @@ import {
   createConversation,
   deleteConversation,
   listArtifacts,
-  listAttachments,
+  listConversationAttachments,
   listConversations,
   listMessages,
   listWorkspaceAttachments,
   streamMessage,
+  sourceCitationsFromEvent,
   uploadAttachment,
+  uploadWorkspaceAttachment,
   type ApiMessage,
   type Artifact,
   type Attachment,
   type Conversation,
   type StreamEvent,
+  type SourceCitation,
 } from '../api'
 import type { Message } from '../types'
 
@@ -71,8 +74,10 @@ function eventError(event: StreamEvent): ApiError {
 export function useWorkspaceChat(token: string | null) {
   const [chatMessages, setChatMessages] = useState<Message[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [workspaceAttachments, setWorkspaceAttachments] = useState<Attachment[]>([])
+  const [conversationAttachments, setConversationAttachments] = useState<Attachment[]>([])
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  const [citations, setCitations] = useState<SourceCitation[]>([])
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>([])
   const [selectedArtifactIds, setSelectedArtifactIds] = useState<string[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
@@ -87,6 +92,7 @@ export function useWorkspaceChat(token: string | null) {
   const streamCompletedRef = useRef(false)
   const lastPromptRef = useRef('')
   const resourceVersionRef = useRef(0)
+  const workspaceResourceVersionRef = useRef(0)
 
   const refreshConversations = useCallback(async () => {
     if (!token) return
@@ -97,16 +103,27 @@ export function useWorkspaceChat(token: string | null) {
     }
   }, [token])
 
+  const refreshWorkspaceAttachments = useCallback(async () => {
+    if (!token) return
+    const resourceVersion = ++workspaceResourceVersionRef.current
+    try {
+      const resources = await listWorkspaceAttachments(token)
+      if (resourceVersion !== workspaceResourceVersionRef.current) return
+      setWorkspaceAttachments(resources)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '无法读取工作区资料库。')
+    }
+  }, [token])
+
   const refreshResources = useCallback(async (conversationId: string) => {
     if (!token) return
     const resourceVersion = ++resourceVersionRef.current
-    const [current, workspace, conversationArtifacts] = await Promise.all([
-      listAttachments(token, conversationId),
-      listWorkspaceAttachments(token, conversationId),
+    const [current, conversationArtifacts] = await Promise.all([
+      listConversationAttachments(token, conversationId),
       listArtifacts(token, conversationId),
     ])
     if (resourceVersion !== resourceVersionRef.current) return
-    setAttachments(mergeAttachments(current, workspace))
+    setConversationAttachments(current)
     setArtifacts(conversationArtifacts)
   }, [token])
 
@@ -118,7 +135,10 @@ export function useWorkspaceChat(token: string | null) {
     setError(null)
     setActiveConversationId(conversationId)
     setChatMessages([])
+    setConversationAttachments([])
+    setArtifacts([])
     setToolStatus(null)
+    setCitations([])
     setSelectedAttachmentIds([])
     setSelectedArtifactIds([])
     setRoute(null)
@@ -138,20 +158,26 @@ export function useWorkspaceChat(token: string | null) {
   useEffect(() => {
     loadVersionRef.current += 1
     resourceVersionRef.current += 1
+    workspaceResourceVersionRef.current += 1
     abortRef.current?.abort()
     setChatMessages([])
     setConversations([])
-    setAttachments([])
+    setWorkspaceAttachments([])
+    setConversationAttachments([])
     setArtifacts([])
+    setCitations([])
     setSelectedAttachmentIds([])
     setSelectedArtifactIds([])
     setActiveConversationId(null)
     setRoute(null)
     setRunStatus('idle')
     setError(null)
-    if (token) void refreshConversations()
+    if (token) {
+      void refreshConversations()
+      void refreshWorkspaceAttachments()
+    }
     return () => abortRef.current?.abort()
-  }, [token, refreshConversations])
+  }, [token, refreshConversations, refreshWorkspaceAttachments])
 
   const clearChat = useCallback(() => {
     loadVersionRef.current += 1
@@ -159,8 +185,9 @@ export function useWorkspaceChat(token: string | null) {
     abortRef.current?.abort()
     setActiveConversationId(null)
     setChatMessages([])
-    setAttachments([])
+    setConversationAttachments([])
     setArtifacts([])
+    setCitations([])
     setSelectedAttachmentIds([])
     setSelectedArtifactIds([])
     setRoute(null)
@@ -175,7 +202,8 @@ export function useWorkspaceChat(token: string | null) {
     lastPromptRef.current = content
     setError(null)
     setRunStatus('running')
-    setToolStatus('正在连接课堂互动助手')
+    setToolStatus('正在连接智能体')
+    setCitations([])
     let conversationId = activeConversationId
     try {
       if (!conversationId) {
@@ -183,7 +211,7 @@ export function useWorkspaceChat(token: string | null) {
         conversationId = created.id
         setConversations((current) => [created, ...current])
         setActiveConversationId(conversationId)
-        setAttachments([])
+        setConversationAttachments([])
         setArtifacts([])
       }
 
@@ -227,6 +255,7 @@ export function useWorkspaceChat(token: string | null) {
         const [history] = await Promise.all([
           listMessages(token, conversationId),
           refreshResources(conversationId),
+          refreshWorkspaceAttachments(),
         ])
         setChatMessages(history.map(toUiMessage))
         await refreshConversations()
@@ -275,6 +304,12 @@ export function useWorkspaceChat(token: string | null) {
           message.id === assistantId ? { ...message, content: message.content + event.data.text } : message,
         ))
       } else if (event.type === 'artifact') {
+        const eventCitations = sourceCitationsFromEvent(event)
+        if (eventCitations.length > 0) {
+          setCitations(eventCitations)
+          setToolStatus(`已读取 ${eventCitations.length} 条实际引用`)
+          return
+        }
         const artifactId = typeof event.data.artifact_id === 'string' ? event.data.artifact_id : null
         if (artifactId) {
           const now = new Date().toISOString()
@@ -311,7 +346,7 @@ export function useWorkspaceChat(token: string | null) {
         }
       }
     }
-  }, [activeConversationId, isAiTyping, refreshConversations, refreshResources, selectedArtifactIds, selectedAttachmentIds, token])
+  }, [activeConversationId, isAiTyping, refreshConversations, refreshResources, refreshWorkspaceAttachments, selectedArtifactIds, selectedAttachmentIds, token])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {
@@ -337,18 +372,23 @@ export function useWorkspaceChat(token: string | null) {
       : [...current, artifactId])
   }, [])
 
-  const uploadFile = useCallback(async (file: File, scope: 'conversation' | 'workspace' = 'workspace') => {
+  const uploadFile = useCallback(async (file: File, scope: 'conversation' | 'workspace' = 'conversation') => {
     if (!token) return
     try {
-      let conversationId = activeConversationId
-      if (!conversationId) {
-        const created = await createConversation(token)
-        conversationId = created.id
-        setConversations((current) => [created, ...current])
-        setActiveConversationId(conversationId)
+      if (scope === 'workspace') {
+        const attachment = await uploadWorkspaceAttachment(token, file)
+        setWorkspaceAttachments((current) => mergeAttachments(current, [attachment]))
+      } else {
+        let conversationId = activeConversationId
+        if (!conversationId) {
+          const created = await createConversation(token)
+          conversationId = created.id
+          setConversations((current) => [created, ...current])
+          setActiveConversationId(conversationId)
+        }
+        const attachment = await uploadAttachment(token, conversationId, file, 'conversation')
+        setConversationAttachments((current) => mergeAttachments(current, [attachment]))
       }
-      const attachment = await uploadAttachment(token, conversationId, file, scope)
-      setAttachments((current) => mergeAttachments(current, [attachment]))
       setError(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '附件上传失败。')
@@ -366,12 +406,17 @@ export function useWorkspaceChat(token: string | null) {
     }
   }, [token, activeConversationId, clearChat])
 
+  const attachments = mergeAttachments(conversationAttachments, workspaceAttachments)
+
   return {
     chatMessages,
     setChatMessages,
     conversations,
     attachments,
+    workspaceAttachments,
+    conversationAttachments,
     artifacts,
+    citations,
     selectedAttachmentIds,
     selectedArtifactIds,
     activeConversationId,
@@ -390,6 +435,7 @@ export function useWorkspaceChat(token: string | null) {
     openConversation,
     removeConversation,
     refreshResources,
+    refreshWorkspaceAttachments,
     error,
   }
 }

@@ -7,6 +7,7 @@ from app.api.conversations import router as conversations_router
 from app.api.health import router as health_router
 from app.api.workspaces import router as workspaces_router
 from app.api.attachments import router as attachments_router
+from app.api.attachments import workspace_attachment_router
 from app.api.agent_runs import router as agent_runs_router
 from app.api.artifacts import router as artifacts_router
 from app.core.config import Settings, get_settings
@@ -60,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(conversations_router)
     app.include_router(agents_router)
     app.include_router(attachments_router)
+    app.include_router(workspace_attachment_router)
     app.include_router(agent_runs_router)
     app.include_router(artifacts_router)
     return app

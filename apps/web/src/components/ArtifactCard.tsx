@@ -1,6 +1,6 @@
-import { Check, Clipboard, Download, FileText, ListChecks, MessageCircleQuestion, Users } from 'lucide-react'
+import { BookOpen, Check, Clipboard, Download, FileText, ListChecks, MessageCircleQuestion, Users } from 'lucide-react'
 import { useState } from 'react'
-import type { Artifact } from '../api'
+import type { Artifact, SourceCitation } from '../api'
 
 interface ArtifactCardProps {
   artifact: Artifact
@@ -9,6 +9,7 @@ interface ArtifactCardProps {
   onToggle?: () => void
   onExport: (artifact: Artifact, format: 'markdown' | 'csv') => Promise<void>
   sourceArtifacts?: Artifact[]
+  citations?: SourceCitation[]
   key?: string
 }
 
@@ -38,12 +39,17 @@ export default function ArtifactCard({
   onToggle,
   onExport,
   sourceArtifacts = [],
+  citations = [],
 }: ArtifactCardProps) {
   const [copied, setCopied] = useState(false)
   const data = artifact.data ?? {}
   const isActivity = artifact.type === 'classroom_activity_package'
   const isObservation = artifact.type === 'classroom_observation'
   const isSummary = artifact.type === 'classroom_summary'
+  const isCourseQA = artifact.type === 'course_qa'
+  const isPersonalTutor = artifact.type === 'personal_tutor'
+  const isMeetingMinutes = artifact.type === 'meeting_minutes'
+  const isTodoBreakdown = artifact.type === 'todo_breakdown'
 
   const copyContent = async () => {
     await navigator.clipboard.writeText(artifact.content)
@@ -51,7 +57,7 @@ export default function ArtifactCard({
     window.setTimeout(() => setCopied(false), 1600)
   }
 
-  const icon = isActivity ? <ListChecks className="h-4 w-4" /> : isObservation ? <Users className="h-4 w-4" /> : isSummary ? <FileText className="h-4 w-4" /> : <MessageCircleQuestion className="h-4 w-4" />
+  const icon = isActivity || isTodoBreakdown ? <ListChecks className="h-4 w-4" /> : isObservation ? <Users className="h-4 w-4" /> : isSummary || isMeetingMinutes ? <FileText className="h-4 w-4" /> : isCourseQA || isPersonalTutor ? <BookOpen className="h-4 w-4" /> : <MessageCircleQuestion className="h-4 w-4" />
   const status = typeof data.status === 'string' ? data.status : 'completed'
   const activities = Array.isArray(data.activities) ? data.activities as Record<string, unknown>[] : []
   const commonMisconceptions = listValue(data.common_misconceptions)
@@ -148,7 +154,53 @@ export default function ArtifactCard({
             </div>
           )}
 
-          {!isActivity && !isObservation && !isSummary && (
+          {isCourseQA && (
+            <div className="mt-3 space-y-3">
+              <SummarySection title="回答" value={textValue(data.answer, artifact.content)} />
+              <SummarySection title="要点" items={listValue(data.key_points)} />
+              <SummarySection title="追问" items={listValue(data.follow_up_questions)} />
+            </div>
+          )}
+
+          {isPersonalTutor && (
+            <div className="mt-3 space-y-3">
+              <SummarySection title="诊断" value={textValue(data.diagnosis, artifact.content)} />
+              <SummarySection title="讲解" value={textValue(data.explanation)} />
+              <SummarySection title="易错点" items={listValue(data.mistakes)} />
+              <SummarySection title="练习建议" items={listValue(data.practice)} />
+              <SummarySection title="追问" items={listValue(data.follow_up_questions)} />
+            </div>
+          )}
+
+          {isMeetingMinutes && (
+            <div className="mt-3 space-y-3">
+              <SummarySection title="议题" items={listValue(data.topics)} />
+              <SummarySection title="决议" items={structuredList(data.decisions, 'decision')} />
+              <SummarySection title="行动项" items={structuredList(data.action_items, 'task')} />
+            </div>
+          )}
+
+          {isTodoBreakdown && (
+            <div className="mt-3 space-y-3">
+              <SummarySection title="待办项" items={structuredList(data.items, 'task', true)} />
+            </div>
+          )}
+
+          {citations.length > 0 && (
+            <div className="mt-3 rounded-xl border border-secondary/20 bg-secondary-container/10 p-3">
+              <p className="text-[10px] font-extrabold text-secondary">本次任务实际引用 · {citations.length} 条</p>
+              <ul className="mt-1.5 space-y-1.5 text-[10px] leading-relaxed text-on-surface-variant">
+                {citations.map((citation, index) => (
+                  <li key={`${citation.attachment_id}-${index}`}>
+                    <span className="font-bold text-secondary">{citation.filename}{citation.page_number ? ` · 第 ${citation.page_number} 页` : ''}</span>
+                    <span className="ml-1">{citation.excerpt}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {!isActivity && !isObservation && !isSummary && !isCourseQA && !isPersonalTutor && !isMeetingMinutes && !isTodoBreakdown && (
             <p className="mt-3 whitespace-pre-line text-xs leading-relaxed text-on-surface-variant">{artifact.content}</p>
           )}
 
@@ -203,4 +255,21 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
       </ul>
     </div>
   )
+}
+
+function structuredList(value: unknown, primaryKey: string, includePriority = false): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const record = item as Record<string, unknown>
+    const primary = record[primaryKey]
+    if (typeof primary !== 'string' || !primary.trim()) return []
+    const details = [
+      typeof record.owner === 'string' && record.owner.trim() ? `负责人：${record.owner}` : '',
+      typeof record.due_date === 'string' && record.due_date.trim() ? `截止：${record.due_date}` : '',
+      includePriority && typeof record.priority === 'string' && record.priority.trim() ? `优先级：${record.priority}` : '',
+      typeof record.evidence === 'string' && record.evidence.trim() ? `依据：${record.evidence}` : '',
+    ].filter(Boolean)
+    return [details.length > 0 ? `${primary}（${details.join('；')}）` : primary]
+  })
 }

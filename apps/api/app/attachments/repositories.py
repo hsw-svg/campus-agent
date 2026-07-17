@@ -53,9 +53,7 @@ class AttachmentRepository:
             )
         )
 
-    def list_workspace_for_conversation(
-        self, workspace_id: UUID, conversation_id: UUID
-    ) -> list[Attachment]:
+    def list_workspace_for_conversation(self, workspace_id: UUID) -> list[Attachment]:
         return list(
             self.session.scalars(
                 select(Attachment)

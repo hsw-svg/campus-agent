@@ -184,7 +184,9 @@ export default function ClassroomInteractionPanel({
               <div key={group.scope}>
                 <p className="mb-1.5 px-1 text-[10px] font-extrabold text-on-surface-variant">{group.title}</p>
                 {group.items.length === 0 ? (
-                  <p className="rounded-lg bg-surface-container px-2.5 py-2 text-[10px] text-outline">暂无资料</p>
+                  <p className="rounded-lg bg-surface-container px-2.5 py-2 text-[10px] text-outline">
+                    {group.scope === 'conversation' ? '当前对话暂无附件，可从工作区资料库中勾选。' : '工作区资料库暂无资料。'}
+                  </p>
                 ) : group.items.map((attachment) => (
                   <label key={attachment.id} className="mb-1.5 flex cursor-pointer items-center gap-2 rounded-xl border border-outline-variant/60 bg-white px-2.5 py-2 hover:border-primary/50">
                     <input type="checkbox" checked={selectedAttachmentIds.includes(attachment.id)} onChange={() => onToggleAttachment(attachment.id)} className="h-3.5 w-3.5 accent-primary" />

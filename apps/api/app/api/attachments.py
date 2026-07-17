@@ -21,6 +21,7 @@ from app.workspaces.dependencies import (
 from app.workspaces.models import AnonymousWorkspace
 
 router = APIRouter(prefix="/api/conversations", tags=["attachments"])
+workspace_attachment_router = APIRouter(prefix="/api/workspaces", tags=["attachments"])
 
 
 class AttachmentResponse(BaseModel):
@@ -61,32 +62,13 @@ async def upload_attachment(
             message="Attachment scope must be conversation or workspace.",
             status_code=400,
         )
-    filename = validate_filename(file.filename)
-    content = await file.read()
-    attachment_id = uuid4()
-    storage_key = f"{workspace.id}/{conversation_id}/{attachment_id}/{filename}"
-    attachment = attachments.create(
-        id=attachment_id,
-        workspace_id=workspace.id,
+    return await _create_uploaded_attachment(
+        file=file,
+        workspace=workspace,
         conversation_id=conversation.id if scope == "conversation" else None,
-        filename=filename,
-        content_type=file.content_type or "application/octet-stream",
-        size_bytes=len(content),
-        storage_key=storage_key,
         scope=scope,
-        status="uploaded",
-    )
-    try:
-        storage.put(storage_key, content)
-    except Exception as error:  # noqa: BLE001 - retain a visible failed card
-        attachment = attachments.update(
-            attachment, status="failed", status_message=f"文件保存失败：{error}"
-        )
-        return attachment
-    return process_attachment(
-        attachment=attachment,
-        content=content,
-        repository=attachments,
+        attachments=attachments,
+        storage=storage,
         embedding_provider=embedding_provider,
     )
 
@@ -110,4 +92,75 @@ def list_workspace_attachments(
     attachments: AttachmentRepository = Depends(get_attachment_repository),
 ) -> list[AttachmentResponse]:
     get_owned_conversation(conversations, workspace.id, conversation_id)
-    return attachments.list_workspace_for_conversation(workspace.id, conversation_id)
+    return attachments.list_workspace_for_conversation(workspace.id)
+
+
+@workspace_attachment_router.get("/current/attachments", response_model=list[AttachmentResponse])
+def list_current_workspace_attachments(
+    workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    attachments: AttachmentRepository = Depends(get_attachment_repository),
+) -> list[AttachmentResponse]:
+    return attachments.list_workspace_for_conversation(workspace.id)
+
+
+@workspace_attachment_router.post(
+    "/current/attachments",
+    response_model=AttachmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_workspace_attachment(
+    file: UploadFile = File(...),
+    workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    attachments: AttachmentRepository = Depends(get_attachment_repository),
+    storage: ObjectStorage = Depends(get_object_storage),
+    embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
+) -> AttachmentResponse:
+    return await _create_uploaded_attachment(
+        file=file,
+        workspace=workspace,
+        conversation_id=None,
+        scope="workspace",
+        attachments=attachments,
+        storage=storage,
+        embedding_provider=embedding_provider,
+    )
+
+
+async def _create_uploaded_attachment(
+    *,
+    file: UploadFile,
+    workspace: AnonymousWorkspace,
+    conversation_id: UUID | None,
+    scope: str,
+    attachments: AttachmentRepository,
+    storage: ObjectStorage,
+    embedding_provider: EmbeddingProvider,
+) -> AttachmentResponse:
+    filename = validate_filename(file.filename)
+    content = await file.read()
+    attachment_id = uuid4()
+    owner_key = str(conversation_id) if conversation_id is not None else "workspace"
+    storage_key = f"{workspace.id}/{owner_key}/{attachment_id}/{filename}"
+    attachment = attachments.create(
+        id=attachment_id,
+        workspace_id=workspace.id,
+        conversation_id=conversation_id,
+        filename=filename,
+        content_type=file.content_type or "application/octet-stream",
+        size_bytes=len(content),
+        storage_key=storage_key,
+        scope=scope,
+        status="uploaded",
+    )
+    try:
+        storage.put(storage_key, content)
+    except Exception as error:  # noqa: BLE001 - retain a visible failed card
+        return attachments.update(
+            attachment, status="failed", status_message=f"文件保存失败：{error}"
+        )
+    return process_attachment(
+        attachment=attachment,
+        content=content,
+        repository=attachments,
+        embedding_provider=embedding_provider,
+    )

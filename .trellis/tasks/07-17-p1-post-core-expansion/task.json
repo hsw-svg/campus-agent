@@ -1,0 +1,30 @@
+{
+  "id": "p1-post-core-expansion",
+  "name": "p1-post-core-expansion",
+  "title": "P1 核心闭环后的扩展能力",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "hsw",
+  "assignee": "hsw",
+  "createdAt": "2026-07-17",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-17-p1-student-admin-executors",
+    "07-17-p1-context-artifact-frontend",
+    "07-17-p1-docs-stack-alignment"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

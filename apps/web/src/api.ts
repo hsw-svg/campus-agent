@@ -67,9 +67,35 @@ export interface Artifact {
   updated_at: string
 }
 
+export interface SourceCitation {
+  attachment_id: string
+  filename: string
+  page_number: number | null
+  excerpt: string
+}
+
 export interface StreamEvent {
   type: 'message_start' | 'route_decision' | 'delta' | 'tool_status' | 'artifact' | 'done' | 'error'
   data: Record<string, unknown>
+}
+
+export function sourceCitationsFromEvent(event: StreamEvent): SourceCitation[] {
+  if (event.type !== 'artifact' || event.data.type !== 'sources' || !Array.isArray(event.data.sources)) {
+    return []
+  }
+  return event.data.sources.flatMap((item): SourceCitation[] => {
+    if (!item || typeof item !== 'object') return []
+    const source = item as Record<string, unknown>
+    if (typeof source.attachment_id !== 'string' || typeof source.filename !== 'string' || typeof source.excerpt !== 'string') {
+      return []
+    }
+    return [{
+      attachment_id: source.attachment_id,
+      filename: source.filename,
+      page_number: typeof source.page_number === 'number' ? source.page_number : null,
+      excerpt: source.excerpt,
+    }]
+  })
 }
 
 export class ApiError extends Error {
@@ -133,12 +159,12 @@ export function listMessages(token: string, conversationId: string): Promise<Api
   return request<ApiMessage[]>(`/conversations/${conversationId}/messages`, undefined, token)
 }
 
-export function listAttachments(token: string, conversationId: string): Promise<Attachment[]> {
+export function listConversationAttachments(token: string, conversationId: string): Promise<Attachment[]> {
   return request<Attachment[]>(`/conversations/${conversationId}/attachments`, undefined, token)
 }
 
-export function listWorkspaceAttachments(token: string, conversationId: string): Promise<Attachment[]> {
-  return request<Attachment[]>(`/conversations/${conversationId}/workspace-attachments`, undefined, token)
+export function listWorkspaceAttachments(token: string): Promise<Attachment[]> {
+  return request<Attachment[]>('/workspaces/current/attachments', undefined, token)
 }
 
 export function listArtifacts(token: string, conversationId: string): Promise<Artifact[]> {
@@ -169,6 +195,17 @@ export async function exportArtifact(
   return response.blob()
 }
 
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 export function deleteConversation(token: string, conversationId: string): Promise<void> {
   return request<void>(`/conversations/${conversationId}`, { method: 'DELETE' }, token)
 }
@@ -183,6 +220,15 @@ export async function uploadAttachment(
   form.append('file', file)
   form.append('scope', scope)
   return request<Attachment>(`/conversations/${conversationId}/attachments`, {
+    method: 'POST',
+    body: form,
+  }, token)
+}
+
+export async function uploadWorkspaceAttachment(token: string, file: File): Promise<Attachment> {
+  const form = new FormData()
+  form.append('file', file)
+  return request<Attachment>('/workspaces/current/attachments', {
     method: 'POST',
     body: form,
   }, token)

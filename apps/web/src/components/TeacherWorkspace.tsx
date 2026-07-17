@@ -34,7 +34,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { exportArtifact, type Artifact } from '../api';
+import { exportArtifact, type Artifact, type Attachment } from '../api';
 import { Role, Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ClassroomInteractionPanel from './ClassroomInteractionPanel';
@@ -43,6 +43,11 @@ import ConversationHistory from './ConversationHistory';
 interface TeacherWorkspaceProps {
   token: string | null;
   onBackToRoles: () => void;
+}
+
+function isLearningTable(attachment: Attachment): boolean {
+  return /\.(csv|xlsx?|xls)$/i.test(attachment.filename)
+    || /csv|spreadsheet|excel/i.test(attachment.content_type);
 }
 
 export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorkspaceProps) {
@@ -61,6 +66,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   // Chat/Input states
   const [inputVal, setInputVal] = useState('');
   const [exportError, setExportError] = useState<string | null>(null);
+  const [analysisActionNotice, setAnalysisActionNotice] = useState<string | null>(null);
   const {
     chatMessages,
     isAiTyping,
@@ -107,32 +113,20 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     if (distanceToBottom < 200) chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isAiTyping]);
 
-  // Timeline loading animation
-  const startAnalysis = (fileName = '匿名学情表.xlsx') => {
-    setUploadedFile(fileName);
-    setStage('analyzing');
-    setAnalysisStep(0);
-    setAnalysisProgress(15);
-    setProgressBarWidth('w-[15%]');
-
-    const steps = [
-      { step: 1, progress: 40, delay: 900 },
-      { step: 2, progress: 70, delay: 1800 },
-      { step: 3, progress: 100, delay: 2700 },
-    ];
-
-    steps.forEach((s) => {
-      setTimeout(() => {
-        setAnalysisStep(s.step);
-        setAnalysisProgress(s.progress);
-        setProgressBarWidth(`w-[${s.progress}%]`);
-      }, s.delay);
-    });
-
-    setTimeout(() => {
-      setStage('report');
-      setProgressBarWidth('w-full');
-    }, 3500);
+  const startAnalysis = (_fileName?: string) => {
+    setActiveTab('workbench');
+    const selected = attachments.filter((attachment) => selectedAttachmentIds.includes(attachment.id));
+    const selectedTable = selected.length === 1 && isLearningTable(selected[0]);
+    if (!selectedTable) {
+      setAnalysisActionNotice('请先在右侧资料选择中勾选一份可用的匿名学情表。');
+      return;
+    }
+    if (!['indexed', 'degraded'].includes(selected[0].status)) {
+      setAnalysisActionNotice('该资料仍在解析中，请等待状态变为“可用”后再分析。');
+      return;
+    }
+    setAnalysisActionNotice(null);
+    void sendMessage('分析学情');
   };
 
   // Preset Responses for smart interactive tasks
@@ -264,6 +258,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const handleSendMessage = (textToSend?: string) => {
     const finalMsg = textToSend || inputVal;
     if (!finalMsg.trim()) return;
+    setAnalysisActionNotice(null);
     setInputVal('');
     void sendMessage(finalMsg);
   };
@@ -371,13 +366,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
           </button>
 
           <button 
-            onClick={() => {
-              if (uploadedFile) {
-                setStage('report');
-              } else {
-                startAnalysis('班级学情档案_计算机一班.xlsx');
-              }
-            }}
+            onClick={() => startAnalysis()}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
               stage === 'report' 
                 ? 'text-primary bg-primary-container/10 border-r-4 border-primary' 
@@ -497,6 +486,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             <div className="flex-1 flex flex-col h-full overflow-hidden">
               {/* Left Column: Interactive Chat & Analysis View */}
               <section ref={chatScrollRef} className="flex-1 flex flex-col p-6 overflow-y-auto max-w-4xl mx-auto w-full space-y-6">
+                {analysisActionNotice && <p role="alert" className="rounded-xl border border-tertiary/30 bg-tertiary-container/15 px-4 py-3 text-xs font-bold leading-relaxed text-tertiary">{analysisActionNotice}</p>}
                 
                 {/* 2A. WELCOME / INITIAL STATE (Screen 2) */}
                 {stage === 'welcome' && chatMessages.length === 0 && (

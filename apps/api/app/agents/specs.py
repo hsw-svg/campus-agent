@@ -32,6 +32,24 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "你是教师端课堂互动助手。负责生成结构化课堂互动活动包、分析匿名聚合课堂观察并生成课后总结。"
         "人数和比例由程序计算，缺失数据不得猜测；课后总结只能使用教师明确选择的活动包和观察记录。"
     ),
+    "course_qa": (
+        "你是学生端课程资料问答助手。只依据用户明确选择的当前学生工作区课程资料回答，"
+        "不得使用未选择的上传文件、其他角色资料或学情明细；资料不足时明确说明。"
+        "必须只输出符合约定字段的 JSON，不要输出 Markdown。"
+    ),
+    "personal_tutor": (
+        "你是学生端个性化辅导助手。只依据用户明确选择的当前学生工作区错题、作业或薄弱点材料，"
+        "解释概念、指出错误并给出练习；不得臆造题目、成绩、资料事实或使用其他角色资料。"
+        "必须只输出符合约定字段的 JSON，不要输出 Markdown。"
+    ),
+    "meeting_minutes": (
+        "你是行政端会议纪要助手。只整理当前行政工作区和用户明确选择的资料，以及用户本次提供的会议内容。"
+        "没有证据的负责人、日期、决议不得填写，使用 null；必须只输出约定字段的 JSON，不要输出 Markdown。"
+    ),
+    "todo_breakdown": (
+        "你是行政端待办拆解助手。只依据当前行政工作区、用户明确选择的资料和本次任务内容拆解行动项。"
+        "不得臆造负责人、日期、优先级或事实；没有证据时使用 null；必须只输出约定字段的 JSON，不要输出 Markdown。"
+    ),
 }
 
 
@@ -49,9 +67,17 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
             "learning_analysis": "learning_analysis",
             "lesson_design": "lesson_design",
             "classroom_interaction": "classroom_interaction",
+            "course_qa": "course_qa",
+            "personal_tutor": "personal_tutor",
+            "meeting_minutes": "meeting_minutes",
+            "todo_breakdown": "todo_breakdown",
         }.get(definition.id, "generic_chat"),
         input_contract=InputContract(
-            requires_attachments=definition.id == "learning_analysis",
+            requires_attachments=definition.id in {
+                "learning_analysis",
+                "course_qa",
+                "personal_tutor",
+            },
             accepted_attachment_types=("text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             if definition.id == "learning_analysis"
             else (),
@@ -61,19 +87,41 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
                 "learning_analysis": "selected_learning_tables",
                 "lesson_design": "selected_course_materials",
                 "classroom_interaction": "selected_classroom_materials",
+                "course_qa": "selected_course_materials",
+                "personal_tutor": "selected_student_support_materials",
+                "meeting_minutes": "selected_admin_materials",
+                "todo_breakdown": "selected_admin_materials",
             }.get(definition.id, "conversation"),
             requires_explicit_attachments=definition.id in {
                 "learning_analysis",
                 "course_iteration",
                 "teaching_report",
+                "course_qa",
+                "personal_tutor",
             },
             allow_workspace_attachments=definition.id in {
                 "learning_analysis",
                 "course_iteration",
                 "teaching_report",
+                "course_qa",
+                "personal_tutor",
+                "meeting_minutes",
+                "todo_breakdown",
+            },
+            allow_implicit_conversation_attachments=definition.id not in {
+                "course_qa",
+                "personal_tutor",
+                "meeting_minutes",
+                "todo_breakdown",
             },
             exclude_learning_details=definition.id != "learning_analysis",
-            allow_raw_row_sources=definition.id != "learning_analysis",
+            allow_raw_row_sources=definition.id not in {
+                "learning_analysis",
+                "course_qa",
+                "personal_tutor",
+                "meeting_minutes",
+                "todo_breakdown",
+            },
         ),
         skills={
             "learning_analysis": ("table_parser", "learning_statistics", "output_validation", "artifact_exporter"),
@@ -85,6 +133,10 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
                 "artifact_exporter",
             ),
             "lesson_design": ("output_validation",),
+            "course_qa": ("output_validation", "artifact_exporter"),
+            "personal_tutor": ("output_validation", "artifact_exporter"),
+            "meeting_minutes": ("output_validation", "artifact_exporter"),
+            "todo_breakdown": ("output_validation", "artifact_exporter"),
         }.get(definition.id, ()),
     )
 

@@ -83,6 +83,29 @@ def test_workspace_attachments_do_not_appear_as_new_conversation_upload_status(
     assert listed.json() == []
 
 
+def test_workspace_attachment_can_be_uploaded_and_listed_without_conversation(
+    client: TestClient, tmp_path: Path
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    token = make_workspace(client, "teacher")
+
+    response = client.post(
+        "/api/workspaces/current/attachments",
+        files={"file": ("learning.csv", "匿名编号,得分\nA01,90", "text/csv")},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 201
+    attachment = response.json()
+    assert attachment["scope"] == "workspace"
+    assert attachment["conversation_id"] is None
+
+    listed = client.get("/api/workspaces/current/attachments", headers=auth(token))
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()] == [attachment["id"]]
+    assert client.get("/api/conversations", headers=auth(token)).json() == []
+
+
 def test_attachment_and_retrieval_are_isolated_by_workspace(client: TestClient, tmp_path: Path) -> None:
     client.app.state.object_storage = LocalObjectStorage(tmp_path)
     student = make_workspace(client, "student")

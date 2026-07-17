@@ -19,6 +19,7 @@ class InputContract:
 class ContextPolicy:
     id: str
     requires_explicit_attachments: bool = False
+    allow_implicit_conversation_attachments: bool = True
     allow_workspace_attachments: bool = False
     exclude_learning_details: bool = False
     include_history: bool = True

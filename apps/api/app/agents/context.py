@@ -52,12 +52,14 @@ class ContextBuilder:
             system_prompt="你是校园智能助手。只使用当前允许的资料回答，资料不足时明确说明。",
             executor_id="generic_chat",
         )
-        selected = (
-            self.attachments.list_selected_for_conversation(
-                workspace_id, conversation.id, selected_attachment_ids
-            )
-            if selected_attachment_ids is not None or not spec.context_policy.requires_explicit_attachments
-            else []
+        attachment_selection = selected_attachment_ids
+        if attachment_selection is None and (
+            spec.context_policy.requires_explicit_attachments
+            or not spec.context_policy.allow_implicit_conversation_attachments
+        ):
+            attachment_selection = ()
+        selected = self.attachments.list_selected_for_conversation(
+            workspace_id, conversation.id, attachment_selection
         )
         selected_ids = tuple(attachment.id for attachment in selected)
         if spec.context_policy.requires_explicit_attachments and not selected:
@@ -82,6 +84,14 @@ class ContextBuilder:
                 agent_id=agent_id,
                 attachment_ids=selected_ids,
             )
+            if selected_ids and not chunks:
+                # Explicit selection is itself a source decision.  Keep the
+                # selected material available when keyword/embedding ranking
+                # finds no matching term, so a selected file is still
+                # citeable and answerable.
+                chunks = self.attachments.list_chunks_for_attachments(
+                    workspace_id, conversation.id, selected_ids
+                )
         if spec.context_policy.exclude_learning_details:
             chunks = [chunk for chunk in chunks if not is_learning_analysis_material(chunk)]
         sources = tuple(
@@ -134,6 +144,12 @@ class ContextBuilder:
         attachment_chunks = self.attachments.list_chunks_for_attachments(
             workspace_id, conversation.id, selected_ids
         )
+        if spec.context_policy.exclude_learning_details:
+            attachment_chunks = [
+                chunk
+                for chunk in attachment_chunks
+                if not is_learning_analysis_material(chunk)
+            ]
         context_artifacts = tuple(
             ContextArtifact(
                 id=artifact.id,
