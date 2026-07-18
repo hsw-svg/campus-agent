@@ -396,7 +396,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         </div>
       )}
 
-      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-72 flex-col border-r border-outline-variant bg-surface-container-low px-3 py-4 lg:flex">
+      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-72 flex-col border-r border-white/70 bg-surface-container-low/90 px-3 py-4 shadow-[8px_0_30px_rgba(25,28,26,0.04)] backdrop-blur-xl lg:flex">
         
         {/* Header Identity */}
         <div className="flex items-center gap-3 px-2 mb-6">
@@ -499,7 +499,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         {error && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error}</div>}
         
         {/* Top App Bar */}
-        <header className="sticky top-0 z-40 h-16 bg-surface border-b border-outline-variant flex justify-between items-center px-10 shrink-0">
+        <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between border-b border-white/70 bg-surface/80 px-10 shadow-[0_1px_20px_rgba(25,28,26,0.04)] backdrop-blur-xl">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-1 px-3 py-1 bg-surface-container-high rounded-full border border-outline-variant shadow-xs">
               <ShieldCheck className="w-4 h-4 text-primary" />
@@ -544,7 +544,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             <div className="relative hidden lg:block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
               <input 
-                className="bg-surface-container-low border border-outline-variant rounded-full py-1.5 pl-10 pr-4 text-xs w-64 focus:outline-hidden focus:ring-2 focus:ring-primary/20" 
+                className="w-64 rounded-full border border-outline-variant bg-surface-container-low/80 py-1.5 pl-10 pr-4 text-xs outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                 placeholder="搜索数据指标……" 
                 type="text"
               />
@@ -1180,8 +1180,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                   <button className="text-xs text-primary font-bold hover:underline">查看大纲 →</button>
                 </div>
               </div>
-            </div>
-          )}
+              </div>
+           )}
 
           {activeTab === 'analytics' && (
             <div className="flex-1 p-10 overflow-y-auto max-w-5xl mx-auto space-y-6">
@@ -1202,17 +1202,19 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             {renderInteractionPanel()}
           </aside>
 
+          <AnimatePresence>
           {showInteractionPanel && (
-            <div className="fixed inset-0 z-[60] bg-on-surface/25 xl:hidden" role="dialog" aria-modal="true" aria-label="智能体历史聚合面板" onClick={() => setShowInteractionPanel(false)}>
-              <div className="absolute right-0 top-0 h-full w-full max-w-md bg-surface shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="fixed inset-0 z-[60] bg-on-surface/25 backdrop-blur-sm xl:hidden" role="dialog" aria-modal="true" aria-label="智能体历史聚合面板" onClick={() => setShowInteractionPanel(false)}>
+              <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.42 }} className="absolute right-0 top-0 h-full w-full max-w-md border-l border-white/70 bg-surface/90 shadow-2xl backdrop-blur-xl" onClick={(event) => event.stopPropagation()}>
                 <div className="flex h-12 items-center justify-between border-b border-outline-variant px-4">
                   <p className="text-sm font-extrabold text-on-surface">智能体历史聚合</p>
                   <button type="button" onClick={() => setShowInteractionPanel(false)} aria-label="关闭课堂互动面板" className="rounded-lg px-2 py-1 text-xs font-bold text-outline hover:bg-surface-container">关闭</button>
                 </div>
                 <div className="h-[calc(100%-3rem)] overflow-y-auto">{renderInteractionPanel()}</div>
-              </div>
-            </div>
+               </motion.div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
         </div>
       </main>

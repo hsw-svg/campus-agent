@@ -10,6 +10,7 @@ import {
   Play,
   Sparkles,
 } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import type { AgentHistoryItem, Artifact, Attachment, CourseContext } from '../api'
 import type { TeacherAgentGroup, TeacherAgentId } from '../teacherAgents'
@@ -92,8 +93,13 @@ export default function TeacherAgentHistoryPanel({
   const shownHistory = showAllHistory ? selectedHistory : selectedHistory.slice(0, 6)
 
   return (
-    <div className="flex min-h-full w-full flex-col gap-3 overflow-y-auto bg-surface-container-low p-3">
-      <section className="rounded-2xl border border-primary/20 bg-white p-3 shadow-xs">
+    <motion.div
+      initial={{ opacity: 0, x: 18 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ type: 'spring', bounce: 0, duration: 0.42 }}
+      className="flex min-h-full w-full flex-col gap-3 overflow-y-auto bg-surface-container-low/80 p-3 backdrop-blur-xl"
+    >
+      <section className="rounded-2xl border border-white/80 bg-white/75 p-3 shadow-[0_12px_32px_rgba(25,28,26,0.06)] backdrop-blur-xl">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><History className="h-4.5 w-4.5" /></div>
@@ -114,27 +120,27 @@ export default function TeacherAgentHistoryPanel({
         )}
       </section>
 
-      <div className="grid grid-cols-5 gap-1 rounded-2xl border border-outline-variant bg-white p-1">
+      <div className="grid grid-cols-5 gap-1 rounded-2xl border border-white/80 bg-white/65 p-1 shadow-xs backdrop-blur-xl">
         {teacherAgentGroups.map((group) => {
           const Icon = groupIcons[group.id]
           const count = agentHistory.filter((item) => historyBelongsToGroup(item, group)).length
           return (
-            <button
+            <motion.button
               key={group.id}
               type="button"
               onClick={() => selectGroup(group)}
-              className={`relative flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-center transition-colors ${selectedGroup.id === group.id ? 'bg-primary text-on-primary shadow-xs' : 'text-on-surface-variant hover:bg-surface-container'}`}
+              whileTap={{ scale: 0.96 }}
+              className={`relative isolate flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-center transition-colors ${selectedGroup.id === group.id ? 'text-on-primary' : 'text-on-surface-variant hover:bg-surface-container/80'}`}
               aria-pressed={selectedGroup.id === group.id}
             >
-              <Icon className="h-4 w-4" />
-              <span className="w-full truncate text-[9px] font-extrabold">{group.shortName}</span>
-              <span className={`text-[8px] font-bold ${selectedGroup.id === group.id ? 'text-on-primary/75' : 'text-outline'}`}>{count}</span>
-            </button>
+              {selectedGroup.id === group.id && <motion.span layoutId="active-agent-tab" className="absolute inset-0 z-0 rounded-xl bg-primary shadow-[0_5px_14px_rgba(0,75,51,0.18)]" transition={{ type: 'spring', bounce: 0.12, duration: 0.35 }} />}
+              <span className="relative z-10 flex flex-col items-center gap-1"><Icon className="h-4 w-4" /><span className="w-full truncate text-[9px] font-extrabold">{group.shortName}</span><span className={`text-[8px] font-bold ${selectedGroup.id === group.id ? 'text-on-primary/75' : 'text-outline'}`}>{count}</span></span>
+            </motion.button>
           )
         })}
       </div>
 
-      <section className="rounded-2xl border border-outline-variant bg-[#FBFDFB] p-3 shadow-xs">
+      <section className="rounded-2xl border border-white/80 bg-[#FBFDFB]/85 p-3 shadow-[0_12px_32px_rgba(25,28,26,0.05)] backdrop-blur-xl">
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><SelectedIcon className="h-4 w-4" /></div>
@@ -150,14 +156,14 @@ export default function TeacherAgentHistoryPanel({
           <EmptyHistory group={selectedGroup} onPrompt={onPrompt} isBusy={isBusy} />
         ) : (
           <div className="mt-3 space-y-2">
-            {shownHistory.map((item) => (
-              <div key={item.run_id}>
+            {shownHistory.map((item, index) => (
+              <motion.div key={item.run_id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index, 5) * 0.035, duration: 0.22 }}>
                 <HistoryItem
                   item={item}
                   isActive={item.conversation_id === activeConversationId}
                   onOpen={() => onOpenConversation(item.conversation_id)}
                 />
-              </div>
+              </motion.div>
             ))}
             {selectedHistory.length > 6 && (
               <button type="button" onClick={() => setShowAllHistory((current) => !current)} className="w-full pt-1 text-center text-[10px] font-extrabold text-primary">
@@ -182,8 +188,9 @@ export default function TeacherAgentHistoryPanel({
         )}
       </section>
 
-      {selectedGroup.id === 'classroom_interaction' && (
-        <section className="rounded-2xl border border-outline-variant bg-white p-1 shadow-xs">
+      <AnimatePresence initial={false} mode="wait">
+        {selectedGroup.id === 'classroom_interaction' && (
+        <motion.section key="classroom-workflow" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ type: 'spring', bounce: 0, duration: 0.32 }} className="overflow-hidden rounded-2xl border border-white/80 bg-white/75 p-1 shadow-xs backdrop-blur-xl">
           <div className="flex items-center gap-2 px-3 pt-2 text-[10px] font-extrabold text-on-surface-variant">
             <Activity className="h-3.5 w-3.5 text-primary" />当前课堂工作流
           </div>
@@ -198,13 +205,14 @@ export default function TeacherAgentHistoryPanel({
             onExport={onExport}
             isBusy={isBusy}
           />
-        </section>
-      )}
+        </motion.section>
+        )}
+      </AnimatePresence>
 
       <div className="flex items-center justify-center gap-1 px-2 pb-1 text-[9px] text-outline">
         <FileOutput className="h-3 w-3" />右侧为历史索引，完整成果详情请在中间对话区查看
       </div>
-    </div>
+    </motion.div>
   )
 }
 
