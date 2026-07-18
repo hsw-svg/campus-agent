@@ -18,6 +18,54 @@ Questions to answer:
 
 (To be filled by the team)
 
+## Scenario: AgentRun teaching workflow context
+
+### 1. Scope / Trigger
+
+Use this contract when a streamed agent task must remain traceable to a course and a previous teaching step
+without introducing a course/account domain model.
+
+### 2. Signatures
+
+`POST /api/conversations/{conversation_id}/messages/stream` accepts nullable `course_id: str(96)`,
+`workflow_id: str(96)`, `parent_run_id: UUID`, and at most 64 `input_refs: list[str]`.
+The same fields are persisted on `AgentRun` and copied into `AgentRequest`.
+
+### 3. Contracts
+
+`input_refs` contains explicit opaque references such as `attachment:<uuid>` and `artifact:<uuid>`.
+Retries must reuse all four fields from the existing run. `message_start` echoes course, workflow, and parent Run IDs.
+
+### 4. Validation & Error Matrix
+
+- Missing optional context -> create an ungrouped run for backward compatibility.
+- Parent Run missing from the current workspace or conversation -> HTTP 422 `parent_run_not_found`.
+- More than 64 input references or IDs longer than 96 characters -> Pydantic request validation error.
+
+### 5. Good/Base/Bad Cases
+
+- Good: activity-package Run references the preceding learning-analysis Run and selected analysis Artifact.
+- Base: ordinary chat sends no course/workflow fields and behaves as before.
+- Bad: accepting a parent Run from another conversation creates a cross-context chain and must be rejected.
+
+### 6. Tests Required
+
+- API test asserts `message_start.course_id` and `workflow_id` match the request.
+- API test asserts a foreign/cross-conversation `parent_run_id` returns `parent_run_not_found`.
+- Migration check runs `alembic upgrade head`; revision IDs must fit `alembic_version.version_num` (32 chars).
+
+### 7. Wrong vs Correct
+
+```python
+# Wrong: trust an arbitrary client parent ID.
+run_values["parent_run_id"] = parent_run_id
+
+# Correct: scope lookup by workspace and verify the same conversation first.
+parent = agent_runs.get(workspace_id, parent_run_id)
+if parent is None or parent.conversation_id != conversation.id:
+    raise AppError(code="parent_run_not_found", status_code=422, message="...")
+```
+
 ---
 
 ## Query Patterns

@@ -5,6 +5,13 @@ export interface Workspace {
   role: WorkspaceRole
 }
 
+export interface CourseContext {
+  courseId: string
+  courseName: string
+  workflowId: string
+  workflowName: string
+}
+
 export interface CreatedWorkspace {
   workspace: Workspace
   token: string
@@ -241,6 +248,9 @@ export async function* streamMessage(options: {
   agentId?: string | null
   selectedAttachmentIds: string[]
   selectedArtifactIds: string[]
+  courseContext?: CourseContext
+  parentRunId?: string | null
+  inputRefs?: string[]
   signal: AbortSignal
 }): AsyncGenerator<StreamEvent> {
   const response = await fetch(`/api/conversations/${options.conversationId}/messages/stream`, {
@@ -254,6 +264,10 @@ export async function* streamMessage(options: {
       agent_id: options.agentId ?? null,
       selected_attachment_ids: options.selectedAttachmentIds,
       selected_artifact_ids: options.selectedArtifactIds,
+      course_id: options.courseContext?.courseId ?? null,
+      workflow_id: options.courseContext?.workflowId ?? null,
+      parent_run_id: options.parentRunId ?? null,
+      input_refs: options.inputRefs ?? [],
     }),
     signal: options.signal,
   })

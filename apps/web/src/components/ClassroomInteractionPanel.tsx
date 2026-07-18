@@ -2,7 +2,6 @@ import { BookOpenCheck, ChevronDown, ClipboardList, FileCheck2, MessageCircleQue
 import { useMemo, useState, type ReactNode } from 'react'
 import type { Artifact, Attachment } from '../api'
 import type { RouteState, RunStatus } from '../hooks/useWorkspaceChat'
-import ArtifactCard from './ArtifactCard'
 
 interface ClassroomInteractionPanelProps {
   attachments: Attachment[]
@@ -27,7 +26,7 @@ type InteractionMode = 'activity' | 'observation' | 'summary'
 
 const statusLabel: Record<RunStatus, string> = {
   idle: '空闲',
-  running: '处理中',
+  running: '执行中 · 详情在中间',
   completed: '已完成',
   needs_input: '需要补充',
   failed: '执行失败',
@@ -215,15 +214,28 @@ export default function ClassroomInteractionPanel({
         {shownArtifacts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-outline-variant p-5 text-center text-[10px] text-outline"><ClipboardList className="mx-auto mb-1 h-5 w-5" />生成活动包或课堂观察后，成果会显示在这里。</div>
         ) : shownArtifacts.map((artifact) => (
-          <ArtifactCard
-            key={artifact.id}
-            artifact={artifact}
-            selectable={artifact.type !== 'classroom_summary'}
-            selected={selectedArtifactIds.includes(artifact.id)}
-            onToggle={() => onToggleArtifact(artifact.id)}
-            onExport={onExport}
-            sourceArtifacts={artifact.type === 'classroom_summary' ? selectedArtifacts.filter((source) => source.id !== artifact.id) : undefined}
-          />
+          <div key={artifact.id} className="flex items-center gap-2 rounded-xl border border-outline-variant/70 bg-white px-3 py-2.5">
+            {artifact.type !== 'classroom_summary' && (
+              <input
+                type="checkbox"
+                checked={selectedArtifactIds.includes(artifact.id)}
+                onChange={() => onToggleArtifact(artifact.id)}
+                className="h-3.5 w-3.5 accent-primary"
+                aria-label={`选择成果：${artifact.title}`}
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[10px] font-extrabold text-on-surface">{artifact.title}</p>
+              <p className="mt-0.5 text-[9px] text-outline">{artifactTypeLabel(artifact.type)} · 已在中间对话区展示详情</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void onExport(artifact, 'markdown')}
+              className="shrink-0 rounded-lg border border-outline-variant px-2 py-1 text-[9px] font-extrabold text-primary hover:bg-primary/5"
+            >
+              导出
+            </button>
+          </div>
         ))}
         {selectedCount > 0 && (
           <button disabled={isBusy} onClick={() => onPrompt('生成后续练习')} type="button" className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[10px] font-extrabold text-primary disabled:cursor-not-allowed disabled:opacity-40">
@@ -241,4 +253,17 @@ function ModeButton({ active, onClick, icon, label }: { active: boolean; onClick
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return <label className="block text-[10px] font-bold text-on-surface-variant">{label}<input value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-white px-2.5 py-2 text-xs outline-none focus:border-primary" /></label>
+}
+
+function artifactTypeLabel(type: string): string {
+  switch (type) {
+    case 'classroom_activity_package':
+      return '课堂活动包'
+    case 'classroom_observation':
+      return '课堂观察'
+    case 'classroom_summary':
+      return '课后总结'
+    default:
+      return '课堂成果'
+  }
 }

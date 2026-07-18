@@ -212,6 +212,51 @@ def test_auto_stream_emits_selected_agent_and_run_id(client: TestClient) -> None
     assert events["done"]["run_id"] == events["message_start"]["run_id"]
 
 
+def test_stream_preserves_course_workflow_context_in_run_events(client: TestClient) -> None:
+    token = make_workspace(client, "teacher")
+    conversation = create_conversation(client, token)
+    client.app.state.chat_provider = FakeChatProvider(deltas=("已关联课程",))
+
+    response = client.post(
+        f"/api/conversations/{conversation['id']}/messages/stream",
+        json={
+            "content": "分析这份成绩表",
+            "course_id": "python-programming",
+            "workflow_id": "learning-analysis-to-activity",
+            "input_refs": ["attachment:demo"],
+        },
+        headers=auth(token),
+    )
+
+    assert response.status_code == 200
+    events = read_events(response.text)
+    assert events["message_start"]["course_id"] == "python-programming"
+    assert events["message_start"]["workflow_id"] == "learning-analysis-to-activity"
+
+
+def test_stream_rejects_parent_run_from_another_conversation(client: TestClient) -> None:
+    token = make_workspace(client, "teacher")
+    first_conversation = create_conversation(client, token)
+    second_conversation = create_conversation(client, token)
+    client.app.state.chat_provider = FakeChatProvider(deltas=("第一步",))
+
+    first = client.post(
+        f"/api/conversations/{first_conversation['id']}/messages/stream",
+        json={"content": "生成第一步"},
+        headers=auth(token),
+    )
+    parent_run_id = read_events(first.text)["message_start"]["run_id"]
+
+    chained = client.post(
+        f"/api/conversations/{second_conversation['id']}/messages/stream",
+        json={"content": "生成下一步", "parent_run_id": parent_run_id},
+        headers=auth(token),
+    )
+
+    assert chained.status_code == 422
+    assert chained.json()["error"]["code"] == "parent_run_not_found"
+
+
 def test_new_conversation_ignores_previous_workspace_attachment_for_routing(
     client: TestClient,
 ) -> None:

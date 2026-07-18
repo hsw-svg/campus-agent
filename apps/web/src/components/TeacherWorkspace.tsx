@@ -34,7 +34,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { exportArtifact, type Artifact, type Attachment } from '../api';
+import { exportArtifact, type Artifact, type Attachment, type CourseContext } from '../api';
 import { Role, Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ClassroomInteractionPanel from './ClassroomInteractionPanel';
@@ -44,6 +44,13 @@ interface TeacherWorkspaceProps {
   token: string | null;
   onBackToRoles: () => void;
 }
+
+const TEACHER_COURSE_CONTEXT: CourseContext = {
+  courseId: 'python-programming',
+  courseName: 'Python 程序设计',
+  workflowId: 'learning-analysis-to-activity',
+  workflowName: '学情分析 → 课堂活动包',
+};
 
 function isLearningTable(attachment: Attachment): boolean {
   return /\.(csv|xlsx?|xls)$/i.test(attachment.filename)
@@ -89,7 +96,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     runStatus,
     route,
     toolStatus,
-  } = useWorkspaceChat(token);
+  } = useWorkspaceChat(token, TEACHER_COURSE_CONTEXT);
   const [progressBarWidth, setProgressBarWidth] = useState('w-0');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -411,6 +418,12 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             <div className="flex items-center gap-1 px-3 py-1 bg-surface-container-high rounded-full border border-outline-variant shadow-xs">
               <ShieldCheck className="w-4 h-4 text-primary" />
               <span className="text-xs font-bold text-on-surface-variant font-sans">匿名教师工作空间</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[10px] font-bold text-primary">
+              <BookOpen className="h-3.5 w-3.5" />
+              <span>{TEACHER_COURSE_CONTEXT.courseName}</span>
+              <span className="text-primary/60">·</span>
+              <span>{TEACHER_COURSE_CONTEXT.workflowName}</span>
             </div>
             
             <nav className="hidden md:flex gap-6">

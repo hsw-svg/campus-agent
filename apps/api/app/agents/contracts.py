@@ -64,6 +64,10 @@ class AgentRequest:
     content: str
     selected_attachment_ids: tuple[UUID, ...] = ()
     selected_artifact_ids: tuple[UUID, ...] = ()
+    course_id: str | None = None
+    workflow_id: str | None = None
+    parent_run_id: UUID | None = None
+    input_refs: tuple[str, ...] = ()
     context: AgentContext = field(default_factory=AgentContext)
 
 

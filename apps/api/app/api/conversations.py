@@ -80,6 +80,10 @@ class StreamMessageRequest(BaseModel):
     agent_id: str | None = None
     selected_attachment_ids: list[UUID] | None = None
     selected_artifact_ids: list[UUID] | None = None
+    course_id: str | None = Field(default=None, max_length=96)
+    workflow_id: str | None = Field(default=None, max_length=96)
+    parent_run_id: UUID | None = None
+    input_refs: list[str] | None = Field(default=None, max_length=64)
 
 
 class RouteRequest(BaseModel):
@@ -242,6 +246,10 @@ async def stream_message(
         router=AgentRouter(chat_provider),
         selected_attachment_ids=payload.selected_attachment_ids,
         selected_artifact_ids=payload.selected_artifact_ids,
+        course_id=payload.course_id,
+        workflow_id=payload.workflow_id,
+        parent_run_id=payload.parent_run_id,
+        input_refs=payload.input_refs,
     )
     return StreamingResponse(
         generator,

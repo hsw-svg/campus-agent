@@ -8,6 +8,10 @@
 4. [x] 更新 `ResourcePicker`、`ClassroomInteractionPanel` 和教师工作台 props，准确显示两个资料来源。
 5. [x] 将教师“分析学情”快捷按钮接入选中资料检查和真实 `sendMessage`，移除该入口对 `startAnalysis` 演示流程的依赖。
 6. [x] 增加后端附件接口/仓储回归测试和前端静态/浏览器冒烟验证。
+7. [x] 将课程、对话、AgentRun、Artifact 的组织原则写入设计、开发和前端文档。
+8. [x] 右侧课堂互动面板改为成果索引，完整 Artifact 只在中间对话区展示。
+9. [x] 增加统一 \`RunRequest\` 和同意图运行中的前端去重。
+10. [x] 引入轻量 \`CourseContext\` 与教学闭环的父子 Run/Artifact 引用。
 
 ## Validation
 
@@ -15,6 +19,7 @@
 - `cd apps/web; npm.cmd run build`
 - `cd apps/api; ..\\..\\.venv\\Scripts\\python.exe -m pytest`
 - 浏览器：角色进入 → 工作区资料可见 → 新建对话仍可见 → 勾选资料 → 分析学情 → 验证真实任务状态/结果；同时确认当前对话附件空状态文案。
+- 交互回归：右侧点击生成活动包时，中间区和右侧区只显示同一个运行状态；活动包完整内容只出现一个详细展示位置。
 
 ## Risky Files / Rollback Points
 

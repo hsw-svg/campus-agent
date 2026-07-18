@@ -90,6 +90,10 @@ async def retry_agent_run(
         router=AgentRouter(chat_provider),
         selected_attachment_ids=tuple(UUID(item) for item in (run.selected_attachment_ids or [])),
         selected_artifact_ids=tuple(UUID(item) for item in (run.selected_artifact_ids or [])),
+        course_id=run.course_id,
+        workflow_id=run.workflow_id,
+        parent_run_id=run.parent_run_id,
+        input_refs=tuple(run.input_refs or []),
         existing_run=run,
         existing_user_message=message,
     )

@@ -16,7 +16,8 @@ Questions to answer:
 - What are the patterns for derived state?
 -->
 
-(To be filled by the team)
+当前工作台不引入额外全局状态库。跨组件的会话、附件、SSE 运行状态由
+`src/hooks/useWorkspaceChat.ts` 统一协调，组件只接收数据和回调；短暂的展示状态保留在组件内部。
 
 ---
 
@@ -24,7 +25,13 @@ Questions to answer:
 
 <!-- Local state, global state, server state, URL state -->
 
-(To be filled by the team)
+### Workspace 与 conversation 状态
+
+- `workspaceAttachments` 是工作台资料库，切换新对话时保留。
+- `conversationAttachments` 只表示当前对话附件；新建对话不应创建空的后端 conversation。
+- `messages`、`isAiTyping`、`runStatus`、`toolStatus` 和 `artifacts` 只能从同一个
+  `useWorkspaceChat` 实例读取，不能在右侧功能区另起一套“处理中”或成果状态。
+- 组件可维护弹窗开关、折叠状态、当前勾选项等局部 UI 状态，但不能复制运行状态。
 
 ---
 
@@ -32,7 +39,20 @@ Questions to answer:
 
 <!-- Criteria for promoting state to global -->
 
-(To be filled by the team)
+### 单任务源、双视图
+
+一次用户意图只允许创建一次执行请求。提交前由 hook 按以下字段生成临时签名并阻止重复提交：
+
+```ts
+const requestSignature = [
+  content,
+  ...selectedAttachmentIds.slice().sort(),
+  ...selectedArtifactIds.slice().sort(),
+].join('|')
+```
+
+中间对话区负责执行叙事、消息流和完整 `ArtifactCard`；右侧功能区负责参数选择、执行入口、
+运行摘要和成果索引。右侧成果索引只能引用中间区成果，不得再次渲染完整成果详情。
 
 ---
 
@@ -40,7 +60,8 @@ Questions to answer:
 
 <!-- How server data is cached and synchronized -->
 
-(To be filled by the team)
+调用后端 API、SSE 和附件列表的状态放在 `useWorkspaceChat` 内，通过返回值下发。所有执行入口
+必须走同一个 `sendMessage` 或明确的统一运行函数，不得在组件中使用本地 `setTimeout` 模拟成功。
 
 ---
 
@@ -48,4 +69,11 @@ Questions to answer:
 
 <!-- State management mistakes your team has made -->
 
-(To be filled by the team)
+### Common Mistakes
+
+- **错误**：右侧按钮直接启动本地 loading，同时中间区再发送一次消息。
+  **正确**：右侧只构造参数并调用统一执行入口；loading 由 `isAiTyping/runStatus` 单一来源驱动。
+- **错误**：右侧复制完整 `ArtifactCard`，导致一个成果出现两份详情。
+  **正确**：右侧显示标题、类型、状态和“详情在中间对话区展示”，完整内容只在中间区展示。
+- **错误**：新对话初始化时把工作台资料误当作当前会话附件，或为此创建空 conversation。
+  **正确**：保留 `workspaceAttachments`，只有用户明确上传到当前对话时才更新 `conversationAttachments`。

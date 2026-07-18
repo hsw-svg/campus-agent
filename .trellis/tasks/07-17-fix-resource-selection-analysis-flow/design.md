@@ -49,3 +49,13 @@
 ## Rollback
 
 若工作区级上传 API 出现问题，可暂时回退前端上传到现有会话级端点；读取和显示状态拆分仍可保留，不涉及迁移回滚。
+
+## 第二阶段：单任务源与双视图
+
+当前后端已经通过 \`AgentRun\` 和 SSE \`run_id\` 表达一次执行；本阶段不新增数据库字段，先收敛前端职责：
+
+- 中间对话区是完整消息和 Artifact 的唯一详细展示位置。
+- 右侧 \`ClassroomInteractionPanel\` 只负责参数、资料、运行摘要、成果选择和下一步操作。
+- 右侧不再渲染完整 \`ArtifactCard\`，避免与中间区重复。
+- 中间区和右侧区继续读取 \`useWorkspaceChat\` 的 \`isAiTyping\`、\`runStatus\`、\`toolStatus\` 和 \`route\`。
+- 后续课程上下文和教学闭环以 \`course_id\`、\`workflow_id\`、\`input_refs\` 为扩展方向，暂不扩大本轮附件修复的后端数据模型。

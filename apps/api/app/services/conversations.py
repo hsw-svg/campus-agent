@@ -86,6 +86,10 @@ async def stream_assistant_reply(
     router: AgentRouter | None = None,
     selected_attachment_ids: Sequence[UUID] | None = None,
     selected_artifact_ids: Sequence[UUID] | None = None,
+    course_id: str | None = None,
+    workflow_id: str | None = None,
+    parent_run_id: UUID | None = None,
+    input_refs: Sequence[str] | None = None,
     existing_run: AgentRun | None = None,
     existing_user_message: Message | None = None,
 ) -> AsyncIterator[str]:
@@ -105,6 +109,14 @@ async def stream_assistant_reply(
         ),
         selection_source="manual" if agent_id is not None or conversation.agent_id is not None else "fallback",
     )
+    if parent_run_id is not None and agent_runs is not None:
+        parent_run = agent_runs.get(workspace_id, parent_run_id)
+        if parent_run is None or parent_run.conversation_id != conversation.id:
+            raise AppError(
+                code="parent_run_not_found",
+                message="The parent teaching run is not available in this conversation.",
+                status_code=422,
+            )
     if router is not None and attachments is not None and agent_runs is not None:
         route_decision = await classify_message(
             router=router,
@@ -159,6 +171,10 @@ async def stream_assistant_reply(
                 if selected_artifact_ids is not None
                 else None
             ),
+            "course_id": course_id,
+            "workflow_id": workflow_id,
+            "parent_run_id": parent_run_id,
+            "input_refs": list(input_refs) if input_refs is not None else None,
             "status": "awaiting_confirmation"
             if route_decision.requires_confirmation
             else "running",
@@ -183,6 +199,9 @@ async def stream_assistant_reply(
                 "selection_source": route_decision.selection_source,
                 "confidence": route_decision.confidence,
                 "run_id": str(run.id) if run else None,
+                "course_id": course_id,
+                "workflow_id": workflow_id,
+                "parent_run_id": str(parent_run_id) if parent_run_id else None,
             },
         )
         yield stream_event(
@@ -288,6 +307,10 @@ async def stream_assistant_reply(
                 content=user_content,
                 selected_attachment_ids=normalized_attachment_ids,
                 selected_artifact_ids=tuple(selected_artifact_ids or ()),
+                course_id=course_id,
+                workflow_id=workflow_id,
+                parent_run_id=parent_run_id,
+                input_refs=tuple(input_refs or ()),
                 context=context,
             )
             spec = get_agent_spec(role, resolved_agent) if resolved_agent else None

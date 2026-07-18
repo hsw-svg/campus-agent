@@ -16,6 +16,7 @@ import {
   type Artifact,
   type Attachment,
   type Conversation,
+  type CourseContext,
   type StreamEvent,
   type SourceCitation,
 } from '../api'
@@ -71,7 +72,7 @@ function eventError(event: StreamEvent): ApiError {
   )
 }
 
-export function useWorkspaceChat(token: string | null) {
+export function useWorkspaceChat(token: string | null, courseContext?: CourseContext) {
   const [chatMessages, setChatMessages] = useState<Message[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [workspaceAttachments, setWorkspaceAttachments] = useState<Attachment[]>([])
@@ -91,6 +92,7 @@ export function useWorkspaceChat(token: string | null) {
   const streamFailedRef = useRef(false)
   const streamCompletedRef = useRef(false)
   const lastPromptRef = useRef('')
+  const activeRequestSignatureRef = useRef<string | null>(null)
   const resourceVersionRef = useRef(0)
   const workspaceResourceVersionRef = useRef(0)
 
@@ -198,7 +200,15 @@ export function useWorkspaceChat(token: string | null) {
 
   const sendMessage = useCallback(async (rawContent: string) => {
     const content = rawContent.trim()
-    if (!token || !content || isAiTyping) return
+    const requestSignature = [
+      content,
+      courseContext?.courseId ?? '',
+      courseContext?.workflowId ?? '',
+      ...selectedAttachmentIds.slice().sort(),
+      ...selectedArtifactIds.slice().sort(),
+    ].join('|')
+    if (!token || !content || isAiTyping || activeRequestSignatureRef.current === requestSignature) return
+    activeRequestSignatureRef.current = requestSignature
     lastPromptRef.current = content
     setError(null)
     setRunStatus('running')
@@ -240,6 +250,12 @@ export function useWorkspaceChat(token: string | null) {
         content,
         selectedAttachmentIds,
         selectedArtifactIds,
+        courseContext,
+        parentRunId: route?.runId ?? null,
+        inputRefs: [
+          ...selectedAttachmentIds.map((id) => `attachment:${id}`),
+          ...selectedArtifactIds.map((id) => `artifact:${id}`),
+        ],
         signal: controller.signal,
       })) {
         handleStreamEvent(event, assistantMessage.id, conversationId)
@@ -272,6 +288,7 @@ export function useWorkspaceChat(token: string | null) {
     } finally {
       setIsAiTyping(false)
       abortRef.current = null
+      activeRequestSignatureRef.current = null
     }
 
     function handleStreamEvent(event: StreamEvent, assistantId: string, currentConversationId: string) {
@@ -346,7 +363,7 @@ export function useWorkspaceChat(token: string | null) {
         }
       }
     }
-  }, [activeConversationId, isAiTyping, refreshConversations, refreshResources, refreshWorkspaceAttachments, selectedArtifactIds, selectedAttachmentIds, token])
+  }, [activeConversationId, courseContext, isAiTyping, refreshConversations, refreshResources, refreshWorkspaceAttachments, route?.runId, selectedArtifactIds, selectedAttachmentIds, token])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {
