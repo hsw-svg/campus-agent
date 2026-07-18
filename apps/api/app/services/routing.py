@@ -20,9 +20,9 @@ def make_route_context(
 ) -> RouteContext:
     selected = (
         attachments.list_selected_for_conversation(
-            workspace_id, conversation.id, selected_attachment_ids
+            workspace_id, conversation.id, selected_attachment_ids, conversation.course_id
         )
-        if selected_attachment_ids is not None
+        if selected_attachment_ids is not None or conversation.course_id is not None
         else []
     )
     attachment_facts = tuple(
@@ -31,7 +31,7 @@ def make_route_context(
     )
     workspace_attachment_facts = tuple(
         _attachment_fact(attachment)
-        for attachment in attachments.list_for_conversation(workspace_id, conversation.id)
+        for attachment in attachments.list_for_conversation(workspace_id, conversation.id, conversation.course_id)
     )
     recent_messages = tuple(
         {

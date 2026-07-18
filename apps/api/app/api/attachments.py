@@ -29,6 +29,7 @@ class AttachmentResponse(BaseModel):
 
     id: UUID
     conversation_id: UUID | None
+    course_id: UUID | None
     filename: str
     content_type: str
     size_bytes: int
@@ -67,6 +68,7 @@ async def upload_attachment(
         workspace=workspace,
         conversation_id=conversation.id if scope == "conversation" else None,
         scope=scope,
+        course_id=conversation.course_id,
         attachments=attachments,
         storage=storage,
         embedding_provider=embedding_provider,
@@ -91,16 +93,17 @@ def list_workspace_attachments(
     conversations: ConversationRepository = Depends(get_conversation_repository),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
 ) -> list[AttachmentResponse]:
-    get_owned_conversation(conversations, workspace.id, conversation_id)
-    return attachments.list_workspace_for_conversation(workspace.id)
+    conversation = get_owned_conversation(conversations, workspace.id, conversation_id)
+    return attachments.list_workspace_for_conversation(workspace.id, conversation.course_id)
 
 
 @workspace_attachment_router.get("/current/attachments", response_model=list[AttachmentResponse])
 def list_current_workspace_attachments(
+    course_id: UUID | None = None,
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
 ) -> list[AttachmentResponse]:
-    return attachments.list_workspace_for_conversation(workspace.id)
+    return attachments.list_workspace_for_conversation(workspace.id, course_id)
 
 
 @workspace_attachment_router.post(
@@ -110,6 +113,7 @@ def list_current_workspace_attachments(
 )
 async def upload_workspace_attachment(
     file: UploadFile = File(...),
+    course_id: UUID | None = None,
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
     storage: ObjectStorage = Depends(get_object_storage),
@@ -120,6 +124,7 @@ async def upload_workspace_attachment(
         workspace=workspace,
         conversation_id=None,
         scope="workspace",
+        course_id=course_id,
         attachments=attachments,
         storage=storage,
         embedding_provider=embedding_provider,
@@ -132,6 +137,7 @@ async def _create_uploaded_attachment(
     workspace: AnonymousWorkspace,
     conversation_id: UUID | None,
     scope: str,
+    course_id: UUID | None = None,
     attachments: AttachmentRepository,
     storage: ObjectStorage,
     embedding_provider: EmbeddingProvider,
@@ -145,6 +151,7 @@ async def _create_uploaded_attachment(
         id=attachment_id,
         workspace_id=workspace.id,
         conversation_id=conversation_id,
+        course_id=course_id,
         filename=filename,
         content_type=file.content_type or "application/octet-stream",
         size_bytes=len(content),

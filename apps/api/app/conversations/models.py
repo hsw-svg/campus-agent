@@ -23,6 +23,9 @@ class Conversation(Base):
         nullable=False,
         index=True,
     )
+    course_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("course.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False, default="新对话")
     agent_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

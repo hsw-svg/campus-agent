@@ -59,3 +59,10 @@
 - 右侧不再渲染完整 \`ArtifactCard\`，避免与中间区重复。
 - 中间区和右侧区继续读取 \`useWorkspaceChat\` 的 \`isAiTyping\`、\`runStatus\`、\`toolStatus\` 和 \`route\`。
 - 后续课程上下文和教学闭环以 \`course_id\`、\`workflow_id\`、\`input_refs\` 为扩展方向，暂不扩大本轮附件修复的后端数据模型。
+
+## 第三阶段：课程容器与任务导航
+
+- `Course` 是工作区内的课程容器；`Conversation` 在产品层称为任务，并通过可空 `course_id` 归属课程。
+- `Attachment.course_id` 控制课程资料隔离；课程任务可读本课程资料和通用资料，独立任务只读通用资料。
+- 左侧以“新建任务 / 课程 / 独立任务”组织导航，课程之间不混列任务。
+- 首次发送时才创建 Conversation，避免切换课程或点击新建任务产生空记录。

@@ -13,8 +13,8 @@ class ConversationRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def create(self, workspace_id: UUID, title: str, agent_id: str | None) -> Conversation:
-        conversation = Conversation(workspace_id=workspace_id, title=title, agent_id=agent_id)
+    def create(self, workspace_id: UUID, title: str, agent_id: str | None, course_id: UUID | None = None) -> Conversation:
+        conversation = Conversation(workspace_id=workspace_id, title=title, agent_id=agent_id, course_id=course_id)
         self.session.add(conversation)
         self.session.commit()
         self.session.refresh(conversation)

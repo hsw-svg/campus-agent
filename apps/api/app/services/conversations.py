@@ -32,6 +32,7 @@ def create_conversation(
     workspace_id: UUID,
     role: str,
     agent_id: str | None,
+    course_id: UUID | None = None,
 ) -> Conversation:
     if agent_id is not None and not is_agent_available_for_role(role, agent_id):
         raise AppError(
@@ -39,7 +40,7 @@ def create_conversation(
             message="The requested agent is not available for this role.",
             status_code=400,
         )
-    return conversations.create(workspace_id=workspace_id, title=DEFAULT_TITLE, agent_id=agent_id)
+    return conversations.create(workspace_id=workspace_id, title=DEFAULT_TITLE, agent_id=agent_id, course_id=course_id)
 
 
 def get_owned_conversation(

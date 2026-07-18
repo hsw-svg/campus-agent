@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
@@ -28,7 +27,8 @@ class AttachmentRepository:
             )
         )
 
-    def list_for_conversation(self, workspace_id: UUID, conversation_id: UUID) -> list[Attachment]:
+    def list_for_conversation(self, workspace_id: UUID, conversation_id: UUID, course_id: UUID | None = None) -> list[Attachment]:
+        course_filter = Attachment.course_id.is_(None) if course_id is None else ((Attachment.course_id == course_id) | Attachment.course_id.is_(None))
         return list(
             self.session.scalars(
                 select(Attachment)
@@ -36,6 +36,7 @@ class AttachmentRepository:
                     Attachment.workspace_id == workspace_id,
                     (Attachment.conversation_id == conversation_id)
                     | (Attachment.conversation_id.is_(None)),
+                    course_filter,
                 )
                 .order_by(Attachment.created_at)
             )
@@ -53,13 +54,15 @@ class AttachmentRepository:
             )
         )
 
-    def list_workspace_for_conversation(self, workspace_id: UUID) -> list[Attachment]:
+    def list_workspace_for_conversation(self, workspace_id: UUID, course_id: UUID | None = None) -> list[Attachment]:
+        course_filter = Attachment.course_id.is_(None) if course_id is None else ((Attachment.course_id == course_id) | Attachment.course_id.is_(None))
         return list(
             self.session.scalars(
                 select(Attachment)
                 .where(
                     Attachment.workspace_id == workspace_id,
                     Attachment.conversation_id.is_(None),
+                    course_filter,
                 )
                 .order_by(Attachment.created_at)
             )
@@ -70,19 +73,31 @@ class AttachmentRepository:
         workspace_id: UUID,
         conversation_id: UUID,
         attachment_ids: Sequence[UUID] | None = None,
+        course_id: UUID | None = None,
     ) -> list[Attachment]:
-        """Return explicitly selected files, defaulting to current uploads.
+        """Return the files allowed for a conversation.
 
-        Workspace-scoped files are available only when their IDs are supplied;
-        this prevents a generic request from implicitly reading the workspace
-        library.
+        Course conversations use every course-visible file when no explicit
+        selection is provided.  Unassigned conversations retain the legacy
+        behavior of using only their own uploads by default.
         """
 
         if attachment_ids is None:
-            return self.list_current_for_conversation(workspace_id, conversation_id)
+            if course_id is None:
+                return self.list_current_for_conversation(workspace_id, conversation_id)
+            attachment_ids = tuple(
+                attachment.id
+                for attachment in self.list_for_conversation(workspace_id, conversation_id, course_id)
+            )
+        elif course_id is not None and not attachment_ids:
+            attachment_ids = tuple(
+                attachment.id
+                for attachment in self.list_for_conversation(workspace_id, conversation_id, course_id)
+            )
         unique_ids = tuple(dict.fromkeys(attachment_ids))
         if not unique_ids:
             return []
+        course_filter = Attachment.course_id.is_(None) if course_id is None else ((Attachment.course_id == course_id) | Attachment.course_id.is_(None))
         selected = list(
             self.session.scalars(
                 select(Attachment)
@@ -91,6 +106,7 @@ class AttachmentRepository:
                     Attachment.id.in_(unique_ids),
                     (Attachment.conversation_id == conversation_id)
                     | (Attachment.conversation_id.is_(None)),
+                    course_filter,
                 )
                 .order_by(Attachment.created_at)
             )
@@ -135,10 +151,11 @@ class AttachmentRepository:
         )
 
     def list_chunks_for_attachments(
-        self, workspace_id: UUID, conversation_id: UUID, attachment_ids: Sequence[UUID]
+        self, workspace_id: UUID, conversation_id: UUID, attachment_ids: Sequence[UUID], course_id: UUID | None = None
     ) -> list[MaterialChunk]:
         if not attachment_ids:
             return []
+        course_filter = Attachment.course_id.is_(None) if course_id is None else ((Attachment.course_id == course_id) | Attachment.course_id.is_(None))
         return list(
             self.session.scalars(
                 select(MaterialChunk)
@@ -149,6 +166,7 @@ class AttachmentRepository:
                     Attachment.id.in_(tuple(attachment_ids)),
                     (Attachment.conversation_id == conversation_id)
                     | (Attachment.conversation_id.is_(None)),
+                    course_filter,
                 )
                 .order_by(Attachment.created_at, MaterialChunk.chunk_index)
             )
@@ -189,15 +207,19 @@ class Retriever:
         query_embedding: list[float] | None = None,
         agent_id: str | None = None,
         attachment_ids: Sequence[UUID] | None = None,
+        course_id: UUID | None = None,
     ) -> list[MaterialChunk]:
         conditions = [
             MaterialChunk.workspace_id == workspace_id,
             (MaterialChunk.conversation_id == conversation_id)
             | (MaterialChunk.conversation_id.is_(None)),
         ]
+        course_filter = Attachment.course_id.is_(None) if course_id is None else ((Attachment.course_id == course_id) | Attachment.course_id.is_(None))
+        conditions.append(course_filter)
+        statement = select(MaterialChunk).join(Attachment, MaterialChunk.attachment_id == Attachment.id)
         if attachment_ids is not None:
             conditions.append(MaterialChunk.attachment_id.in_(tuple(attachment_ids)))
-        chunks = list(self.session.scalars(select(MaterialChunk).where(*conditions)))
+        chunks = list(self.session.scalars(statement.where(*conditions)))
         if agent_id != "learning_analysis":
             chunks = [chunk for chunk in chunks if not is_learning_analysis_material(chunk)]
         normalized_query = query.strip().lower()

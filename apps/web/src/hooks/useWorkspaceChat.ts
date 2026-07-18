@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   createConversation,
@@ -109,13 +109,16 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     if (!token) return
     const resourceVersion = ++workspaceResourceVersionRef.current
     try {
-      const resources = await listWorkspaceAttachments(token)
+      const resources = await listWorkspaceAttachments(token, courseContext?.courseId)
       if (resourceVersion !== workspaceResourceVersionRef.current) return
       setWorkspaceAttachments(resources)
+      if (courseContext?.courseId) {
+        setSelectedAttachmentIds(resources.map((resource) => resource.id))
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法读取工作区资料库。')
     }
-  }, [token])
+  }, [token, courseContext?.courseId])
 
   const refreshResources = useCallback(async (conversationId: string) => {
     if (!token) return
@@ -190,21 +193,40 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     setConversationAttachments([])
     setArtifacts([])
     setCitations([])
-    setSelectedAttachmentIds([])
+    setSelectedAttachmentIds(courseContext?.courseId ? workspaceAttachments.map((attachment) => attachment.id) : [])
     setSelectedArtifactIds([])
     setRoute(null)
     setRunStatus('idle')
     setToolStatus(null)
     setError(null)
-  }, [])
+  }, [courseContext?.courseId, workspaceAttachments])
+
+  const attachments = useMemo(
+    () => mergeAttachments(conversationAttachments, workspaceAttachments),
+    [conversationAttachments, workspaceAttachments],
+  )
+
+  useEffect(() => {
+    if (!courseContext?.courseId) return
+    const allAttachmentIds = attachments.map((attachment) => attachment.id)
+    setSelectedAttachmentIds((current) => {
+      if (current.length === allAttachmentIds.length && current.every((id, index) => id === allAttachmentIds[index])) {
+        return current
+      }
+      return allAttachmentIds
+    })
+  }, [attachments, courseContext?.courseId, courseContext?.workflowId])
 
   const sendMessage = useCallback(async (rawContent: string) => {
     const content = rawContent.trim()
+    const requestAttachmentIds = courseContext?.courseId
+      ? mergeAttachments(conversationAttachments, workspaceAttachments).map((attachment) => attachment.id)
+      : selectedAttachmentIds
     const requestSignature = [
       content,
       courseContext?.courseId ?? '',
       courseContext?.workflowId ?? '',
-      ...selectedAttachmentIds.slice().sort(),
+      ...requestAttachmentIds.slice().sort(),
       ...selectedArtifactIds.slice().sort(),
     ].join('|')
     if (!token || !content || isAiTyping || activeRequestSignatureRef.current === requestSignature) return
@@ -217,7 +239,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     let conversationId = activeConversationId
     try {
       if (!conversationId) {
-        const created = await createConversation(token)
+        const created = await createConversation(token, courseContext?.courseId)
         conversationId = created.id
         setConversations((current) => [created, ...current])
         setActiveConversationId(conversationId)
@@ -248,12 +270,12 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         token,
         conversationId,
         content,
-        selectedAttachmentIds,
+        selectedAttachmentIds: requestAttachmentIds,
         selectedArtifactIds,
         courseContext,
         parentRunId: route?.runId ?? null,
         inputRefs: [
-          ...selectedAttachmentIds.map((id) => `attachment:${id}`),
+          ...requestAttachmentIds.map((id) => `attachment:${id}`),
           ...selectedArtifactIds.map((id) => `artifact:${id}`),
         ],
         signal: controller.signal,
@@ -363,7 +385,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         }
       }
     }
-  }, [activeConversationId, courseContext, isAiTyping, refreshConversations, refreshResources, refreshWorkspaceAttachments, route?.runId, selectedArtifactIds, selectedAttachmentIds, token])
+  }, [activeConversationId, conversationAttachments, courseContext, isAiTyping, refreshConversations, refreshResources, refreshWorkspaceAttachments, route?.runId, selectedArtifactIds, selectedAttachmentIds, token, workspaceAttachments])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {
@@ -393,24 +415,30 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     if (!token) return
     try {
       if (scope === 'workspace') {
-        const attachment = await uploadWorkspaceAttachment(token, file)
+        const attachment = await uploadWorkspaceAttachment(token, file, courseContext?.courseId)
         setWorkspaceAttachments((current) => mergeAttachments(current, [attachment]))
+        if (courseContext?.courseId) {
+          setSelectedAttachmentIds((current) => current.includes(attachment.id) ? current : [...current, attachment.id])
+        }
       } else {
         let conversationId = activeConversationId
         if (!conversationId) {
-          const created = await createConversation(token)
+          const created = await createConversation(token, courseContext?.courseId)
           conversationId = created.id
           setConversations((current) => [created, ...current])
           setActiveConversationId(conversationId)
         }
         const attachment = await uploadAttachment(token, conversationId, file, 'conversation')
         setConversationAttachments((current) => mergeAttachments(current, [attachment]))
+        if (courseContext?.courseId) {
+          setSelectedAttachmentIds((current) => current.includes(attachment.id) ? current : [...current, attachment.id])
+        }
       }
       setError(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '附件上传失败。')
     }
-  }, [token, activeConversationId])
+  }, [token, activeConversationId, courseContext?.courseId])
 
   const removeConversation = useCallback(async (conversationId: string) => {
     if (!token) return
@@ -422,8 +450,6 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       setError(reason instanceof Error ? reason.message : '删除对话失败。')
     }
   }, [token, activeConversationId, clearChat])
-
-  const attachments = mergeAttachments(conversationAttachments, workspaceAttachments)
 
   return {
     chatMessages,

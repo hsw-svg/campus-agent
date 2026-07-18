@@ -82,6 +82,7 @@ def retrieve_context(
     query: str,
     agent_id: str | None = None,
     attachment_ids: Sequence[UUID] | None = None,
+    course_id: UUID | None = None,
 ) -> list[MaterialChunk]:
     query_embedding: list[float] | None = None
     if embedding_provider.is_configured:
@@ -96,4 +97,5 @@ def retrieve_context(
         query_embedding=query_embedding,
         agent_id=agent_id,
         attachment_ids=attachment_ids,
+        course_id=course_id,
     )

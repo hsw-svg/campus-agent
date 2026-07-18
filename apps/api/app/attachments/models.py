@@ -38,6 +38,9 @@ class Attachment(Base):
         nullable=True,
         index=True,
     )
+    course_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("course.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(128), nullable=False, default="application/octet-stream")
     size_bytes: Mapped[int] = mapped_column(nullable=False)

@@ -6,6 +6,7 @@ from uuid import UUID
 from app.agents.contracts import AgentContext, ContextArtifact, ContextSource
 from app.agents.specs import AgentSpec, get_agent_spec
 from app.artifacts.repositories import ArtifactRepository
+from app.attachments.models import Attachment
 from app.attachments.repositories import AttachmentRepository, Retriever
 from app.attachments.policies import is_learning_analysis_material
 from app.conversations.models import Conversation, Message
@@ -59,8 +60,13 @@ class ContextBuilder:
         ):
             attachment_selection = ()
         selected = self.attachments.list_selected_for_conversation(
-            workspace_id, conversation.id, attachment_selection
+            workspace_id, conversation.id, attachment_selection, conversation.course_id
         )
+        if agent_id == "learning_analysis":
+            # The teacher workspace sends all course materials by default.  A
+            # learning analysis still consumes only table-shaped materials;
+            # course notes and slides remain available to the other agents.
+            selected = [attachment for attachment in selected if _is_learning_table(attachment)]
         selected_ids = tuple(attachment.id for attachment in selected)
         if spec.context_policy.requires_explicit_attachments and not selected:
             raise AppError(
@@ -72,7 +78,7 @@ class ContextBuilder:
 
         if agent_id == "learning_analysis":
             chunks = self.attachments.list_chunks_for_attachments(
-                workspace_id, conversation.id, selected_ids
+                workspace_id, conversation.id, selected_ids, conversation.course_id
             )
         else:
             chunks = retrieve_context(
@@ -83,6 +89,7 @@ class ContextBuilder:
                 query=content,
                 agent_id=agent_id,
                 attachment_ids=selected_ids,
+                course_id=conversation.course_id,
             )
             if selected_ids and not chunks:
                 # Explicit selection is itself a source decision.  Keep the
@@ -90,7 +97,7 @@ class ContextBuilder:
                 # finds no matching term, so a selected file is still
                 # citeable and answerable.
                 chunks = self.attachments.list_chunks_for_attachments(
-                    workspace_id, conversation.id, selected_ids
+                    workspace_id, conversation.id, selected_ids, conversation.course_id
                 )
         if spec.context_policy.exclude_learning_details:
             chunks = [chunk for chunk in chunks if not is_learning_analysis_material(chunk)]
@@ -142,7 +149,7 @@ class ContextBuilder:
                 + source_text,
             }
         attachment_chunks = self.attachments.list_chunks_for_attachments(
-            workspace_id, conversation.id, selected_ids
+            workspace_id, conversation.id, selected_ids, conversation.course_id
         )
         if spec.context_policy.exclude_learning_details:
             attachment_chunks = [
@@ -171,7 +178,6 @@ class ContextBuilder:
             ),
             selected_ids,
         )
-
     def _history(
         self, *, workspace_id: UUID, conversation_id: UUID, agent_id: str
     ) -> list[dict[str, str]]:
@@ -183,3 +189,10 @@ class ContextBuilder:
             for message in messages
             if agent_id == "learning_analysis" or message.agent_id != "learning_analysis"
         ]
+
+
+def _is_learning_table(attachment: Attachment) -> bool:
+    filename = attachment.filename.lower()
+    return filename.endswith((".csv", ".xlsx", ".xls")) or any(
+        marker in attachment.content_type.lower() for marker in ("csv", "spreadsheet", "excel")
+    )

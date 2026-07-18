@@ -7,6 +7,8 @@ interface ConversationHistoryProps {
   onOpen: (conversationId: string) => void
   onDelete: (conversationId: string) => void
   accentClass: string
+  heading?: string
+  compact?: boolean
 }
 
 export default function ConversationHistory({
@@ -15,12 +17,14 @@ export default function ConversationHistory({
   onOpen,
   onDelete,
   accentClass,
+  heading = '最近对话',
+  compact = false,
 }: ConversationHistoryProps) {
   return (
-    <div className="mt-6 border-t border-outline-variant pt-5">
-      <div className="px-3 py-1 mb-1 text-[11px] text-outline font-bold tracking-wider">最近对话</div>
+    <div className={compact ? 'mt-0 pt-1' : 'mt-6 border-t border-outline-variant pt-5'}>
+      {!compact && <div className="px-3 py-1 mb-1 text-[11px] text-outline font-bold tracking-wider">{heading}</div>}
       {conversations.length === 0 ? (
-        <div className="px-3 py-2 text-xs italic text-on-surface-variant opacity-60">暂无历史对话</div>
+        <div className="px-3 py-2 text-xs italic text-on-surface-variant opacity-60">{heading === '任务' ? '暂无任务' : '暂无历史对话'}</div>
       ) : (
         <div className="max-h-44 space-y-1 overflow-y-auto">
           {conversations.map((conversation) => (

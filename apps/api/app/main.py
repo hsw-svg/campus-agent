@@ -10,6 +10,7 @@ from app.api.attachments import router as attachments_router
 from app.api.attachments import workspace_attachment_router
 from app.api.agent_runs import router as agent_runs_router
 from app.api.artifacts import router as artifacts_router
+from app.api.courses import router as courses_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
@@ -21,6 +22,7 @@ from app.attachments.models import Attachment, MaterialChunk  # noqa: F401
 from app.agents.models import AgentRun  # noqa: F401
 from app.artifacts.models import Artifact  # noqa: F401
 from app.workspaces.models import AnonymousWorkspace
+from app.courses.models import Course  # noqa: F401
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -64,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(workspace_attachment_router)
     app.include_router(agent_runs_router)
     app.include_router(artifacts_router)
+    app.include_router(courses_router)
     return app
 
 

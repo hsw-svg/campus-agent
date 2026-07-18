@@ -12,6 +12,7 @@
 8. [x] 右侧课堂互动面板改为成果索引，完整 Artifact 只在中间对话区展示。
 9. [x] 增加统一 \`RunRequest\` 和同意图运行中的前端去重。
 10. [x] 引入轻量 \`CourseContext\` 与教学闭环的父子 Run/Artifact 引用。
+11. [x] 将 Conversation 产品化为任务，新增课程容器、独立任务和课程资料隔离。
 
 ## Validation
 

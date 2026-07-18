@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { 
   GraduationCap, 
   MessageSquarePlus, 
   History, 
   FolderOpen, 
-  Settings, 
   MoreVertical, 
   ShieldCheck, 
   Search, 
@@ -23,7 +22,7 @@ import {
   Link as LinkIcon, 
   Download, 
   Sparkles, 
-  FolderClosed, 
+  FolderClosed,
   FileText, 
   Check, 
   BookOpen, 
@@ -31,10 +30,11 @@ import {
   Brain, 
   HelpCircle,
   Copy,
-  ChevronRight
+  ChevronRight,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { exportArtifact, type Artifact, type Attachment, type CourseContext } from '../api';
+import { createCourse, exportArtifact, listCourses, type Artifact, type Attachment, type Course, type CourseContext } from '../api';
 import { Role, Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ClassroomInteractionPanel from './ClassroomInteractionPanel';
@@ -44,13 +44,6 @@ interface TeacherWorkspaceProps {
   token: string | null;
   onBackToRoles: () => void;
 }
-
-const TEACHER_COURSE_CONTEXT: CourseContext = {
-  courseId: 'python-programming',
-  courseName: 'Python 程序设计',
-  workflowId: 'learning-analysis-to-activity',
-  workflowName: '学情分析 → 课堂活动包',
-};
 
 function isLearningTable(attachment: Attachment): boolean {
   return /\.(csv|xlsx?|xls)$/i.test(attachment.filename)
@@ -64,7 +57,13 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const [analysisStep, setAnalysisStep] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'workbench' | 'resources' | 'analytics'>('workbench');
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
+  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
   const [showInteractionPanel, setShowInteractionPanel] = useState(false);
+  const [showCreateCourseDialog, setShowCreateCourseDialog] = useState(false);
+  const [newCourseName, setNewCourseName] = useState('');
+  const [newCourseDescription, setNewCourseDescription] = useState('');
 
   // Interactive Quiz State
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
@@ -72,8 +71,14 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
   // Chat/Input states
   const [inputVal, setInputVal] = useState('');
-  const [exportError, setExportError] = useState<string | null>(null);
   const [analysisActionNotice, setAnalysisActionNotice] = useState<string | null>(null);
+  const activeCourse = courses.find((course) => course.id === activeCourseId) ?? null;
+  const courseContext: CourseContext = {
+    courseId: activeCourse?.id ?? null,
+    courseName: activeCourse?.name ?? '任务',
+    workflowId: activeCourse ? 'learning-analysis-to-activity' : 'standalone-task',
+    workflowName: activeCourse ? '学情分析 → 课堂活动包' : '不关联课程',
+  };
   const {
     chatMessages,
     isAiTyping,
@@ -87,22 +92,46 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     removeConversation,
     attachments,
     artifacts,
-    selectedAttachmentIds,
     selectedArtifactIds,
-    toggleAttachment,
     toggleArtifact,
     stopStreaming,
-    retryLastMessage,
-    runStatus,
-    route,
-    toolStatus,
-  } = useWorkspaceChat(token, TEACHER_COURSE_CONTEXT);
+  } = useWorkspaceChat(token, courseContext);
   const [progressBarWidth, setProgressBarWidth] = useState('w-0');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatScrollRef = useRef<HTMLElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    void listCourses(token).then((items) => {
+      setCourses(items);
+      setActiveCourseId((current) => current ?? items[0]?.id ?? null);
+      setExpandedCourseId((current) => current ?? items[0]?.id ?? null);
+    }).catch(() => setAnalysisActionNotice('无法读取课程列表，请稍后重试。'));
+  }, [token]);
+
+  const openCreateCourseDialog = () => {
+    setNewCourseName('');
+    setNewCourseDescription('');
+    setShowCreateCourseDialog(true);
+  };
+
+  const handleCreateCourse = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token || !newCourseName.trim()) return;
+    try {
+      const course = await createCourse(token, newCourseName.trim(), newCourseDescription.trim() || undefined);
+      setCourses((current) => [course, ...current]);
+      setActiveCourseId(course.id);
+      setExpandedCourseId(course.id);
+      setShowCreateCourseDialog(false);
+      clearChat();
+    } catch (reason) {
+      setAnalysisActionNotice(reason instanceof Error ? reason.message : '创建课程失败，请重试。');
+    }
+  };
 
   // Auto-resize textarea
   useEffect(() => {
@@ -122,14 +151,15 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
   const startAnalysis = (_fileName?: string) => {
     setActiveTab('workbench');
-    const selected = attachments.filter((attachment) => selectedAttachmentIds.includes(attachment.id));
-    const selectedTable = selected.length === 1 && isLearningTable(selected[0]);
-    if (!selectedTable) {
-      setAnalysisActionNotice('请先在右侧资料选择中勾选一份可用的匿名学情表。');
+    if (!courseContext.courseId) {
+      setAnalysisActionNotice('请先选择一门课程，课程资料会自动用于学情分析。');
       return;
     }
-    if (!['indexed', 'degraded'].includes(selected[0].status)) {
-      setAnalysisActionNotice('该资料仍在解析中，请等待状态变为“可用”后再分析。');
+    const hasLearningTable = attachments.some((attachment) =>
+      isLearningTable(attachment) && ['indexed', 'degraded'].includes(attachment.status),
+    );
+    if (!hasLearningTable) {
+      setAnalysisActionNotice('当前课程暂无可用的匿名学情表，请先上传并等待资料解析完成。');
       return;
     }
     setAnalysisActionNotice(null);
@@ -270,24 +300,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     void sendMessage(finalMsg);
   };
 
-  const handleExportArtifact = async (artifact: Artifact, format: 'markdown' | 'csv') => {
-    if (!token) return;
-    try {
-      const blob = await exportArtifact(token, artifact.id, format);
-      setExportError(null);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `${artifact.title || artifact.id}.${format === 'csv' ? 'csv' : 'md'}`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    } catch (reason) {
-      setExportError(reason instanceof Error ? `导出失败：${reason.message}` : '导出失败，请重试。');
-    }
-  };
-
   const handleQuizAnswer = (questionId: string, optionIdx: number) => {
     setQuizAnswers(prev => ({
       ...prev,
@@ -301,24 +313,33 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
+  const handleExportArtifact = async (artifact: Artifact, format: 'markdown' | 'csv') => {
+    if (!token) return;
+    try {
+      const blob = await exportArtifact(token, artifact.id, format);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${artifact.title || artifact.id}.${format === 'csv' ? 'csv' : 'md'}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setAnalysisActionNotice(reason instanceof Error ? `导出失败：${reason.message}` : '导出失败，请重试。');
+    }
+  };
+
   const renderInteractionPanel = () => (
     <ClassroomInteractionPanel
+      courseContext={courseContext}
       attachments={attachments}
       artifacts={artifacts}
-      selectedAttachmentIds={selectedAttachmentIds}
       selectedArtifactIds={selectedArtifactIds}
-      onToggleAttachment={toggleAttachment}
       onToggleArtifact={toggleArtifact}
       onPrompt={handleSendMessage}
-      onUpload={(file) => uploadFile(file, 'workspace')}
       onExport={handleExportArtifact}
-      onStop={stopStreaming}
-      onRetry={retryLastMessage}
       isBusy={isAiTyping}
-      runStatus={runStatus}
-      toolStatus={toolStatus}
-      error={exportError}
-      route={route}
     />
   );
 
@@ -326,6 +347,29 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     <div className="flex h-screen w-full font-sans antialiased bg-[#EEF3F0] text-on-surface overflow-hidden">
       
       {/* 1. SIDEBAR NAVIGATION */}
+      {showCreateCourseDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/25 p-4" role="dialog" aria-modal="true" aria-labelledby="create-course-title">
+          <form onSubmit={handleCreateCourse} className="w-full max-w-md rounded-2xl border border-outline-variant bg-surface p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="mb-1 text-[11px] font-bold tracking-widest text-primary">课程空间</p>
+                <h2 id="create-course-title" className="font-display text-xl font-extrabold text-on-surface">新建课程</h2>
+                <p className="mt-1 text-xs leading-5 text-on-surface-variant">课程资料会在课程下的所有任务中共享。</p>
+              </div>
+              <button type="button" onClick={() => setShowCreateCourseDialog(false)} className="rounded-lg p-2 text-outline transition-colors hover:bg-surface-container-high hover:text-on-surface" aria-label="关闭新建课程弹窗">×</button>
+            </div>
+            <label className="block text-xs font-bold text-on-surface" htmlFor="course-name">课程名称</label>
+            <input id="course-name" autoFocus value={newCourseName} onChange={(event) => setNewCourseName(event.target.value)} placeholder="例如：Python 程序设计" className="mt-2 w-full rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" required />
+            <label className="mt-4 block text-xs font-bold text-on-surface" htmlFor="course-description">课程说明 <span className="font-normal text-outline">（可选）</span></label>
+            <textarea id="course-description" value={newCourseDescription} onChange={(event) => setNewCourseDescription(event.target.value)} placeholder="补充年级、章节或教学目标" rows={3} className="mt-2 w-full resize-none rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowCreateCourseDialog(false)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-high">取消</button>
+              <button type="submit" disabled={!newCourseName.trim()} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">创建课程</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       <aside className="fixed left-0 top-0 z-50 hidden h-screen w-72 flex-col border-r border-outline-variant bg-surface-container-low px-3 py-4 lg:flex">
         
         {/* Header Identity */}
@@ -349,7 +393,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
           className="flex items-center justify-center gap-2 w-full py-3 mb-6 bg-primary text-on-primary rounded-xl font-semibold text-sm hover:opacity-95 transition-all active:scale-95 shadow-sm cursor-pointer"
         >
           <MessageSquarePlus className="w-4.5 h-4.5" />
-          新建对话
+          新建任务
         </button>
 
         {/* Navigation Links */}
@@ -369,7 +413,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             }`}
           >
             <MessageSquarePlus className="w-4.5 h-4.5" />
-            <span>新建对话</span>
+            <span>新建任务</span>
           </button>
 
           <button 
@@ -384,17 +428,33 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             <span>最近会话</span>
           </button>
 
-          <a className="flex items-center gap-3 px-3 py-2.5 text-on-surface-variant font-semibold text-sm rounded-lg hover:bg-surface-container-high transition-colors" href="#">
-            <FolderOpen className="w-4.5 h-4.5" />
-            <span>工作空间资料库</span>
-          </a>
+          <div className="mt-5 border-t border-outline-variant pt-4">
+            <div className="flex items-center justify-between px-3 py-1">
+              <span className="text-[11px] text-outline font-bold tracking-wider">课程</span>
+              <button type="button" onClick={openCreateCourseDialog} className="rounded p-1 text-primary hover:bg-primary/10" aria-label="新建课程">+</button>
+            </div>
+            <div className="mt-1 space-y-1">
+              {courses.map((course) => {
+                const isExpanded = expandedCourseId === course.id;
+                const courseTasks = conversations.filter((conversation) => conversation.course_id === course.id);
+                return (
+                  <div key={course.id}>
+                    <button type="button" onClick={() => { setActiveCourseId(course.id); setExpandedCourseId(isExpanded ? null : course.id); clearChat(); }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold ${activeCourseId === course.id ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`} aria-expanded={isExpanded}>
+                      {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                      <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{course.name}</span>
+                      <span className="text-[10px] font-medium text-outline">{courseTasks.length}</span>
+                    </button>
+                    {isExpanded && (
+                      <ConversationHistory conversations={courseTasks} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); setStage('welcome'); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" compact />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-          <a className="flex items-center gap-3 px-3 py-2.5 text-on-surface-variant font-semibold text-sm rounded-lg hover:bg-surface-container-high transition-colors" href="#">
-            <Settings className="w-4.5 h-4.5" />
-            <span>设置</span>
-          </a>
-
-          <ConversationHistory conversations={conversations} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); setStage('welcome'); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" />
+          <ConversationHistory conversations={conversations.filter((conversation) => conversation.course_id === null)} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); setStage('welcome'); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" heading="任务" />
         </nav>
 
         {/* User Info Section */}
@@ -421,9 +481,9 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             </div>
             <div className="hidden sm:flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[10px] font-bold text-primary">
               <BookOpen className="h-3.5 w-3.5" />
-              <span>{TEACHER_COURSE_CONTEXT.courseName}</span>
+              <span>{courseContext.courseName}</span>
               <span className="text-primary/60">·</span>
-              <span>{TEACHER_COURSE_CONTEXT.workflowName}</span>
+              <span>{courseContext.workflowName}</span>
             </div>
             
             <nav className="hidden md:flex gap-6">
@@ -1029,7 +1089,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         >
                           <Paperclip className="w-4 h-4" />
                         </button>
-                        <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.xlsx,.xls,.pdf,.doc,.docx,.txt" onChange={(event) => { const file = event.target.files?.[0]; if (file) { setUploadedFile(file.name); void uploadFile(file); } event.currentTarget.value = ''; }} />
+                        <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.xlsx,.xls,.pdf,.doc,.docx,.txt" onChange={(event) => { const file = event.target.files?.[0]; if (file) { setUploadedFile(file.name); void uploadFile(file, courseContext.courseId ? 'workspace' : 'conversation'); } event.currentTarget.value = ''; }} />
                         <button type="button" aria-label="录音输入" className="p-1.5 text-outline hover:text-primary transition-colors rounded-lg hover:bg-surface-container cursor-pointer">
                           <Mic className="w-4 h-4" />
                         </button>
@@ -1104,7 +1164,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             </div>
           )}
 
-          {/* 3. RIGHT PANEL (RESOURCE SLOTS / PERSISTENT FILE STATUS) */}
+          {/* 3. RIGHT PANEL intentionally removed: course tasks use all course materials by default. */}
           <aside className="w-96 h-full border-l border-outline-variant bg-surface-container-low flex flex-col overflow-y-auto shrink-0 hidden xl:flex">
             {renderInteractionPanel()}
 

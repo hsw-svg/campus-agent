@@ -18,6 +18,51 @@ Questions to answer:
 
 (To be filled by the team)
 
+## Scenario: Course-scoped tasks and materials
+
+### 1. Scope / Trigger
+
+Use this contract when a task must be grouped under a course or remain independent.
+
+### 2. Signatures
+
+- `Course(id, workspace_id, name, description)` is workspace-scoped.
+- `Conversation.course_id` is nullable; the product calls Conversation a task.
+- `Attachment.course_id` is nullable; `NULL` means workspace-generic material.
+
+### 3. Contracts
+
+Course tasks may read their course materials and generic materials. Independent tasks may read only generic workspace
+materials plus their own conversation attachments. Course and task ownership must always include `workspace_id`.
+
+### 4. Validation & Error Matrix
+
+- Creating a task with another workspace's course -> `404 course_not_found`.
+- Selecting another course's material -> `422 attachment_selection_invalid`.
+- No course ID -> create an independent task and filter workspace materials to `course_id IS NULL`.
+
+### 5. Good/Base/Bad Cases
+
+- Good: switching a course clears the active task and reloads only that course's materials.
+- Base: legacy tasks with `course_id = NULL` remain available as independent tasks.
+- Bad: listing all workspace attachments for every course leaks teaching context.
+
+### 6. Tests Required
+
+- Create/list course task and independent task; assert their `course_id` values.
+- Reject a course ID owned by another workspace.
+- Assert course material listing excludes another course's material.
+
+### 7. Wrong vs Correct
+
+```python
+# Wrong: list every workspace material for the active course.
+attachments.list_workspace_for_conversation(workspace_id)
+
+# Correct: scope generic and current-course materials.
+attachments.list_workspace_for_conversation(workspace_id, conversation.course_id)
+```
+
 ## Scenario: AgentRun teaching workflow context
 
 ### 1. Scope / Trigger

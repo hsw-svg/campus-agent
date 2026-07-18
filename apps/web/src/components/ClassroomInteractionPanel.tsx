@@ -1,55 +1,34 @@
-import { BookOpenCheck, ChevronDown, ClipboardList, FileCheck2, MessageCircleQuestion, Plus, Send, UploadCloud } from 'lucide-react'
+import { Activity, BookOpenCheck, Check, ChevronDown, ClipboardList, FileCheck2, GraduationCap, MessageCircleQuestion, Send } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
-import type { Artifact, Attachment } from '../api'
-import type { RouteState, RunStatus } from '../hooks/useWorkspaceChat'
+import type { Artifact, Attachment, CourseContext } from '../api'
 
 interface ClassroomInteractionPanelProps {
+  courseContext: CourseContext
   attachments: Attachment[]
   artifacts: Artifact[]
-  selectedAttachmentIds: string[]
   selectedArtifactIds: string[]
-  onToggleAttachment: (attachmentId: string) => void
   onToggleArtifact: (artifactId: string) => void
   onPrompt: (content: string) => void
-  onUpload: (file: File) => Promise<void>
   onExport: (artifact: Artifact, format: 'markdown' | 'csv') => Promise<void>
-  onStop: () => void
-  onRetry: () => void
   isBusy: boolean
-  runStatus: RunStatus
-  toolStatus: string | null
-  error: string | null
-  route: RouteState | null
 }
 
 type InteractionMode = 'activity' | 'observation' | 'summary'
 
-const statusLabel: Record<RunStatus, string> = {
-  idle: '空闲',
-  running: '执行中 · 详情在中间',
-  completed: '已完成',
-  needs_input: '需要补充',
-  failed: '执行失败',
-  stopped: '已停止',
+function isLearningTable(attachment: Attachment): boolean {
+  return /\.(csv|xlsx?|xls)$/i.test(attachment.filename)
+    || /csv|spreadsheet|excel/i.test(attachment.content_type)
 }
 
 export default function ClassroomInteractionPanel({
+  courseContext,
   attachments,
   artifacts,
-  selectedAttachmentIds,
   selectedArtifactIds,
-  onToggleAttachment,
   onToggleArtifact,
   onPrompt,
-  onUpload,
   onExport,
-  onStop,
-  onRetry,
   isBusy,
-  runStatus,
-  toolStatus,
-  error,
-  route,
 }: ClassroomInteractionPanelProps) {
   const [mode, setMode] = useState<InteractionMode>('activity')
   const [topic, setTopic] = useState('Python 列表索引与切片')
@@ -69,16 +48,22 @@ export default function ClassroomInteractionPanel({
   const selectedTypes = new Set(
     artifacts.filter((artifact) => selectedArtifactIds.includes(artifact.id)).map((artifact) => artifact.type),
   )
-  const selectedAttachments = attachments.filter((attachment) => selectedAttachmentIds.includes(attachment.id))
   const selectedArtifacts = artifacts.filter((artifact) => selectedArtifactIds.includes(artifact.id))
+  const hasLearningAnalysis = artifacts.some((artifact) => artifact.type === 'learning_analysis' || /learning.?analysis|学情/i.test(artifact.type))
+  const hasActivityPackage = artifacts.some((artifact) => artifact.type === 'classroom_activity_package')
+  const hasObservation = artifacts.some((artifact) => artifact.type === 'classroom_observation')
+  const canAnalyzeLearning = courseContext.courseId !== null && attachments.some((attachment) =>
+    isLearningTable(attachment) && ['indexed', 'degraded'].includes(attachment.status),
+  )
+  const workflowSteps = [
+    { id: 'learning', label: '学情研判', detail: '识别班级薄弱点', done: hasLearningAnalysis },
+    { id: 'activity', label: '课堂活动包', detail: '设计本节课互动', done: hasActivityPackage },
+    { id: 'observation', label: '课堂观察', detail: '记录课堂反馈', done: hasObservation },
+    { id: 'summary', label: '课后总结', detail: '沉淀教学调整', done: artifacts.some((artifact) => artifact.type === 'classroom_summary') },
+  ]
   const hasPendingObservation = artifacts.some((artifact) => artifact.type === 'classroom_observation' && artifact.data.status === 'needs_confirmation')
   const canSummarize = selectedTypes.has('classroom_activity_package') && selectedTypes.has('classroom_observation') && !hasPendingObservation
   const hasObservationInput = observation.trim() || Object.values(optionCounts).some((count) => typeof count === 'string' && count.trim())
-  const attachmentGroups = [
-    { scope: 'workspace' as const, title: '工作区资料库', items: attachments.filter((attachment) => attachment.scope === 'workspace') },
-    { scope: 'conversation' as const, title: '当前对话附件', items: attachments.filter((attachment) => attachment.scope === 'conversation') },
-  ]
-
   const submitActivity = () => {
     onPrompt(`生成课堂互动活动包：教学主题：${topic}；教学目标：${objective}；总时长：${duration} 分钟`)
   }
@@ -97,23 +82,44 @@ export default function ClassroomInteractionPanel({
 
   return (
     <div className="flex min-h-full w-full flex-col gap-4 overflow-y-auto bg-surface-container-low p-4">
-      <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-wider text-primary">阶段 7 · 教师单端</p>
-            <h2 className="mt-1 text-base font-black text-on-surface">课堂互动闭环</h2>
-            <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">活动包 → 课堂观察 → 课后总结，所有资料都需明确选择。</p>
-          </div>
-          <div className={`rounded-full px-2 py-1 text-[10px] font-extrabold ${runStatus === 'failed' ? 'bg-error-container text-on-error-container' : runStatus === 'needs_input' ? 'bg-tertiary-container/25 text-tertiary' : 'bg-primary/10 text-primary'}`}>
-            {statusLabel[runStatus]}
+      <section className="rounded-2xl border border-primary/20 bg-white p-3 shadow-xs">
+        <div className="flex items-start gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><GraduationCap className="h-4 w-4" /></div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-extrabold uppercase tracking-wider text-primary">当前课程</p>
+            <h3 className="mt-0.5 truncate text-sm font-black text-on-surface">{courseContext.courseName}</h3>
+            <p className="mt-0.5 text-[10px] font-semibold text-on-surface-variant">{courseContext.workflowName}</p>
           </div>
         </div>
-        {toolStatus && <p className="mt-3 border-t border-primary/15 pt-2 text-[10px] font-semibold text-primary">{toolStatus}</p>}
-        {isBusy && <button type="button" onClick={onStop} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-error/25 px-2.5 py-1.5 text-[10px] font-extrabold text-error hover:bg-error-container/30"><span className="h-2 w-2 rounded-sm bg-error" />停止当前任务</button>}
-        {(runStatus === 'failed' || runStatus === 'needs_input') && !isBusy && <button type="button" onClick={onRetry} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/30 px-2.5 py-1.5 text-[10px] font-extrabold text-primary hover:bg-primary/10">重试上一次任务</button>}
-        {error && <p role="alert" className="mt-3 rounded-lg border border-error/25 bg-error-container/30 px-2.5 py-2 text-[10px] font-bold leading-relaxed text-error">{error}</p>}
-        {route && route.agentName && <p className="mt-3 border-t border-primary/15 pt-2 text-[10px] leading-relaxed text-on-surface-variant">已路由：<span className="font-extrabold text-primary">{route.agentName}</span> · {Math.round(route.confidence * 100)}%<br />{route.reason}</p>}
-      </div>
+        <div className="mt-3 space-y-1.5">
+          {workflowSteps.map((step, index) => {
+            const isLearningStep = step.id === 'learning'
+            const isActive = (isLearningStep && !step.done) || (!isLearningStep && mode === step.id)
+            return (
+              <button
+                key={step.id}
+                type="button"
+                disabled={isLearningStep ? isBusy || (!step.done && !canAnalyzeLearning) : false}
+                onClick={() => {
+                  if (isLearningStep) onPrompt('分析学情')
+                  else setMode(step.id as InteractionMode)
+                }}
+                className={`flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors ${isActive ? 'bg-primary/10' : 'hover:bg-surface-container'} disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-black ${step.done ? 'bg-primary text-on-primary' : isActive ? 'border border-primary text-primary' : 'bg-surface-container-high text-outline'}`}>
+                  {step.done ? <Check className="h-3 w-3" /> : index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[10px] font-extrabold ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}>{step.label}</span>
+                  <span className="block truncate text-[9px] text-outline">{step.detail}</span>
+                </span>
+                {isLearningStep && !step.done && <Activity className="h-3 w-3 text-primary" />}
+              </button>
+            )
+          })}
+        </div>
+        {!canAnalyzeLearning && !hasLearningAnalysis && <p className="mt-2 rounded-lg bg-tertiary-container/20 px-2.5 py-2 text-[10px] leading-relaxed text-tertiary">当前课程暂无可用的学情表，请先上传并等待资料解析完成。</p>}
+      </section>
 
       <div className="rounded-2xl border border-outline-variant bg-[#FBFDFB] p-3 shadow-xs">
         <div className="mb-3 flex items-center justify-between">
@@ -137,7 +143,7 @@ export default function ClassroomInteractionPanel({
               <label className="block flex-1 text-[10px] font-bold text-on-surface-variant">总时长（分钟）<input value={duration} onChange={(event) => setDuration(event.target.value)} inputMode="numeric" className="mt-1 w-full rounded-lg border border-outline-variant bg-white px-2.5 py-2 text-xs outline-none focus:border-primary" /></label>
               <button disabled={isBusy || !topic.trim() || !objective.trim()} onClick={submitActivity} type="button" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-[10px] font-extrabold text-on-primary disabled:cursor-not-allowed disabled:opacity-40"><Send className="h-3.5 w-3.5" />生成</button>
             </div>
-            <p className="text-[10px] leading-relaxed text-outline">请在下方“资料选择”中勾选课程资料；后端会校验题型、答案和总时长。</p>
+            <p className="text-[10px] leading-relaxed text-outline">当前课程的全部资料会自动作为本次任务上下文；后端会校验题型、答案和总时长。</p>
           </div>
         )}
 
@@ -166,43 +172,6 @@ export default function ClassroomInteractionPanel({
           </div>
         )}
       </div>
-
-      <section className="rounded-2xl border border-outline-variant bg-[#FBFDFB] p-3 shadow-xs">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-on-surface-variant">资料选择</h3>
-          <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-outline-variant px-2 py-1 text-[10px] font-bold text-primary hover:bg-surface-container">
-            <Plus className="h-3 w-3" /> 上传
-            <input type="file" className="hidden" accept=".csv,.xlsx,.xls,.pdf,.doc,.docx,.txt,.md" onChange={(event) => { const file = event.target.files?.[0]; if (file) void onUpload(file); event.currentTarget.value = '' }} />
-          </label>
-        </div>
-        {attachments.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-outline-variant p-4 text-center text-[10px] text-outline"><UploadCloud className="mx-auto mb-1 h-5 w-5" />暂无可选资料</div>
-        ) : (
-          <div className="max-h-56 space-y-3 overflow-y-auto">
-            {attachmentGroups.map((group) => (
-              <div key={group.scope}>
-                <p className="mb-1.5 px-1 text-[10px] font-extrabold text-on-surface-variant">{group.title}</p>
-                {group.items.length === 0 ? (
-                  <p className="rounded-lg bg-surface-container px-2.5 py-2 text-[10px] text-outline">
-                    {group.scope === 'conversation' ? '当前对话暂无附件，可从工作区资料库中勾选。' : '工作区资料库暂无资料。'}
-                  </p>
-                ) : group.items.map((attachment) => (
-                  <label key={attachment.id} className="mb-1.5 flex cursor-pointer items-center gap-2 rounded-xl border border-outline-variant/60 bg-white px-2.5 py-2 hover:border-primary/50">
-                    <input type="checkbox" checked={selectedAttachmentIds.includes(attachment.id)} onChange={() => onToggleAttachment(attachment.id)} className="h-3.5 w-3.5 accent-primary" />
-                    <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-on-surface">{attachment.filename}</span>
-                    <span className={`text-[9px] ${attachment.status === 'failed' ? 'text-error' : attachment.status === 'indexed' ? 'text-primary' : 'text-outline'}`}>{attachment.status === 'indexed' ? '可用' : attachment.status}</span>
-                  </label>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="mt-2 rounded-lg bg-secondary-container/15 px-2.5 py-2 text-[10px] leading-relaxed text-on-surface-variant">
-          <p className="font-extrabold text-secondary">当前任务资料 · {selectedAttachments.length} 项</p>
-          <p className="mt-0.5 text-outline">上传不等于使用；只有勾选资料才会随本次任务发送。</p>
-          {selectedAttachments.length > 0 && <p className="mt-1 truncate text-primary">{selectedAttachments.map((attachment) => attachment.filename).join('、')}</p>}
-        </div>
-      </section>
 
       <section className="space-y-3">
         <div className="flex items-center justify-between px-1">

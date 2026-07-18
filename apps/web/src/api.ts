@@ -6,10 +6,18 @@ export interface Workspace {
 }
 
 export interface CourseContext {
-  courseId: string
+  courseId: string | null
   courseName: string
   workflowId: string
   workflowName: string
+}
+
+export interface Course {
+  id: string
+  name: string
+  description: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface CreatedWorkspace {
@@ -21,6 +29,7 @@ export interface Conversation {
   id: string
   title: string
   agent_id: string | null
+  course_id: string | null
   created_at: string
   updated_at: string
 }
@@ -44,6 +53,7 @@ export interface ApiMessage {
 export interface Attachment {
   id: string
   conversation_id: string | null
+  course_id: string | null
   filename: string
   content_type: string
   size_bytes: number
@@ -154,11 +164,23 @@ export function listConversations(token: string): Promise<Conversation[]> {
   return request<Conversation[]>('/conversations', undefined, token)
 }
 
-export function createConversation(token: string): Promise<Conversation> {
+export function listCourses(token: string): Promise<Course[]> {
+  return request<Course[]>('/courses', undefined, token)
+}
+
+export function createCourse(token: string, name: string, description?: string): Promise<Course> {
+  return request<Course>('/courses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description: description ?? null }),
+  }, token)
+}
+
+export function createConversation(token: string, courseId?: string | null): Promise<Conversation> {
   return request<Conversation>('/conversations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agent_id: null }),
+    body: JSON.stringify({ agent_id: null, course_id: courseId ?? null }),
   }, token)
 }
 
@@ -170,8 +192,8 @@ export function listConversationAttachments(token: string, conversationId: strin
   return request<Attachment[]>(`/conversations/${conversationId}/attachments`, undefined, token)
 }
 
-export function listWorkspaceAttachments(token: string): Promise<Attachment[]> {
-  return request<Attachment[]>('/workspaces/current/attachments', undefined, token)
+export function listWorkspaceAttachments(token: string, courseId?: string | null): Promise<Attachment[]> {
+  return request<Attachment[]>(`/workspaces/current/attachments${courseId ? `?course_id=${encodeURIComponent(courseId)}` : ''}`, undefined, token)
 }
 
 export function listArtifacts(token: string, conversationId: string): Promise<Artifact[]> {
@@ -232,10 +254,10 @@ export async function uploadAttachment(
   }, token)
 }
 
-export async function uploadWorkspaceAttachment(token: string, file: File): Promise<Attachment> {
+export async function uploadWorkspaceAttachment(token: string, file: File, courseId?: string | null): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)
-  return request<Attachment>('/workspaces/current/attachments', {
+  return request<Attachment>(`/workspaces/current/attachments${courseId ? `?course_id=${encodeURIComponent(courseId)}` : ''}`, {
     method: 'POST',
     body: form,
   }, token)

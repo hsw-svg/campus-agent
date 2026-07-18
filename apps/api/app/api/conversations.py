@@ -30,6 +30,9 @@ from app.workspaces.dependencies import get_chat_provider, get_current_workspace
 from app.attachments.repositories import Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
 from app.workspaces.models import AnonymousWorkspace
+from app.api.courses import get_owned_course
+from app.api.courses import get_course_repository
+from app.repositories.courses import CourseRepository
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -40,6 +43,7 @@ class ConversationResponse(BaseModel):
     id: UUID
     title: str
     agent_id: str | None
+    course_id: UUID | None
     created_at: datetime
     updated_at: datetime
 
@@ -73,6 +77,7 @@ class ConversationArtifactResponse(BaseModel):
 
 class CreateConversationRequest(BaseModel):
     agent_id: str | None = None
+    course_id: UUID | None = None
 
 
 class StreamMessageRequest(BaseModel):
@@ -117,8 +122,11 @@ def post_conversation(
     payload: CreateConversationRequest,
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
     conversations: ConversationRepository = Depends(get_conversation_repository),
+    courses: CourseRepository = Depends(get_course_repository),
 ) -> Conversation:
-    return create_conversation(conversations, workspace.id, workspace.role, payload.agent_id)
+    if payload.course_id is not None:
+        get_owned_course(courses, workspace.id, payload.course_id)
+    return create_conversation(conversations, workspace.id, workspace.role, payload.agent_id, payload.course_id)
 
 
 @router.get("", response_model=list[ConversationResponse])
