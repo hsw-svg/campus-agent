@@ -13,13 +13,14 @@
 9. [x] 增加统一 \`RunRequest\` 和同意图运行中的前端去重。
 10. [x] 引入轻量 \`CourseContext\` 与教学闭环的父子 Run/Artifact 引用。
 11. [x] 将 Conversation 产品化为任务，新增课程容器、独立任务和课程资料隔离。
+12. [x] 根据最新需求移除教师右侧资料选择区，课程任务默认使用全部课程可见资料，并增加空附件 ID 的后端兜底。
 
 ## Validation
 
 - `cd apps/web; npm.cmd run lint`
 - `cd apps/web; npm.cmd run build`
 - `cd apps/api; ..\\..\\.venv\\Scripts\\python.exe -m pytest`
-- 浏览器：角色进入 → 工作区资料可见 → 新建对话仍可见 → 勾选资料 → 分析学情 → 验证真实任务状态/结果；同时确认当前对话附件空状态文案。
+- 浏览器：角色进入 → 课程资料可见 → 新建任务仍可用 → 分析学情 → 验证真实任务状态/结果；同时确认右侧不再出现资料选择区。
 - 交互回归：右侧点击生成活动包时，中间区和右侧区只显示同一个运行状态；活动包完整内容只出现一个详细展示位置。
 
 ## Risky Files / Rollback Points

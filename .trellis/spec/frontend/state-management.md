@@ -46,13 +46,22 @@ Questions to answer:
 ```ts
 const requestSignature = [
   content,
-  ...selectedAttachmentIds.slice().sort(),
+  ...requestAttachmentIds.slice().sort(),
   ...selectedArtifactIds.slice().sort(),
 ].join('|')
 ```
 
 中间对话区负责执行叙事、消息流和完整 `ArtifactCard`；右侧功能区负责参数选择、执行入口、
 运行摘要和成果索引。右侧成果索引只能引用中间区成果，不得再次渲染完整成果详情。
+
+### 课程任务的资料默认值
+
+- 教师工作台的课程任务不在右侧显示资料勾选器；`useWorkspaceChat` 将当前课程可见的工作区资料与当前
+  对话附件合并为 `requestAttachmentIds`。
+- 首次发送可能发生在资料库请求完成前，因此后端也必须将课程任务的空 `selected_attachment_ids` 解析为全部
+  课程可见资料；这不是教师端的静态勾选状态。
+- 无课程的独立任务和学生/行政工作台继续使用 `selectedAttachmentIds` 的显式选择语义，避免把课程默认规则
+  扩散到其他角色。
 
 ---
 
@@ -76,4 +85,7 @@ const requestSignature = [
 - **错误**：右侧复制完整 `ArtifactCard`，导致一个成果出现两份详情。
   **正确**：右侧显示标题、类型、状态和“详情在中间对话区展示”，完整内容只在中间区展示。
 - **错误**：新对话初始化时把工作台资料误当作当前会话附件，或为此创建空 conversation。
-  **正确**：保留 `workspaceAttachments`，只有用户明确上传到当前对话时才更新 `conversationAttachments`。
+  **正确**：保留 `workspaceAttachments`；课程任务发送时将课程资料作为上下文，只有对话级上传才更新
+  `conversationAttachments`。
+- **错误**：只依赖前端资料列表加载完成后才把课程资料 ID 发给后端。
+  **正确**：前端发送当前已知的课程资料 ID，后端对课程任务的空列表再做一次课程范围兜底。

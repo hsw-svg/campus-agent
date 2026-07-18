@@ -66,3 +66,9 @@
 - `Attachment.course_id` 控制课程资料隔离；课程任务可读本课程资料和通用资料，独立任务只读通用资料。
 - 左侧以“新建任务 / 课程 / 独立任务”组织导航，课程之间不混列任务。
 - 首次发送时才创建 Conversation，避免切换课程或点击新建任务产生空记录。
+
+## Latest Requirement Amendment (2026-07-18)
+
+- `ClassroomInteractionPanel` 只保留课堂工作流、运行摘要和成果索引，不再渲染资料选择区。
+- 教师课程任务由 `useWorkspaceChat` 生成 `requestAttachmentIds`，覆盖当前课程资料和当前对话附件。
+- 后端 `AttachmentRepository.list_selected_for_conversation` 在课程任务收到 `None` 或空附件 ID 时解析全部课程可见资料，作为首次发送竞态的兜底。

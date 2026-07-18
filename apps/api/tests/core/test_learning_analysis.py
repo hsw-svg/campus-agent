@@ -29,6 +29,25 @@ def test_learning_analysis_returns_class_level_deterministic_statistics() -> Non
     assert "student_profiles" not in result.data
 
 
+def test_learning_analysis_exposes_relationships_and_iteration_strategy() -> None:
+    table = TABLE.replace("满分", "期末成绩 | 满分").replace(
+        "90 | 80 | 70 | 100", "90 | 80 | 70 | 88 | 100",
+    ).replace(
+        "70 | 60 | 50 | 100", "70 | 60 | 50 | 55 | 100",
+    ).replace(
+        "80 | 70 | 60 | 100", "80 | 70 | 60 | 68 | 100",
+    )
+
+    result = analyze_learning_table(table, filename="python_scores.csv")
+
+    relationships = result.data["relationships"]
+    assert relationships["final_score_field"] == "期末成绩"
+    assert relationships["correlations"][1]["coefficient"] is not None
+    assert relationships["attendance_bands"]
+    assert result.data["teaching_diagnosis"]
+    assert result.data["iteration_strategy"]
+
+
 def test_learning_analysis_rejects_table_without_anonymous_identifier() -> None:
     result = analyze_learning_table(
         "姓名 | 作业1 | 课堂积极性评分\n张三 | 80 | 4\n",

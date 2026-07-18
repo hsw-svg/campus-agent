@@ -32,18 +32,27 @@ Use this contract when a task must be grouped under a course or remain independe
 
 ### 3. Contracts
 
-Course tasks may read their course materials and generic materials. Independent tasks may read only generic workspace
-materials plus their own conversation attachments. Course and task ownership must always include `workspace_id`.
+Course tasks may read all of their course materials and generic materials by default. Independent tasks may read only
+generic workspace materials plus their own conversation attachments. Course and task ownership must always include
+`workspace_id`.
+
+`AttachmentRepository.list_selected_for_conversation(workspace_id, conversation_id, attachment_ids, course_id)` keeps
+the legacy explicit-selection behavior for independent tasks. When `course_id` is non-null and `attachment_ids` is
+`None` or empty, it resolves the complete course-visible set (course-scoped workspace files, generic workspace files,
+and current conversation uploads). This is the server-side fallback for a course task's first send.
 
 ### 4. Validation & Error Matrix
 
 - Creating a task with another workspace's course -> `404 course_not_found`.
 - Selecting another course's material -> `422 attachment_selection_invalid`.
 - No course ID -> create an independent task and filter workspace materials to `course_id IS NULL`.
+- Course task with no attachment IDs -> use all materials visible to that course; do not return an empty context only
+  because the frontend has not finished loading the library.
 
 ### 5. Good/Base/Bad Cases
 
 - Good: switching a course clears the active task and reloads only that course's materials.
+- Good: a course task sends no explicit selection and the server resolves all materials visible to that course.
 - Base: legacy tasks with `course_id = NULL` remain available as independent tasks.
 - Bad: listing all workspace attachments for every course leaks teaching context.
 
@@ -52,6 +61,8 @@ materials plus their own conversation attachments. Course and task ownership mus
 - Create/list course task and independent task; assert their `course_id` values.
 - Reject a course ID owned by another workspace.
 - Assert course material listing excludes another course's material.
+- Assert a course learning-analysis request without `selected_attachment_ids` uses the course set and excludes another
+  course's table.
 
 ### 7. Wrong vs Correct
 
@@ -61,6 +72,9 @@ attachments.list_workspace_for_conversation(workspace_id)
 
 # Correct: scope generic and current-course materials.
 attachments.list_workspace_for_conversation(workspace_id, conversation.course_id)
+
+# Course task default: an empty client selection is resolved server-side.
+attachments.list_selected_for_conversation(workspace_id, conversation.id, [], conversation.course_id)
 ```
 
 ## Scenario: AgentRun teaching workflow context

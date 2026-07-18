@@ -3,6 +3,7 @@ import {
   ApiError,
   createConversation,
   deleteConversation,
+  getArtifact,
   listArtifacts,
   listConversationAttachments,
   listConversations,
@@ -51,6 +52,19 @@ function toUiMessage(message: ApiMessage): Message {
     type: 'text',
     metadata: message.artifacts,
   }
+}
+
+function artifactIdsFromMessages(messages: ApiMessage[]): string[] {
+  const ids = messages.flatMap((message) => (
+    Array.isArray(message.artifacts)
+      ? message.artifacts.flatMap((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+        const artifactId = (item as Record<string, unknown>).artifact_id
+        return typeof artifactId === 'string' ? [artifactId] : []
+      })
+      : []
+  ))
+  return [...new Set(ids)]
 }
 
 function mergeAttachments(current: Attachment[], incoming: Attachment[]): Attachment[] {
@@ -155,6 +169,20 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       ])
       if (loadVersion !== loadVersionRef.current) return
       setChatMessages(history.map(toUiMessage))
+      const referencedArtifactIds = artifactIdsFromMessages(history)
+      if (referencedArtifactIds.length > 0) {
+        const referencedArtifacts = await Promise.all(
+          referencedArtifactIds.map((artifactId) => getArtifact(token, artifactId).catch(() => null)),
+        )
+        if (loadVersion !== loadVersionRef.current) return
+        setArtifacts((current) => {
+          const byId = new Map(current.map((artifact) => [artifact.id, artifact]))
+          referencedArtifacts.forEach((artifact) => {
+            if (artifact) byId.set(artifact.id, artifact)
+          })
+          return [...byId.values()]
+        })
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法读取对话内容。')
     }
@@ -217,7 +245,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     })
   }, [attachments, courseContext?.courseId, courseContext?.workflowId])
 
-  const sendMessage = useCallback(async (rawContent: string) => {
+  const sendMessage = useCallback(async (rawContent: string, requestedAgentId: string | null = null) => {
     const content = rawContent.trim()
     const requestAttachmentIds = courseContext?.courseId
       ? mergeAttachments(conversationAttachments, workspaceAttachments).map((attachment) => attachment.id)
@@ -226,6 +254,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       content,
       courseContext?.courseId ?? '',
       courseContext?.workflowId ?? '',
+      requestedAgentId ?? '',
       ...requestAttachmentIds.slice().sort(),
       ...selectedArtifactIds.slice().sort(),
     ].join('|')
@@ -270,6 +299,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         token,
         conversationId,
         content,
+        agentId: requestedAgentId,
         selectedAttachmentIds: requestAttachmentIds,
         selectedArtifactIds,
         courseContext,

@@ -101,6 +101,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatScrollRef = useRef<HTMLElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const learningAnalysisReportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -149,6 +150,18 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     if (distanceToBottom < 200) chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isAiTyping]);
 
+  useEffect(() => {
+    if (isAiTyping) {
+      setStage('analyzing');
+      return;
+    }
+    if (artifacts.some((artifact) => artifact.type === 'learning_analysis')) {
+      setStage('report');
+      return;
+    }
+    setStage('welcome');
+  }, [artifacts, isAiTyping]);
+
   const startAnalysis = (_fileName?: string) => {
     setActiveTab('workbench');
     if (!courseContext.courseId) {
@@ -163,7 +176,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       return;
     }
     setAnalysisActionNotice(null);
-    void sendMessage('分析学情');
+    setStage('analyzing');
+    void sendMessage('分析学情', 'learning_analysis');
   };
 
   // Preset Responses for smart interactive tasks
@@ -297,7 +311,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     if (!finalMsg.trim()) return;
     setAnalysisActionNotice(null);
     setInputVal('');
-    void sendMessage(finalMsg);
+    void sendMessage(finalMsg, finalMsg.trim() === '分析学情' ? 'learning_analysis' : null);
   };
 
   const handleQuizAnswer = (questionId: string, optionIdx: number) => {
@@ -342,6 +356,12 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       isBusy={isAiTyping}
     />
   );
+  const learningAnalysisArtifact = [...artifacts].reverse().find((artifact) => artifact.type === 'learning_analysis') ?? null;
+
+  useEffect(() => {
+    if (!learningAnalysisArtifact || isAiTyping) return;
+    learningAnalysisReportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [chatMessages.length, learningAnalysisArtifact?.id, isAiTyping]);
 
   return (
     <div className="flex h-screen w-full font-sans antialiased bg-[#EEF3F0] text-on-surface overflow-hidden">
@@ -446,7 +466,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                       <span className="text-[10px] font-medium text-outline">{courseTasks.length}</span>
                     </button>
                     {isExpanded && (
-                      <ConversationHistory conversations={courseTasks} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); setStage('welcome'); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" compact />
+                      <ConversationHistory conversations={courseTasks} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" compact />
                     )}
                   </div>
                 );
@@ -454,7 +474,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             </div>
           </div>
 
-          <ConversationHistory conversations={conversations.filter((conversation) => conversation.course_id === null)} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); setStage('welcome'); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" heading="任务" />
+          <ConversationHistory conversations={conversations.filter((conversation) => conversation.course_id === null)} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" heading="任务" />
         </nav>
 
         {/* User Info Section */}
@@ -663,8 +683,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                   </div>
                 )}
 
-                {/* 2C. DYNAMIC BENTO-GRID ANALYSIS REPORT (Screen 3) */}
-                {stage === 'report' && (
+                {/* Legacy visual mockup retained as a fallback reference, not rendered. */}
+                {false && stage === 'report' && (
                   <motion.div 
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -857,6 +877,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                     <div className="text-[10px] text-center tracking-widest uppercase font-bold text-outline">对话进行中</div>
                     {chatMessages.map((msg, index) => {
                       const isUser = msg.sender === 'user';
+                      const isLearningAnalysisMessage = isLearningAnalysisArtifactMessage(msg);
                       return (
                         <div key={msg.id} className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
                           
@@ -868,10 +889,10 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                           )}
 
                           {/* Message Content Bubble */}
-                          <div className={`max-w-[85%] rounded-2xl px-5 py-4 shadow-xs ${
+                          <div className={`${isLearningAnalysisMessage ? 'max-w-[98%]' : 'max-w-[85%]'} rounded-2xl px-5 py-4 shadow-xs ${
                             isUser 
                               ? 'bg-primary text-on-primary rounded-tr-none' 
-                              : 'bg-[#FBFDFB] border border-[#D9E4DF] text-on-surface rounded-tl-none'
+                              : 'bg-[#FBFDFB] text-on-surface rounded-tl-none'
                           }`}>
                             <div className="text-xs opacity-70 mb-1 flex items-center justify-between">
                               <span>{isUser ? '用户（您）' : '校园智能助手'}</span>
@@ -880,9 +901,15 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
                             <div className="text-sm leading-relaxed prose prose-sm max-w-none">
                               {/* Standard text renderer */}
-                              {msg.type !== 'quiz' && msg.type !== 'plan' ? (
+                              {!isLearningAnalysisMessage && msg.type !== 'quiz' && msg.type !== 'plan' ? (
                                 <div className="whitespace-pre-line">{msg.content}</div>
                               ) : null}
+
+                              {isLearningAnalysisMessage && (
+                                <div ref={learningAnalysisReportRef} className="mt-2">
+                                  <LearningAnalysisReport artifact={learningAnalysisArtifact} onCopy={(content) => copyToClipboard(content, 999)} onGenerate={() => handleSendMessage('根据学情分析生成课程迭代方案')} />
+                                </div>
+                              )}
 
                               {/* Interactive Quiz renderer */}
                               {msg.type === 'quiz' && (
@@ -1164,106 +1191,9 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             </div>
           )}
 
-          {/* 3. RIGHT PANEL intentionally removed: course tasks use all course materials by default. */}
+          {/* 3. RIGHT PANEL: classroom workflow only; course materials are implicit. */}
           <aside className="w-96 h-full border-l border-outline-variant bg-surface-container-low flex flex-col overflow-y-auto shrink-0 hidden xl:flex">
             {renderInteractionPanel()}
-
-            <div className="hidden">
-            
-            {/* Library Container */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">工作区资料库</h3>
-                <button 
-                  onClick={() => startAnalysis('自定义课堂数据表_A.xlsx')}
-                  className="w-6 h-6 rounded-md hover:bg-surface-container-high flex items-center justify-center text-outline cursor-pointer"
-                  title="添加备课资料"
-                >
-                  +
-                </button>
-              </div>
-
-              {/* Upload Drop Container */}
-              <div 
-                onClick={() => startAnalysis('匿名学情档案_期中考.xlsx')}
-                className="bg-[#FBFDFB] border-2 border-dashed border-outline rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-3 opacity-80 cursor-pointer hover:border-primary hover:opacity-100 transition-all shadow-xs"
-              >
-                <FolderClosed className="w-8 h-8 text-outline" />
-                <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  <strong>暂无本地资料</strong><br/>
-                  点击上传或拖拽文件到此处
-                </p>
-              </div>
-            </div>
-
-            {/* Current Attachments */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">当前对话附件</h3>
-              </div>
-              <div className="space-y-2">
-                {uploadedFile ? (
-                  <div className="p-3 bg-white border border-outline-variant rounded-xl flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileSpreadsheet className="w-4 h-4 text-primary shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold truncate text-on-surface">{uploadedFile}</p>
-                        <p className="text-[9px] text-outline">18.4 KB • 电子表格文件</p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setUploadedFile(null)} 
-                      className="text-xs text-outline hover:text-error hover:font-black px-1.5 py-0.5 rounded-sm hover:bg-surface-container-high font-bold cursor-pointer"
-                    >
-                      移除
-                    </button>
-                  </div>
-                ) : (
-                  <div className="px-4 py-6 rounded-xl bg-surface-container-high/40 flex flex-col items-center justify-center border border-outline-variant/30">
-                    <p className="text-xs text-outline italic">无附件</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Task Selections */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">本次任务已选资料</h3>
-              </div>
-              <div className="p-3 bg-secondary-container/10 border border-secondary/20 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center">
-                    <GraduationCap className="w-5 h-5 text-secondary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-extrabold text-secondary truncate">智能教学助手</p>
-                    <p className="text-[10px] text-on-surface-variant">已准备好根据资料生成内容</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* AI Process Status Card */}
-            <div className="mt-auto">
-              <div className="bg-[#FBFDFB] border border-[#D9E4DF] p-4 rounded-xl space-y-2 shadow-xs">
-                <p className="text-[11px] font-bold text-on-surface-variant">智能处理进度</p>
-                <div className="h-1 w-full bg-surface-container-high rounded-full overflow-hidden">
-                  <div className={`h-full bg-primary transition-all duration-700 ${
-                    stage === 'analyzing' ? 'w-2/3' : stage === 'report' ? 'w-full' : 'w-0'
-                  }`}></div>
-                </div>
-                <p className="text-[10px] text-outline">
-                  {stage === 'analyzing' 
-                    ? '处理中 - 正在统计得分走势' 
-                    : stage === 'report' 
-                    ? '已就绪 - 等待追问指令' 
-                    : '空闲中 - 等待输入指令'
-                  }
-                </p>
-              </div>
-            </div>
-            </div>
           </aside>
 
           {showInteractionPanel && (
@@ -1283,4 +1213,142 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
     </div>
   );
+}
+
+function isLearningAnalysisArtifactMessage(message: Message): boolean {
+  if (message.sender !== 'assistant') return false;
+  if (Array.isArray(message.metadata) && message.metadata.some((item) => (
+    item && typeof item === 'object' && (item as Record<string, unknown>).type === 'learning_analysis'
+  ))) return true;
+  return message.content.trimStart().startsWith('# 班级整体学情分析');
+}
+
+function LearningAnalysisReport({
+  artifact,
+  onCopy,
+  onGenerate,
+}: {
+  artifact: Artifact | null
+  onCopy: (content: string) => void
+  onGenerate: () => void
+}) {
+  const data = artifact?.data ?? {}
+  const attendance = asRecord(data.attendance)
+  const activity = asRecord(data.activity)
+  const trend = asRecord(data.trend)
+  const relationships = asRecord(data.relationships)
+  const assignments = asRecordList(data.assignments)
+  const weakPoints = asRecordList(data.weak_points)
+  const bands = asRecordList(relationships.attendance_bands)
+  const diagnosis = asStringList(data.teaching_diagnosis)
+  const strategies = asStringList(data.iteration_strategy)
+  const attendanceRate = percentValue(attendance.rate)
+  const assignmentAverage = percentValue(relationships.assignment_score_average)
+  const finalAverage = percentValue(relationships.final_score_average)
+  const activityAverage = numberValue(activity.average)
+  const correlations = asRecordList(relationships.correlations)
+  const assignmentsForChart = assignments.filter((item) => numberValue(item.average_percent) !== null)
+  const maxAssignment = Math.max(100, ...assignmentsForChart.map((item) => numberValue(item.average_percent) ?? 0))
+  const chartBarColors = ['bg-primary/55', 'bg-secondary/60', 'bg-tertiary/60', 'bg-[#4F8FA8]/60', 'bg-[#C87864]/60']
+  const correlationTints = ['bg-primary/5', 'bg-secondary/10', 'bg-tertiary/10']
+  const bandColors = ['bg-primary', 'bg-secondary', 'bg-tertiary', 'bg-[#4F8FA8]']
+  const markdown = artifact?.content || '学情分析结果尚未同步。'
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="w-full overflow-hidden rounded-2xl bg-[#FBFDFB] shadow-sm">
+      <div className="flex items-center justify-between bg-surface-container-low/40 px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary"><Activity className="h-4.5 w-4.5" /></div>
+          <div><h2 className="font-display text-base font-extrabold md:text-lg">班级整体学情分析</h2><p className="mt-0.5 text-[10px] text-on-surface-variant">多维指标、关联关系与课程迭代证据</p></div>
+        </div>
+        <span className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-extrabold tracking-wider text-primary"><span className="h-2 w-2 animate-pulse rounded-full bg-primary" />已完成</span>
+      </div>
+
+      {!artifact ? (
+        <div className="p-8 text-center text-xs text-outline">正在同步学情分析结果…</div>
+      ) : (
+        <div className="space-y-4 p-5 md:p-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <AnalysisMetric label="出勤率" value={formatPercent(attendanceRate)} hint={`${numberValue(attendance.sessions) ?? 0} 个考勤观测`} valueClass="text-primary" />
+            <AnalysisMetric label="作业得分率" value={formatPercent(assignmentAverage)} hint="全部作业均值" valueClass="text-secondary" />
+            <AnalysisMetric label="期末成绩" value={formatPercent(finalAverage)} hint={typeof relationships.final_score_field === 'string' ? relationships.final_score_field : '未识别期末字段'} valueClass="text-tertiary" />
+            <AnalysisMetric label="课堂参与度" value={activityAverage === null ? '—' : activityAverage.toFixed(1)} hint={activity.scale === '5-point' ? '五级量表' : '课堂观测均值'} valueClass="text-[#4F8FA8]" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-7">
+            <section className="rounded-2xl bg-white p-4 shadow-xs lg:col-span-4">
+              <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-extrabold">作业与知识点成绩</h3><p className="mt-0.5 text-[10px] text-on-surface-variant">横向比较各次作业得分率，识别难度拐点</p></div><span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">{assignmentsForChart.length} 项测评</span></div>
+              {assignmentsForChart.length === 0 ? <EmptyAnalysis text="未识别到可视化作业成绩" /> : <div className="flex h-56 items-end gap-2 px-2 pb-0 pt-5">{assignmentsForChart.map((item, index) => { const score = numberValue(item.average_percent) ?? 0; const barColor = chartBarColors[index % chartBarColors.length]; return <div key={`${String(item.name)}-${index}`} className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end"><div className="relative flex w-full max-w-14 flex-1 items-end"><span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-black text-primary opacity-0 transition-opacity group-hover:opacity-100">{score.toFixed(0)}%</span><div className={`w-full rounded-t-lg ${barColor} transition-all group-hover:opacity-80`} style={{ height: `${Math.max(4, score / maxAssignment * 100)}%` }} /></div><span className="mt-2 line-clamp-2 w-full text-center text-[9px] font-bold text-on-surface-variant">{String(item.name ?? '测评')}</span></div> })}</div>}
+            </section>
+
+            <section className="rounded-2xl bg-white p-4 shadow-xs lg:col-span-3">
+              <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-extrabold">成绩趋势</h3><p className="mt-0.5 text-[10px] text-on-surface-variant">从首项测评到末项测评</p></div><TrendingUp className="h-5 w-5 text-primary" /></div>
+              <div className="flex items-center gap-3 rounded-xl bg-surface-container-low p-3"><span className={`text-2xl font-black ${trend.direction === 'declining' ? 'text-error' : 'text-primary'}`}>{trend.direction === 'improving' ? '上升' : trend.direction === 'declining' ? '下降' : trend.direction === 'stable' ? '稳定' : '—'}</span><span className="text-xs leading-relaxed text-on-surface-variant">变化幅度：{numberValue(trend.delta) === null ? '数据不足' : `${numberValue(trend.delta)?.toFixed(1)} 个百分点`}</span></div>
+              <div className="mt-4 space-y-2">{weakPoints.length > 0 ? weakPoints.map((item, index) => <div key={`${String(item.name)}-${index}`} className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate font-bold text-on-surface-variant">薄弱点 · {String(item.name ?? '未命名')}</span><span className="shrink-0 font-black text-error">{formatPercent(numberValue(item.average_percent))}</span></div>) : <EmptyAnalysis text="暂无薄弱点" />}</div>
+            </section>
+          </div>
+
+          <section className="rounded-2xl bg-primary/5 p-4">
+            <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-extrabold">出勤率与学习结果关系</h3><p className="mt-0.5 text-[10px] text-on-surface-variant">按匿名数据分组聚合，避免展示学生个体画像</p></div><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-primary">相关性分析</span></div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">{correlations.map((item, index) => { const coefficient = numberValue(item.coefficient); const tint = correlationTints[index % correlationTints.length]; const valueColor = coefficient !== null && coefficient >= 0.3 ? 'text-primary' : coefficient !== null && coefficient <= -0.3 ? 'text-error' : 'text-secondary'; return <div key={`${String(item.x)}-${String(item.y)}-${index}`} className={`rounded-xl ${tint} p-3 shadow-xs`}><p className="text-[10px] font-bold text-on-surface-variant">{String(item.x ?? '')} × {String(item.y ?? '')}</p><p className={`mt-1 text-2xl font-black ${valueColor}`}>{coefficient === null ? '—' : coefficient.toFixed(2)}</p><p className="mt-1 text-[10px] leading-relaxed text-outline">{String(item.interpretation ?? '样本不足')} · n={String(item.sample_count ?? 0)}</p></div> })}</div>
+            {bands.length > 0 && <div className="mt-4 rounded-xl bg-white p-3 shadow-xs"><p className="mb-3 text-[10px] font-extrabold text-on-surface-variant">不同出勤区间的结果对比</p><div className="space-y-2.5">{bands.map((band, index) => <div key={`${String(band.label)}-${index}`} className="grid grid-cols-[7rem_1fr_3rem] items-center gap-2 text-[10px]"><span className="truncate font-bold text-on-surface-variant">{String(band.label ?? '')}</span><div className="h-2 overflow-hidden rounded-full bg-surface-container-high"><div className={`h-full rounded-full ${bandColors[index % bandColors.length]}`} style={{ width: `${Math.min(100, Math.max(0, percentValue(band.final_score_rate) ?? percentValue(band.assignment_score_rate) ?? 0))}%` }} /></div><span className="text-right font-black text-primary">{formatPercent(percentValue(band.final_score_rate) ?? percentValue(band.assignment_score_rate))}</span></div>)}</div></div>}
+          </section>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <InsightPanel title="教学问题诊断" tone="error" items={diagnosis.length > 0 ? diagnosis : ['暂无足够数据形成教学问题诊断。']} />
+            <InsightPanel title="后续课程迭代策略" tone="primary" items={strategies.length > 0 ? strategies : ['继续跟踪出勤、作业得分率和阶段成绩的联动变化。']} />
+          </div>
+        </div>
+      )}
+
+      <details className="bg-surface-container-low/50 px-5 py-3 md:px-6">
+        <summary className="cursor-pointer list-none text-xs font-bold text-primary marker:hidden">
+          <span className="inline-flex items-center gap-1.5">展开文本分析 <ChevronDown className="h-3.5 w-3.5" /></span>
+        </summary>
+        <div className="mt-3 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl bg-white p-4 text-xs leading-6 text-on-surface-variant shadow-xs">
+          {markdown}
+        </div>
+      </details>
+
+      <div className="flex flex-col items-center justify-between gap-3 bg-surface-container-highest/20 px-5 py-4 sm:flex-row md:px-6"><div className="flex items-center gap-1.5 text-[10px] font-semibold text-on-surface-variant"><FileText className="h-4 w-4 text-primary" />数据来源：当前课程全部资料</div><div className="flex w-full items-center justify-end gap-2 sm:w-auto"><button type="button" onClick={() => onCopy(markdown)} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-on-surface hover:bg-surface-container-high"><Copy className="h-3.5 w-3.5" />复制报告</button><button type="button" onClick={onGenerate} className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-on-primary hover:bg-primary-container"><Sparkles className="h-3.5 w-3.5" />生成课程迭代方案</button></div></div>
+    </motion.div>
+  )
+}
+
+function AnalysisMetric({ label, value, hint, valueClass }: { label: string; value: string; hint: string; valueClass: string }) {
+  return <div className="rounded-2xl bg-surface-container p-3 shadow-xs"><p className="text-[10px] font-bold text-on-surface-variant">{label}</p><p className={`mt-2 text-2xl font-black ${valueClass}`}>{value}</p><p className="mt-1 truncate text-[9px] text-outline">{hint}</p></div>
+}
+
+function InsightPanel({ title, items, tone }: { title: string; items: string[]; tone: 'error' | 'primary' }) {
+  return <section className="rounded-2xl bg-surface-container-low p-4 shadow-xs"><div className="mb-3 flex items-center gap-2"><span className={`h-4 w-1.5 rounded-full ${tone === 'error' ? 'bg-error' : 'bg-primary'}`} /><h3 className="text-xs font-extrabold tracking-wider text-on-surface-variant">{title}</h3></div><ul className="space-y-2.5">{items.map((item, index) => <li key={`${item}-${index}`} className="flex items-start gap-2 text-xs leading-relaxed text-on-surface-variant"><span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${tone === 'error' ? 'bg-error' : 'bg-primary'}`} />{item}</li>)}</ul></section>
+}
+
+function EmptyAnalysis({ text }: { text: string }) {
+  return <div className="flex h-full min-h-24 items-center justify-center text-xs italic text-outline">{text}</div>
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function asRecordList(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item))) : []
+}
+
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : []
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function percentValue(value: unknown): number | null {
+  const number = numberValue(value)
+  if (number === null) return null
+  return number <= 1 ? number * 100 : number
+}
+
+function formatPercent(value: number | null): string {
+  return value === null ? '—' : `${value.toFixed(1)}%`
 }

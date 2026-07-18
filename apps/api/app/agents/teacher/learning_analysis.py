@@ -34,6 +34,7 @@ _ATTENDANCE_TERMS = ("签到", "出勤", "到课", "attendance", "present")
 _ACTIVITY_TERMS = ("课堂积极性", "积极性评分", "课堂参与", "participation", "activity")
 _ASSIGNMENT_TERMS = ("作业", "homework", "assignment", "exercise", "练习", "得分", "分数", "score")
 _EXCLUDED_ASSIGNMENT_TERMS = ("平均", "均分", "满分", "总分", "average", "max", "full")
+_FINAL_SCORE_TERMS = ("期末", "最终成绩", "期终", "总评", "final", "final_score", "overall")
 
 _PRESENT_VALUES = {"签到", "已签到", "出勤", "到课", "正常", "present", "p", "yes", "是", "√", "1"}
 _LATE_VALUES = {"迟到", "late", "l"}
@@ -79,6 +80,7 @@ def analyze_learning_table(text: str, *, filename: str = "") -> LearningAnalysis
     activity_indices = _find_activity_indices(headers)
     assignment_indices = _find_assignment_indices(headers)
     full_mark_index = _find_header(headers, ("满分", "full_mark", "max_score", "total"))
+    final_score_index = _find_header(headers, _FINAL_SCORE_TERMS)
 
     errors: list[str] = []
     warnings: list[str] = []
@@ -106,6 +108,14 @@ def analyze_learning_table(text: str, *, filename: str = "") -> LearningAnalysis
     activity = _aggregate_activity(valid_rows, activity_indices)
     assignments = _aggregate_assignments(valid_rows, headers, assignment_indices, full_mark_index)
     trend = _build_trend(assignments)
+    relationships = _build_relationships(
+        valid_rows,
+        headers,
+        attendance_indices,
+        assignment_indices,
+        final_score_index,
+        full_mark_index,
+    )
     weak_points = sorted(
         [
             {
@@ -117,6 +127,8 @@ def analyze_learning_table(text: str, *, filename: str = "") -> LearningAnalysis
         key=lambda item: (item["average_percent"], item["name"]),
     )[:3]
     guidance = _build_guidance(attendance, activity, assignments, trend)
+    teaching_diagnosis = _build_teaching_diagnosis(attendance, assignments, trend, relationships)
+    iteration_strategy = _build_iteration_strategy(attendance, assignments, trend, relationships)
 
     data: dict[str, Any] = {
         "scope": "class",
@@ -132,8 +144,11 @@ def analyze_learning_table(text: str, *, filename: str = "") -> LearningAnalysis
         "activity": activity,
         "assignments": assignments,
         "trend": trend,
+        "relationships": relationships,
         "weak_points": weak_points,
         "guidance": guidance,
+        "teaching_diagnosis": teaching_diagnosis,
+        "iteration_strategy": iteration_strategy,
         "validation": {
             "valid": not errors,
             "errors": errors,
@@ -217,6 +232,142 @@ def _find_assignment_indices(headers: list[str]) -> list[int]:
         if any(term in header.lower() for term in _ASSIGNMENT_TERMS)
         and not any(term in header.lower() for term in _EXCLUDED_ASSIGNMENT_TERMS)
     ]
+
+
+def _build_relationships(
+    rows: list[list[str]],
+    headers: list[str],
+    attendance_indices: list[int],
+    assignment_indices: list[int],
+    final_score_index: int | None,
+    full_mark_index: int | None,
+) -> dict[str, Any]:
+    """Return anonymous group-level relationships, never student profiles."""
+
+    observations: list[dict[str, float]] = []
+    for row in rows:
+        attendance_ratio = _row_attendance_ratio(row, attendance_indices)
+        assignment_values = []
+        for index in assignment_indices:
+            score = _number(_cell(row, index))
+            if score is None:
+                continue
+            full_mark = _number(_cell(row, full_mark_index)) if full_mark_index is not None else None
+            assignment_values.append(score / (full_mark if full_mark and full_mark > 0 else 100.0) * 100)
+        final_score = _number(_cell(row, final_score_index)) if final_score_index is not None else None
+        final_mark = _number(_cell(row, full_mark_index)) if full_mark_index is not None else None
+        observation = {
+            "attendance_rate": attendance_ratio,
+            "assignment_score_rate": _average(assignment_values),
+            "final_score_rate": (final_score / (final_mark if final_mark and final_mark > 0 else 100.0) * 100) if final_score is not None else None,
+        }
+        if any(value is not None for value in observation.values()):
+            observations.append(observation)
+
+    pairs = [
+        ("出勤率", "作业得分率", "attendance_rate", "assignment_score_rate"),
+        ("出勤率", "期末成绩", "attendance_rate", "final_score_rate"),
+        ("作业得分率", "期末成绩", "assignment_score_rate", "final_score_rate"),
+    ]
+    correlations = []
+    for label_x, label_y, key_x, key_y in pairs:
+        values = [(item[key_x], item[key_y]) for item in observations if item[key_x] is not None and item[key_y] is not None]
+        coefficient = _pearson([left for left, _ in values], [right for _, right in values])
+        correlations.append({
+            "x": label_x,
+            "y": label_y,
+            "coefficient": coefficient,
+            "sample_count": len(values),
+            "interpretation": _correlation_interpretation(coefficient),
+        })
+
+    bands: list[dict[str, Any]] = []
+    for label, lower, upper in (("低出勤（<60%）", 0.0, 0.6), ("中低出勤（60–79%）", 0.6, 0.8), ("稳定出勤（80–89%）", 0.8, 0.9), ("高出勤（90–100%）", 0.9, 1.01)):
+        group = [item for item in observations if item["attendance_rate"] is not None and lower <= item["attendance_rate"] < upper]
+        if not group:
+            continue
+        bands.append({
+            "label": label,
+            "student_count": len(group),
+            "attendance_rate": _average([item["attendance_rate"] for item in group]),
+            "assignment_score_rate": _average([item["assignment_score_rate"] for item in group if item["assignment_score_rate"] is not None]),
+            "final_score_rate": _average([item["final_score_rate"] for item in group if item["final_score_rate"] is not None]),
+        })
+
+    return {
+        "final_score_field": headers[final_score_index] if final_score_index is not None else None,
+        "correlations": correlations,
+        "attendance_bands": bands,
+        "sample_count": len(observations),
+        "assignment_score_average": _average([item["assignment_score_rate"] for item in observations if item["assignment_score_rate"] is not None]),
+        "final_score_average": _average([item["final_score_rate"] for item in observations if item["final_score_rate"] is not None]),
+    }
+
+
+def _row_attendance_ratio(row: list[str], indices: list[int]) -> float | None:
+    if not indices:
+        return None
+    attended = 0
+    observed = 0
+    for index in indices:
+        value = _normalize(_cell(row, index))
+        if value in _PRESENT_VALUES or value in _LATE_VALUES:
+            attended += 1
+            observed += 1
+        elif value in _ABSENT_VALUES or value:
+            observed += 1
+    return attended / observed if observed else None
+
+
+def _pearson(left: list[float], right: list[float]) -> float | None:
+    if len(left) < 2 or len(right) < 2:
+        return None
+    left_mean = mean(left)
+    right_mean = mean(right)
+    numerator = sum((x - left_mean) * (y - right_mean) for x, y in zip(left, right))
+    denominator = math.sqrt(sum((x - left_mean) ** 2 for x in left) * sum((y - right_mean) ** 2 for y in right))
+    return round(numerator / denominator, 3) if denominator else None
+
+
+def _correlation_interpretation(value: float | None) -> str:
+    if value is None:
+        return "样本不足或指标无变化，暂不判断"
+    strength = "较强" if abs(value) >= 0.6 else "中等" if abs(value) >= 0.3 else "较弱"
+    direction = "正相关" if value > 0 else "负相关" if value < 0 else "无明显相关"
+    return f"{strength}{direction}"
+
+
+def _build_teaching_diagnosis(attendance: dict[str, Any], assignments: list[dict[str, Any]], trend: dict[str, Any], relationships: dict[str, Any]) -> list[str]:
+    diagnosis: list[str] = []
+    correlations = {f"{item['x']}-{item['y']}": item.get("coefficient") for item in relationships.get("correlations", [])}
+    attendance_final = correlations.get("出勤率-期末成绩")
+    assignment_final = correlations.get("作业得分率-期末成绩")
+    if attendance_final is not None and attendance_final >= 0.3:
+        diagnosis.append("出勤率与期末成绩呈正相关，缺勤可能造成知识链断裂；需要把缺课补学设计成课程流程，而不是只提醒签到。")
+    if assignment_final is not None and assignment_final >= 0.3:
+        diagnosis.append("作业得分率与期末成绩呈正相关，当前学习效果受形成性练习质量影响明显；只讲授、不及时反馈会放大差距。")
+    if attendance.get("rate") is not None and attendance["rate"] < 0.85:
+        diagnosis.append("整体出勤率偏低，教学节奏可能缺少低成本的课前唤醒和缺课补偿机制。")
+    if trend.get("direction") == "declining":
+        diagnosis.append("作业成绩连续走低，说明内容难度或任务跨度增长快于学生掌握速度，需要拆分难点并增加即时反馈。")
+    if not diagnosis:
+        diagnosis.append("当前数据未发现明显的单一教学风险，建议继续跟踪出勤、作业和期末成绩的联动变化，避免只看班级均分。")
+    return diagnosis
+
+
+def _build_iteration_strategy(attendance: dict[str, Any], assignments: list[dict[str, Any]], trend: dict[str, Any], relationships: dict[str, Any]) -> list[str]:
+    strategies: list[str] = []
+    if attendance.get("rate") is not None and attendance["rate"] < 0.85:
+        strategies.append("课前：增加 5 分钟低门槛检核与缺课补学卡；课中：为迟到/缺勤学生提供可独立完成的进入任务。")
+    if trend.get("direction") == "declining":
+        strategies.append("内容：将成绩下降最明显的作业对应知识点拆成‘示例—模仿—迁移’三段，下一次课先验证再推进新章节。")
+    if assignments:
+        weakest = min(assignments, key=lambda item: item["average_percent"] if item["average_percent"] is not None else float("inf"))
+        if weakest.get("average_percent") is not None and weakest["average_percent"] < 70:
+            strategies.append(f"练习：围绕“{weakest['name']}”增加分层练习，设置一次可重做任务，并用错因标签替代只给总分。")
+    if any(item.get("coefficient") is not None and item["coefficient"] >= 0.3 for item in relationships.get("correlations", [])):
+        strategies.append("评估：保留形成性作业，但将完成率、得分率和出勤率放入同一周报，按证据调整下一轮课程，而不是只依据期末成绩复盘。")
+    return strategies or ["保持当前课程节奏，每周复盘出勤、作业得分率和阶段成绩，并在出现连续下降时及时调整。"]
 
 
 def _aggregate_attendance(rows: list[list[str]], indices: list[int]) -> dict[str, Any]:
