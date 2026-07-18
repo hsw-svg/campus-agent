@@ -37,8 +37,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { createCourse, exportArtifact, listCourses, type Artifact, type Attachment, type Course, type CourseContext } from '../api';
 import { Role, Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
-import ClassroomInteractionPanel from './ClassroomInteractionPanel';
 import ConversationHistory from './ConversationHistory';
+import TeacherAgentHistoryPanel from './TeacherAgentHistoryPanel';
 
 interface TeacherWorkspaceProps {
   token: string | null;
@@ -92,6 +92,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     removeConversation,
     attachments,
     artifacts,
+    agentHistory,
+    route,
     selectedArtifactIds,
     toggleArtifact,
     stopStreaming,
@@ -345,14 +347,18 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   };
 
   const renderInteractionPanel = () => (
-    <ClassroomInteractionPanel
+    <TeacherAgentHistoryPanel
       courseContext={courseContext}
       attachments={attachments}
       artifacts={artifacts}
+      agentHistory={agentHistory}
+      activeAgentId={route?.agentId ?? null}
+      activeConversationId={activeConversationId}
       selectedArtifactIds={selectedArtifactIds}
       onToggleArtifact={toggleArtifact}
       onPrompt={handleSendMessage}
       onExport={handleExportArtifact}
+      onOpenConversation={(conversationId) => void openConversation(conversationId)}
       isBusy={isAiTyping}
     />
   );
@@ -563,10 +569,10 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
               <button
                 type="button"
                 onClick={() => setShowInteractionPanel(true)}
-                aria-label="打开课堂互动面板"
+                aria-label="打开智能体历史聚合面板"
                 className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-3 py-2 text-xs font-bold text-primary hover:bg-surface-container xl:hidden"
               >
-                <FolderClosed className="w-3.5 h-3.5" />课堂互动
+                <FolderClosed className="w-3.5 h-3.5" />智能体历史
               </button>
             </div>
           </div>
@@ -1191,16 +1197,16 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             </div>
           )}
 
-          {/* 3. RIGHT PANEL: classroom workflow only; course materials are implicit. */}
+          {/* 3. RIGHT PANEL: course-scoped agent history and the active workflow. */}
           <aside className="w-96 h-full border-l border-outline-variant bg-surface-container-low flex flex-col overflow-y-auto shrink-0 hidden xl:flex">
             {renderInteractionPanel()}
           </aside>
 
           {showInteractionPanel && (
-            <div className="fixed inset-0 z-[60] bg-on-surface/25 xl:hidden" role="dialog" aria-modal="true" aria-label="课堂互动面板" onClick={() => setShowInteractionPanel(false)}>
+            <div className="fixed inset-0 z-[60] bg-on-surface/25 xl:hidden" role="dialog" aria-modal="true" aria-label="智能体历史聚合面板" onClick={() => setShowInteractionPanel(false)}>
               <div className="absolute right-0 top-0 h-full w-full max-w-md bg-surface shadow-2xl" onClick={(event) => event.stopPropagation()}>
                 <div className="flex h-12 items-center justify-between border-b border-outline-variant px-4">
-                  <p className="text-sm font-extrabold text-on-surface">课堂互动面板</p>
+                  <p className="text-sm font-extrabold text-on-surface">智能体历史聚合</p>
                   <button type="button" onClick={() => setShowInteractionPanel(false)} aria-label="关闭课堂互动面板" className="rounded-lg px-2 py-1 text-xs font-bold text-outline hover:bg-surface-container">关闭</button>
                 </div>
                 <div className="h-[calc(100%-3rem)] overflow-y-auto">{renderInteractionPanel()}</div>

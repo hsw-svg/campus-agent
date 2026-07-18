@@ -156,3 +156,59 @@ if parent is None or parent.conversation_id != conversation.id:
 <!-- Database-related mistakes your team has made -->
 
 (To be filled by the team)
+
+## Scenario: Course-scoped agent history aggregation
+
+### 1. Scope / Trigger
+
+Use this contract when a teacher-side view needs to aggregate multiple tasks from one course without widening
+workspace or cross-course visibility.
+
+### 2. Signatures
+
+- `GET /api/courses/{course_id}/agent-history` returns `list[AgentHistoryResponse]`.
+- `AgentRunRepository.list_for_course(workspace_id: UUID, course_id: UUID)` joins `AgentRun` to its course `Conversation`
+  and optionally to its result `Artifact` and result `Message`.
+
+### 3. Contracts
+
+- Each item includes `run_id`, `conversation_id`, `conversation_title`, `agent_id`, `status`, `created_at`, `updated_at`.
+- `artifact` is nullable; `summary` is nullable and is a bounded excerpt of the result assistant message.
+- The query is scoped by both `AgentRun.workspace_id` and `Conversation.workspace_id`, then by
+  `Conversation.course_id`; order is newest run first.
+- The UI may group `course_iteration` and `lesson_design` under one course-iteration section, but the API preserves the
+  original `agent_id`.
+
+### 4. Validation & Error Matrix
+
+- Missing or foreign `course_id` -> `404 course_not_found`.
+- A run from another workspace or another course -> excluded from the response.
+- A completed text-only run without an Artifact -> included with `artifact = null` and its bounded `summary`.
+- A run with a missing result message or Artifact -> included with the corresponding nullable field, not a 500 error.
+
+### 5. Good/Base/Bad Cases
+
+- Good: a course returns learning-analysis Artifacts and text-only course-iteration runs in one newest-first list.
+- Base: a valid course with no runs returns `[]`.
+- Bad: query all workspace AgentRuns and filter in React; this can leak another course's teaching history.
+
+### 6. Tests Required
+
+- API test creates one Artifact-backed run and one text-only run, then asserts both appear with the correct agent IDs and
+  text summary.
+- API test requests the same course from another workspace and asserts `404 course_not_found`.
+- Repository/API test asserts newest-first ordering and nullable Artifact handling.
+
+### 7. Wrong vs Correct
+
+```python
+# Wrong: load every run in the workspace and let the client group them.
+select(AgentRun).where(AgentRun.workspace_id == workspace_id)
+
+# Correct: constrain the joined conversation to the owned course before returning history.
+select(AgentRun, Conversation, Artifact, Message).where(
+    AgentRun.workspace_id == workspace_id,
+    Conversation.workspace_id == workspace_id,
+    Conversation.course_id == course_id,
+)
+```

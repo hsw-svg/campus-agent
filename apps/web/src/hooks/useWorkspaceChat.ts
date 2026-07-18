@@ -6,6 +6,7 @@ import {
   getArtifact,
   listArtifacts,
   listConversationAttachments,
+  listCourseAgentHistory,
   listConversations,
   listMessages,
   listWorkspaceAttachments,
@@ -14,6 +15,7 @@ import {
   uploadAttachment,
   uploadWorkspaceAttachment,
   type ApiMessage,
+  type AgentHistoryItem,
   type Artifact,
   type Attachment,
   type Conversation,
@@ -92,6 +94,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
   const [workspaceAttachments, setWorkspaceAttachments] = useState<Attachment[]>([])
   const [conversationAttachments, setConversationAttachments] = useState<Attachment[]>([])
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  const [agentHistory, setAgentHistory] = useState<AgentHistoryItem[]>([])
   const [citations, setCitations] = useState<SourceCitation[]>([])
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>([])
   const [selectedArtifactIds, setSelectedArtifactIds] = useState<string[]>([])
@@ -109,6 +112,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
   const activeRequestSignatureRef = useRef<string | null>(null)
   const resourceVersionRef = useRef(0)
   const workspaceResourceVersionRef = useRef(0)
+  const agentHistoryVersionRef = useRef(0)
 
   const refreshConversations = useCallback(async () => {
     if (!token) return
@@ -131,6 +135,22 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法读取工作区资料库。')
+    }
+  }, [token, courseContext?.courseId])
+
+  const refreshAgentHistory = useCallback(async () => {
+    const courseId = courseContext?.courseId
+    const historyVersion = ++agentHistoryVersionRef.current
+    if (!token || !courseId) {
+      setAgentHistory([])
+      return
+    }
+    try {
+      const history = await listCourseAgentHistory(token, courseId)
+      if (historyVersion !== agentHistoryVersionRef.current) return
+      setAgentHistory(history)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '无法读取课程智能体历史。')
     }
   }, [token, courseContext?.courseId])
 
@@ -169,6 +189,19 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       ])
       if (loadVersion !== loadVersionRef.current) return
       setChatMessages(history.map(toUiMessage))
+      const latestAgentId = [...history].reverse().find((message) => message.agent_id)?.agent_id
+        ?? conversations.find((item) => item.id === conversationId)?.agent_id
+        ?? null
+      setRoute(latestAgentId ? {
+        agentId: latestAgentId,
+        agentName: null,
+        confidence: 0,
+        reason: '从历史任务恢复最近一次调用的智能体',
+        selectionSource: 'history',
+        missingInputs: [],
+        candidates: [],
+        runId: null,
+      } : null)
       const referencedArtifactIds = artifactIdsFromMessages(history)
       if (referencedArtifactIds.length > 0) {
         const referencedArtifacts = await Promise.all(
@@ -186,18 +219,20 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法读取对话内容。')
     }
-  }, [token, refreshResources])
+  }, [conversations, token, refreshResources])
 
   useEffect(() => {
     loadVersionRef.current += 1
     resourceVersionRef.current += 1
     workspaceResourceVersionRef.current += 1
+    agentHistoryVersionRef.current += 1
     abortRef.current?.abort()
     setChatMessages([])
     setConversations([])
     setWorkspaceAttachments([])
     setConversationAttachments([])
     setArtifacts([])
+    setAgentHistory([])
     setCitations([])
     setSelectedAttachmentIds([])
     setSelectedArtifactIds([])
@@ -208,9 +243,10 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     if (token) {
       void refreshConversations()
       void refreshWorkspaceAttachments()
+      void refreshAgentHistory()
     }
     return () => abortRef.current?.abort()
-  }, [token, refreshConversations, refreshWorkspaceAttachments])
+  }, [token, refreshConversations, refreshWorkspaceAttachments, refreshAgentHistory])
 
   const clearChat = useCallback(() => {
     loadVersionRef.current += 1
@@ -324,6 +360,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
           listMessages(token, conversationId),
           refreshResources(conversationId),
           refreshWorkspaceAttachments(),
+          refreshAgentHistory(),
         ])
         setChatMessages(history.map(toUiMessage))
         await refreshConversations()
@@ -415,7 +452,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         }
       }
     }
-  }, [activeConversationId, conversationAttachments, courseContext, isAiTyping, refreshConversations, refreshResources, refreshWorkspaceAttachments, route?.runId, selectedArtifactIds, selectedAttachmentIds, token, workspaceAttachments])
+  }, [activeConversationId, conversationAttachments, courseContext, isAiTyping, refreshAgentHistory, refreshConversations, refreshResources, refreshWorkspaceAttachments, route?.runId, selectedArtifactIds, selectedAttachmentIds, token, workspaceAttachments])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {
@@ -489,6 +526,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     workspaceAttachments,
     conversationAttachments,
     artifacts,
+    agentHistory,
     citations,
     selectedAttachmentIds,
     selectedArtifactIds,

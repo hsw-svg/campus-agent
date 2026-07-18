@@ -89,3 +89,12 @@ const requestSignature = [
   `conversationAttachments`。
 - **错误**：只依赖前端资料列表加载完成后才把课程资料 ID 发给后端。
   **正确**：前端发送当前已知的课程资料 ID，后端对课程任务的空列表再做一次课程范围兜底。
+
+### Course agent history aggregation
+
+- `agentHistory` is loaded and refreshed by `useWorkspaceChat`; the right panel must not fetch course history or keep a
+  second copy of run state.
+- `route.agentId` is the single source for automatic group switching after `route_decision`/SSE. Opening a historical
+  task restores the latest assistant `agent_id` into the same route state.
+- The aggregation panel displays run metadata and short summaries only. It opens the owning conversation for full
+  messages and Artifact details instead of duplicating `ArtifactCard`.

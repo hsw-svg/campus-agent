@@ -11,6 +11,7 @@ interface ClassroomInteractionPanelProps {
   onPrompt: (content: string) => void
   onExport: (artifact: Artifact, format: 'markdown' | 'csv') => Promise<void>
   isBusy: boolean
+  embedded?: boolean
 }
 
 type InteractionMode = 'activity' | 'observation' | 'summary'
@@ -29,6 +30,7 @@ export default function ClassroomInteractionPanel({
   onPrompt,
   onExport,
   isBusy,
+  embedded = false,
 }: ClassroomInteractionPanelProps) {
   const [mode, setMode] = useState<InteractionMode>('activity')
   const [topic, setTopic] = useState('Python 列表索引与切片')
@@ -82,7 +84,7 @@ export default function ClassroomInteractionPanel({
 
   return (
     <div className="flex min-h-full w-full flex-col gap-4 overflow-y-auto bg-surface-container-low p-4">
-      <section className="rounded-2xl border border-primary/20 bg-white p-3 shadow-xs">
+      {!embedded && <section className="rounded-2xl border border-primary/20 bg-white p-3 shadow-xs">
         <div className="flex items-start gap-2.5">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><GraduationCap className="h-4 w-4" /></div>
           <div className="min-w-0">
@@ -119,7 +121,7 @@ export default function ClassroomInteractionPanel({
           })}
         </div>
         {!canAnalyzeLearning && !hasLearningAnalysis && <p className="mt-2 rounded-lg bg-tertiary-container/20 px-2.5 py-2 text-[10px] leading-relaxed text-tertiary">当前课程暂无可用的学情表，请先上传并等待资料解析完成。</p>}
-      </section>
+      </section>}
 
       <div className="rounded-2xl border border-outline-variant bg-[#FBFDFB] p-3 shadow-xs">
         <div className="mb-3 flex items-center justify-between">

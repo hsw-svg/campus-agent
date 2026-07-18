@@ -84,6 +84,18 @@ export interface Artifact {
   updated_at: string
 }
 
+export interface AgentHistoryItem {
+  run_id: string
+  conversation_id: string
+  conversation_title: string
+  agent_id: string | null
+  status: string
+  summary: string | null
+  artifact: Artifact | null
+  created_at: string
+  updated_at: string
+}
+
 export interface SourceCitation {
   attachment_id: string
   filename: string
@@ -198,6 +210,10 @@ export function listWorkspaceAttachments(token: string, courseId?: string | null
 
 export function listArtifacts(token: string, conversationId: string): Promise<Artifact[]> {
   return request<Artifact[]>(`/conversations/${conversationId}/artifacts`, undefined, token)
+}
+
+export function listCourseAgentHistory(token: string, courseId: string): Promise<AgentHistoryItem[]> {
+  return request<AgentHistoryItem[]>(`/courses/${courseId}/agent-history`, undefined, token)
 }
 
 export function getArtifact(token: string, artifactId: string): Promise<Artifact> {
