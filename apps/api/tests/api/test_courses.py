@@ -45,6 +45,50 @@ def test_course_cannot_be_used_across_workspaces(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "course_not_found"
 
 
+def test_course_can_be_renamed_and_deleted_only_by_owner(client: TestClient) -> None:
+    owner = make_workspace(client)
+    other = make_workspace(client)
+    course = client.post("/api/courses", json={"name": "旧名称"}, headers=auth(owner)).json()
+
+    renamed = client.patch(
+        f"/api/courses/{course['id']}",
+        json={"name": "新名称"},
+        headers=auth(owner),
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "新名称"
+
+    forbidden = client.delete(f"/api/courses/{course['id']}", headers=auth(other))
+    assert forbidden.status_code == 404
+    assert forbidden.json()["error"]["code"] == "course_not_found"
+
+    deleted = client.delete(f"/api/courses/{course['id']}", headers=auth(owner))
+    assert deleted.status_code == 204
+    assert client.get("/api/courses", headers=auth(owner)).json() == []
+
+
+def test_deleting_course_removes_its_tasks_and_materials(client: TestClient, tmp_path) -> None:
+    from app.integrations.storage.local import LocalObjectStorage
+
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    owner = make_workspace(client)
+    course = client.post("/api/courses", json={"name": "待删除课程"}, headers=auth(owner)).json()
+    task = client.post("/api/conversations", json={"course_id": course["id"]}, headers=auth(owner)).json()
+    uploaded = client.post(
+        f"/api/conversations/{task['id']}/attachments",
+        files={"file": ("lesson.txt", "课程资料", "text/plain")},
+        data={"scope": "workspace"},
+        headers=auth(owner),
+    )
+    assert uploaded.status_code == 201
+
+    deleted = client.delete(f"/api/courses/{course['id']}", headers=auth(owner))
+
+    assert deleted.status_code == 204
+    assert client.get("/api/conversations", headers=auth(owner)).json() == []
+    assert client.get("/api/workspaces/current/attachments", headers=auth(owner)).json() == []
+
+
 def test_course_agent_history_is_scoped_and_includes_text_and_artifact_results(client: TestClient) -> None:
     token = make_workspace(client)
     workspace = client.get("/api/workspaces/current", headers=auth(token)).json()

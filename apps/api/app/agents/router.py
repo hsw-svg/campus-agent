@@ -274,7 +274,8 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
     tabular = any(_is_tabular(attachment) for attachment in context.attachments)
     grade_terms = ("成绩", "得分", "分数", "满分", "正确率", "匿名编号", "student_no", "score")
     grade_headers = sum(term in attachment_text for term in grade_terms)
-    if not explicit_lesson_design and not explicit_learning_analysis:
+    neutral_message = _is_neutral_message(content)
+    if not explicit_lesson_design and not explicit_learning_analysis and not neutral_message:
         if tabular:
             add("learning_analysis", 2, "附件是 CSV/XLSX 等表格")
         if grade_headers >= 2:
@@ -333,7 +334,7 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
     # belongs to the current role.  This is conversational state, not a new
     # cross-role capability.
     previous_agent = context.conversation_agent_id or _last_agent(context.recent_messages)
-    if previous_agent in available and _is_short_follow_up(content):
+    if previous_agent in available and _is_short_follow_up(content) and not neutral_message:
         add(previous_agent, 3, "延续当前对话中的智能体")
 
     if not scores:
@@ -421,6 +422,11 @@ def _is_short_follow_up(content: str) -> bool:
     return len(content.strip()) <= 18 or any(
         phrase in content for phrase in ("继续", "再改", "再说说", "这个呢", "详细一点")
     )
+
+
+def _is_neutral_message(content: str) -> bool:
+    normalized = content.strip().lower().strip(" ，。！？!?.,~～")
+    return normalized in {"你好", "您好", "嗨", "哈喽", "hello", "hi", "hey", "早上好", "下午好", "晚上好"}
 
 
 def _missing_inputs_for_agent(agent_id: str, context: RouteContext) -> list[str]:

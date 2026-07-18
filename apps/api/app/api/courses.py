@@ -29,6 +29,11 @@ class CreateCourseRequest(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
 
 
+class UpdateCourseRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=2000)
+
+
 class CourseArtifactResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -68,6 +73,27 @@ def list_courses(workspace: AnonymousWorkspace = Depends(get_current_workspace),
 @router.post("", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
 def create_course(payload: CreateCourseRequest, workspace: AnonymousWorkspace = Depends(get_current_workspace), courses: CourseRepository = Depends(get_course_repository)) -> object:
     return courses.create(workspace.id, payload.name.strip(), payload.description)
+
+
+@router.patch("/{course_id}", response_model=CourseResponse)
+def update_course(
+    course_id: UUID,
+    payload: UpdateCourseRequest,
+    workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    courses: CourseRepository = Depends(get_course_repository),
+) -> object:
+    course = get_owned_course(courses, workspace.id, course_id)
+    return courses.update(course, name=payload.name.strip(), description=payload.description)
+
+
+@router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_course(
+    course_id: UUID,
+    workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    courses: CourseRepository = Depends(get_course_repository),
+) -> None:
+    course = get_owned_course(courses, workspace.id, course_id)
+    courses.delete(course)
 
 
 @router.get("/{course_id}/agent-history", response_model=list[AgentHistoryResponse])

@@ -188,6 +188,18 @@ export function createCourse(token: string, name: string, description?: string):
   }, token)
 }
 
+export function updateCourse(token: string, courseId: string, name: string, description?: string | null): Promise<Course> {
+  return request<Course>(`/courses/${courseId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description: description ?? null }),
+  }, token)
+}
+
+export function deleteCourse(token: string, courseId: string): Promise<void> {
+  return request<void>(`/courses/${courseId}`, { method: 'DELETE' }, token)
+}
+
 export function createConversation(token: string, courseId?: string | null): Promise<Conversation> {
   return request<Conversation>('/conversations', {
     method: 'POST',

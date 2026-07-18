@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, type FormEvent } from 'react';
 import { 
   GraduationCap, 
   MessageSquarePlus, 
@@ -34,7 +34,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { createCourse, exportArtifact, listCourses, type Artifact, type Attachment, type Course, type CourseContext } from '../api';
+import { createCourse, deleteCourse, exportArtifact, listCourses, updateCourse, type Artifact, type Attachment, type Course, type CourseContext } from '../api';
 import { Role, Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ConversationHistory from './ConversationHistory';
@@ -64,6 +64,9 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const [showCreateCourseDialog, setShowCreateCourseDialog] = useState(false);
   const [newCourseName, setNewCourseName] = useState('');
   const [newCourseDescription, setNewCourseDescription] = useState('');
+  const [editingCourseName, setEditingCourseName] = useState('');
+  const [showDeleteCourseDialog, setShowDeleteCourseDialog] = useState(false);
+  const [isSavingCourse, setIsSavingCourse] = useState(false);
 
   // Interactive Quiz State
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
@@ -98,6 +101,10 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     toggleArtifact,
     stopStreaming,
   } = useWorkspaceChat(token, courseContext);
+  const visibleCourseAttachments = useMemo(
+    () => attachments.filter((attachment) => attachment.course_id === activeCourseId || attachment.course_id === null),
+    [activeCourseId, attachments],
+  );
   const [progressBarWidth, setProgressBarWidth] = useState('w-0');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -133,6 +140,63 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       clearChat();
     } catch (reason) {
       setAnalysisActionNotice(reason instanceof Error ? reason.message : '创建课程失败，请重试。');
+    }
+  };
+
+  const openCourseManagement = () => {
+    setEditingCourseName(activeCourse?.name ?? '');
+    setActiveTab('analytics');
+  };
+
+  const handleRenameCourse = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token || !activeCourse || !editingCourseName.trim()) return;
+    setIsSavingCourse(true);
+    try {
+      const updated = await updateCourse(token, activeCourse.id, editingCourseName.trim(), activeCourse.description);
+      setCourses((current) => current.map((course) => course.id === updated.id ? updated : course));
+      setAnalysisActionNotice('课程名称已更新。');
+    } catch (reason) {
+      setAnalysisActionNotice(reason instanceof Error ? reason.message : '课程名称更新失败，请重试。');
+    } finally {
+      setIsSavingCourse(false);
+    }
+  };
+
+  const handleDeleteCourse = async () => {
+    if (!token || !activeCourse) return;
+    setIsSavingCourse(true);
+    try {
+      await deleteCourse(token, activeCourse.id);
+      const remaining = courses.filter((course) => course.id !== activeCourse.id);
+      setCourses(remaining);
+      setActiveCourseId(remaining[0]?.id ?? null);
+      setExpandedCourseId(remaining[0]?.id ?? null);
+      setShowDeleteCourseDialog(false);
+      setActiveTab('workbench');
+      // Let the course context switch before clearing resources; otherwise the
+      // hook can briefly reload attachments for the just-deleted course (404).
+      window.setTimeout(() => clearChat(), 0);
+      setAnalysisActionNotice('课程已删除。');
+    } catch (reason) {
+      // A previous delete may have completed while the browser retried the
+      // request. Treat a confirmed absence as success instead of leaving a
+      // stale course card with a misleading 404.
+      if (reason instanceof Error && 'status' in reason && (reason as { status?: number }).status === 404) {
+        const latest = await listCourses(token).catch(() => null);
+        if (latest && !latest.some((course) => course.id === activeCourse.id)) {
+          setCourses(latest);
+          setActiveCourseId(latest[0]?.id ?? null);
+          setExpandedCourseId(latest[0]?.id ?? null);
+          setShowDeleteCourseDialog(false);
+          setActiveTab('workbench');
+          setAnalysisActionNotice('课程已删除。');
+          return;
+        }
+      }
+      setAnalysisActionNotice(reason instanceof Error ? reason.message : '课程删除失败，请重试。');
+    } finally {
+      setIsSavingCourse(false);
     }
   };
 
@@ -395,6 +459,19 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
           </form>
         </div>
       )}
+      {showDeleteCourseDialog && activeCourse && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-on-surface/30 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-course-title">
+          <div className="w-full max-w-md rounded-2xl border border-error/20 bg-surface p-6 shadow-2xl">
+            <p className="mb-1 text-[11px] font-bold tracking-widest text-error">危险操作</p>
+            <h2 id="delete-course-title" className="font-display text-xl font-extrabold text-on-surface">确认删除课程？</h2>
+            <p className="mt-2 text-sm leading-6 text-on-surface-variant">将删除“{activeCourse.name}”课程。课程任务会解除课程归属，课程资料也不再作为该课程资料提供。此操作不可撤销。</p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowDeleteCourseDialog(false)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-high">取消</button>
+              <button type="button" disabled={isSavingCourse} onClick={() => void handleDeleteCourse()} className="rounded-xl bg-error px-4 py-2.5 text-sm font-semibold text-on-error transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <aside className="fixed left-0 top-0 z-50 hidden h-screen w-72 flex-col border-r border-white/70 bg-surface-container-low/90 px-3 py-4 shadow-[8px_0_30px_rgba(25,28,26,0.04)] backdrop-blur-xl lg:flex">
         
@@ -530,12 +607,12 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                 资料
               </button>
               <button 
-                onClick={() => setActiveTab('analytics')}
+                onClick={openCourseManagement}
                 className={`text-sm font-bold pb-1 cursor-pointer transition-colors ${
                   activeTab === 'analytics' ? 'text-primary border-b-2 border-primary' : 'text-on-surface-variant hover:text-primary'
                 }`}
               >
-                数据分析
+                课程管理
               </button>
             </nav>
           </div>
@@ -1148,52 +1225,76 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
           {/* Fallback tabs (Resources and Analytics mockup states) */}
           {activeTab === 'resources' && (
-            <div className="flex-1 p-10 overflow-y-auto max-w-5xl mx-auto space-y-6">
-              <h2 className="text-xl font-black font-display text-primary">备课资料库</h2>
-              <p className="text-xs text-on-surface-variant font-medium">在这里，你可以存储和调取你的教案、讲义、大纲与班级学生名册。</p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-5 bg-white border border-outline-variant rounded-2xl shadow-xs space-y-3">
-                  <div className="w-10 h-10 bg-primary/10 text-primary flex items-center justify-center rounded-xl">
-                    <FileSpreadsheet className="w-5 h-5" />
-                  </div>
-                  <h4 className="font-bold text-xs">匿名学情表.xlsx</h4>
-                  <p className="text-[11px] text-on-surface-variant">包含平时考核出勤率与知识点得分。</p>
-                  <button onClick={() => { setActiveTab('workbench'); startAnalysis('匿名学情表.xlsx'); }} className="text-xs text-primary font-bold hover:underline">立即调阅分析 →</button>
-                </div>
-
-                <div className="p-5 bg-white border border-outline-variant rounded-2xl shadow-xs space-y-3">
-                  <div className="w-10 h-10 bg-secondary/10 text-secondary flex items-center justify-center rounded-xl">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <h4 className="font-bold text-xs">Python高级函数教案.docx</h4>
-                          <p className="text-[11px] text-on-surface-variant">包含切片、高阶函数（映射、筛选、归约）等案例。</p>
-                  <button className="text-xs text-primary font-bold hover:underline">编辑教案 →</button>
-                </div>
-
-                <div className="p-5 bg-white border border-outline-variant rounded-2xl shadow-xs space-y-3">
-                  <div className="w-10 h-10 bg-tertiary-container/20 text-tertiary flex items-center justify-center rounded-xl">
-                    <GraduationCap className="w-5 h-5" />
-                  </div>
-                  <h4 className="font-bold text-xs">大一班课程教学大纲.pdf</h4>
-                  <p className="text-[11px] text-on-surface-variant">2026年春季最新修订版。</p>
-                  <button className="text-xs text-primary font-bold hover:underline">查看大纲 →</button>
-                </div>
+            <div className="mx-auto flex-1 max-w-5xl space-y-6 overflow-y-auto p-10">
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-primary">{courseContext.courseName}</p>
+                <h2 className="mt-1 font-display text-xl font-black text-primary">课程资料库</h2>
+                <p className="mt-2 text-xs font-medium leading-relaxed text-on-surface-variant">这里只显示当前课程和通用资料，其他课程的文件不会出现在这里。</p>
               </div>
-              </div>
-           )}
+
+              {visibleCourseAttachments.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-outline-variant bg-white/70 px-6 py-12 text-center shadow-xs">
+                  <FolderOpen className="mx-auto h-8 w-8 text-outline" />
+                  <p className="mt-3 text-sm font-extrabold text-on-surface">当前课程暂无资料</p>
+                  <p className="mt-1 text-xs text-on-surface-variant">上传课程资料后，它们会自动出现在这里。</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {visibleCourseAttachments.map((attachment) => {
+                    const learningTable = isLearningTable(attachment);
+                    const ready = ['indexed', 'degraded'].includes(attachment.status);
+                    return (
+                      <article key={attachment.id} className="group space-y-3 rounded-2xl border border-outline-variant bg-white p-5 shadow-xs transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${learningTable ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'}`}>
+                          {learningTable ? <FileSpreadsheet className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="truncate text-xs font-extrabold text-on-surface" title={attachment.filename}>{attachment.filename}</h4>
+                          <p className="mt-1 text-[10px] text-on-surface-variant">{attachment.scope === 'workspace' ? '课程资料' : '当前任务附件'} · {attachment.status === 'indexed' ? '已完成解析' : attachment.status === 'degraded' ? '已完成解析（降级）' : attachment.status === 'parsing' ? '解析中' : attachment.status === 'failed' ? '解析失败' : '等待处理'}</p>
+                        </div>
+                        {learningTable && (
+                          <button type="button" disabled={!ready} onClick={() => startAnalysis(attachment.filename)} className="text-xs font-extrabold text-primary transition-colors hover:text-primary-container disabled:cursor-not-allowed disabled:text-outline">
+                            {ready ? '回到工作台进行学情分析 →' : '资料解析完成后可分析'}
+                          </button>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {activeTab === 'analytics' && (
-            <div className="flex-1 p-10 overflow-y-auto max-w-5xl mx-auto space-y-6">
-              <h2 className="text-xl font-black font-display text-primary">班级学术仪表盘</h2>
-              <p className="text-xs text-on-surface-variant font-medium">自动跟踪本学期教学大纲各章节的及格率、学生参与度以及高频薄弱知识点。</p>
-              
-              <div className="bg-white border border-outline-variant rounded-2xl p-6 shadow-xs space-y-4">
-                <h3 className="font-bold text-sm">学期学情总体曲线</h3>
-                <div className="h-48 bg-surface-container/30 border border-dashed border-outline-variant rounded-xl flex items-center justify-center">
-                  <span className="text-xs text-outline italic">加载历史均分走势图...</span>
-                </div>
+            <div className="mx-auto flex-1 max-w-3xl space-y-6 overflow-y-auto p-10">
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-primary">课程空间</p>
+                <h2 className="mt-1 font-display text-xl font-black text-primary">课程管理</h2>
+                <p className="mt-2 text-xs font-medium leading-relaxed text-on-surface-variant">修改当前课程名称，或删除不再使用的课程。删除前会再次确认。</p>
               </div>
+              {!activeCourse ? (
+                <div className="rounded-2xl border border-dashed border-outline-variant bg-white/70 px-6 py-12 text-center shadow-xs">
+                  <BookOpen className="mx-auto h-8 w-8 text-outline" />
+                  <p className="mt-3 text-sm font-extrabold text-on-surface">暂无课程</p>
+                  <p className="mt-1 text-xs text-on-surface-variant">请先创建课程，再进行课程管理。</p>
+                  <button type="button" onClick={openCreateCourseDialog} className="mt-4 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-on-primary">新建课程</button>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-outline-variant bg-white p-6 shadow-xs">
+                  <form onSubmit={handleRenameCourse}>
+                    <label className="block text-xs font-bold text-on-surface" htmlFor="manage-course-name">课程名称</label>
+                    <input id="manage-course-name" value={editingCourseName} onChange={(event) => setEditingCourseName(event.target.value)} className="mt-2 w-full rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" maxLength={160} required />
+                    <div className="mt-5 flex justify-end">
+                      <button type="submit" disabled={isSavingCourse || !editingCourseName.trim() || editingCourseName.trim() === activeCourse.name} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">保存名称</button>
+                    </div>
+                  </form>
+                  <div className="mt-8 border-t border-outline-variant pt-5">
+                    <h3 className="text-sm font-extrabold text-error">删除课程</h3>
+                    <p className="mt-1 text-xs leading-5 text-on-surface-variant">删除课程后，相关任务将不再归属于该课程。</p>
+                    <button type="button" onClick={() => setShowDeleteCourseDialog(true)} className="mt-3 rounded-xl border border-error/40 px-4 py-2.5 text-sm font-semibold text-error transition-colors hover:bg-error-container/40">删除“{activeCourse.name}”</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

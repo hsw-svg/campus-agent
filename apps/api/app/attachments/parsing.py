@@ -92,7 +92,14 @@ def _parse_csv(content: bytes) -> str:
 
 
 def _parse_xlsx(content: bytes) -> str:
-    from openpyxl import load_workbook
+    try:
+        from openpyxl import load_workbook
+    except ImportError as error:
+        raise AppError(
+            code="attachment_parser_unavailable",
+            message="XLSX 解析依赖未安装，请在当前 Python 环境安装 openpyxl。",
+            status_code=500,
+        ) from error
 
     workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     sections: list[str] = []

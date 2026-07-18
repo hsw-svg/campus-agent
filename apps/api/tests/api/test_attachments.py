@@ -1,8 +1,10 @@
+import io
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Sequence
 
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
 
 from app.integrations.storage.local import LocalObjectStorage
 from tests.api.conftest import make_workspace
@@ -34,6 +36,39 @@ def create_conversation(client: TestClient, token: str) -> dict:
     response = client.post("/api/conversations", json={}, headers=auth(token))
     assert response.status_code == 201
     return response.json()
+
+
+def make_xlsx_attendance_book() -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "出勤记录"
+    sheet.append(["匿名编号", "第一次出勤", "第二次出勤"])
+    sheet.append(["A01", "出勤", "缺勤"])
+    content = io.BytesIO()
+    workbook.save(content)
+    return content.getvalue()
+
+
+def test_upload_parses_real_xlsx_attendance_book(client: TestClient, tmp_path: Path) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    token = make_workspace(client, "teacher")
+
+    response = client.post(
+        "/api/workspaces/current/attachments",
+        files={
+            "file": (
+                "attendance.xlsx",
+                make_xlsx_attendance_book(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=auth(token),
+    )
+
+    assert response.status_code == 201
+    attachment = response.json()
+    assert attachment["status"] == "degraded"
+    assert attachment["extracted_chars"] > 0
 
 
 def test_upload_parses_and_indexes_text_with_workspace_scope(client: TestClient, tmp_path: Path) -> None:
@@ -104,6 +139,63 @@ def test_workspace_attachment_can_be_uploaded_and_listed_without_conversation(
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [attachment["id"]]
     assert client.get("/api/conversations", headers=auth(token)).json() == []
+
+
+def test_workspace_attachment_listing_is_isolated_by_course(
+    client: TestClient, tmp_path: Path
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    token = make_workspace(client, "teacher")
+    calculus = client.post("/api/courses", json={"name": "高等数学"}, headers=auth(token)).json()
+    programming = client.post("/api/courses", json={"name": "程序设计"}, headers=auth(token)).json()
+
+    calculus_file = client.post(
+        f"/api/workspaces/current/attachments?course_id={calculus['id']}",
+        files={"file": ("calculus-learning.csv", "学号,极限,A01,90", "text/csv")},
+        headers=auth(token),
+    ).json()
+    programming_file = client.post(
+        f"/api/workspaces/current/attachments?course_id={programming['id']}",
+        files={"file": ("programming-learning.csv", "学号,函数,A01,90", "text/csv")},
+        headers=auth(token),
+    ).json()
+
+    listed = client.get(
+        f"/api/workspaces/current/attachments?course_id={calculus['id']}",
+        headers=auth(token),
+    )
+
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()] == [calculus_file["id"]]
+    assert programming_file["id"] not in {item["id"] for item in listed.json()}
+
+
+def test_workspace_attachment_course_scope_must_belong_to_workspace(
+    client: TestClient, tmp_path: Path
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    owner = make_workspace(client, "teacher")
+    other_teacher = make_workspace(client, "teacher")
+    other_course = client.post(
+        "/api/courses", json={"name": "其他教师课程"}, headers=auth(other_teacher)
+    ).json()
+
+    listed = client.get(
+        "/api/workspaces/current/attachments",
+        params={"course_id": other_course["id"]},
+        headers=auth(owner),
+    )
+    uploaded = client.post(
+        "/api/workspaces/current/attachments",
+        params={"course_id": other_course["id"]},
+        files={"file": ("learning.csv", "匿名编号,得分\nA01,90", "text/csv")},
+        headers=auth(owner),
+    )
+
+    assert listed.status_code == 404
+    assert listed.json()["error"]["code"] == "course_not_found"
+    assert uploaded.status_code == 404
+    assert uploaded.json()["error"]["code"] == "course_not_found"
 
 
 def test_attachment_and_retrieval_are_isolated_by_workspace(client: TestClient, tmp_path: Path) -> None:

@@ -42,6 +42,29 @@ def test_grade_sheet_is_routed_to_teacher_learning_analysis_by_rules() -> None:
     assert decision.requires_confirmation is False
 
 
+def test_greeting_does_not_inherit_learning_analysis_agent_from_previous_turn() -> None:
+    router = AgentRouter()
+
+    decision = asyncio.run(router.route(
+        RouteContext(
+            role="teacher",
+            content="你好",
+            conversation_agent_id="learning_analysis",
+            recent_messages=({"role": "assistant", "agent_id": "learning_analysis", "content": "分析完成"},),
+            attachments=(
+                RouteAttachment(
+                    filename="高等数学学情表.csv",
+                    content_type="text/csv",
+                    headers=("匿名编号", "极限得分"),
+                    text_excerpt="匿名编号 | 极限得分\nA01 | 90",
+                ),
+            ),
+        )
+    ))
+
+    assert decision.agent is None
+
+
 def test_uncertain_route_uses_structured_llm_output() -> None:
     classifier = FakeRouteClassifier(
         '{"agent":"resume_helper","confidence":0.91,"reason":"文本包含项目经历和求职目标","missing_inputs":[]}'

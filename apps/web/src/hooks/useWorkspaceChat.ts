@@ -75,6 +75,10 @@ function mergeAttachments(current: Attachment[], incoming: Attachment[]): Attach
   return [...byId.values()].sort((left, right) => left.created_at.localeCompare(right.created_at))
 }
 
+function isAttachmentVisibleForCourse(attachment: Attachment, courseId: string | null): boolean {
+  return attachment.course_id === null || attachment.course_id === courseId
+}
+
 function eventError(event: StreamEvent): ApiError {
   const message = typeof event.data.message === 'string' ? event.data.message : '生成回复时出错。'
   const details = event.data.details && typeof event.data.details === 'object'
@@ -257,7 +261,9 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     setConversationAttachments([])
     setArtifacts([])
     setCitations([])
-    setSelectedAttachmentIds(courseContext?.courseId ? workspaceAttachments.map((attachment) => attachment.id) : [])
+    setSelectedAttachmentIds(courseContext?.courseId
+      ? workspaceAttachments.filter((attachment) => isAttachmentVisibleForCourse(attachment, courseContext.courseId)).map((attachment) => attachment.id)
+      : [])
     setSelectedArtifactIds([])
     setRoute(null)
     setRunStatus('idle')
@@ -266,8 +272,9 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
   }, [courseContext?.courseId, workspaceAttachments])
 
   const attachments = useMemo(
-    () => mergeAttachments(conversationAttachments, workspaceAttachments),
-    [conversationAttachments, workspaceAttachments],
+    () => mergeAttachments(conversationAttachments, workspaceAttachments)
+      .filter((attachment) => isAttachmentVisibleForCourse(attachment, courseContext?.courseId ?? null)),
+    [conversationAttachments, courseContext?.courseId, workspaceAttachments],
   )
 
   useEffect(() => {
@@ -284,7 +291,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
   const sendMessage = useCallback(async (rawContent: string, requestedAgentId: string | null = null) => {
     const content = rawContent.trim()
     const requestAttachmentIds = courseContext?.courseId
-      ? mergeAttachments(conversationAttachments, workspaceAttachments).map((attachment) => attachment.id)
+      ? attachments.map((attachment) => attachment.id)
       : selectedAttachmentIds
     const requestSignature = [
       content,
@@ -452,7 +459,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         }
       }
     }
-  }, [activeConversationId, conversationAttachments, courseContext, isAiTyping, refreshAgentHistory, refreshConversations, refreshResources, refreshWorkspaceAttachments, route?.runId, selectedArtifactIds, selectedAttachmentIds, token, workspaceAttachments])
+  }, [activeConversationId, attachments, courseContext, isAiTyping, refreshAgentHistory, refreshConversations, refreshResources, refreshWorkspaceAttachments, route?.runId, selectedArtifactIds, selectedAttachmentIds, token])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {

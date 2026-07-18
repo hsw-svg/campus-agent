@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 
+from app.api.courses import get_course_repository, get_owned_course
 from app.attachments.dependencies import get_attachment_repository, get_object_storage
 from app.attachments.parsing import validate_filename
 from app.attachments.repositories import AttachmentRepository
@@ -12,6 +13,7 @@ from app.integrations.embedding.providers import EmbeddingProvider
 from app.integrations.storage.base import ObjectStorage
 from app.services.attachments import process_attachment
 from app.services.conversations import get_owned_conversation
+from app.repositories.courses import CourseRepository
 from app.repositories.conversations import ConversationRepository
 from app.conversations.dependencies import get_conversation_repository
 from app.workspaces.dependencies import (
@@ -101,8 +103,11 @@ def list_workspace_attachments(
 def list_current_workspace_attachments(
     course_id: UUID | None = None,
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    courses: CourseRepository = Depends(get_course_repository),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
 ) -> list[AttachmentResponse]:
+    if course_id is not None:
+        get_owned_course(courses, workspace.id, course_id)
     return attachments.list_workspace_for_conversation(workspace.id, course_id)
 
 
@@ -115,10 +120,13 @@ async def upload_workspace_attachment(
     file: UploadFile = File(...),
     course_id: UUID | None = None,
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    courses: CourseRepository = Depends(get_course_repository),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
     storage: ObjectStorage = Depends(get_object_storage),
     embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
 ) -> AttachmentResponse:
+    if course_id is not None:
+        get_owned_course(courses, workspace.id, course_id)
     return await _create_uploaded_attachment(
         file=file,
         workspace=workspace,

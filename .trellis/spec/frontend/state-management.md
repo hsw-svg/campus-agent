@@ -98,3 +98,27 @@ const requestSignature = [
   task restores the latest assistant `agent_id` into the same route state.
 - The aggregation panel displays run metadata and short summaries only. It opens the owning conversation for full
   messages and Artifact details instead of duplicating `ArtifactCard`.
+
+### Course resource isolation
+
+- `useWorkspaceChat` is the single owner of the course-visible attachment projection. For a course task, an attachment
+  is visible only when `attachment.course_id === courseId` or `attachment.course_id === null` (shared material).
+- Course resource views must render this projection and must not contain hard-coded demo filenames or files from another
+  course. A course switch must clear the previous attachment state before the new `GET /workspaces/current/attachments?course_id=...`
+  response is applied.
+- Course task requests must derive `selected_attachment_ids` from the same filtered projection, so stale UI state cannot
+  leak another course's material into an agent run.
+
+**Wrong**:
+
+```tsx
+const cards = ['匿名学情表.xlsx', 'Python高级函数教案.docx']
+return <ResourceGrid files={cards} />
+```
+
+**Correct**:
+
+```tsx
+const attachments = mergeAttachments(conversationAttachments, workspaceAttachments)
+  .filter((item) => item.course_id === courseId || item.course_id === null)
+```
