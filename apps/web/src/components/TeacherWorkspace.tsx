@@ -76,6 +76,13 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const [inputVal, setInputVal] = useState('');
   const [analysisActionNotice, setAnalysisActionNotice] = useState<string | null>(null);
   const activeCourse = courses.find((course) => course.id === activeCourseId) ?? null;
+
+  // Auto-clear notice after 3 seconds
+  useEffect(() => {
+    if (!analysisActionNotice) return;
+    const timer = setTimeout(() => setAnalysisActionNotice(null), 3000);
+    return () => clearTimeout(timer);
+  }, [analysisActionNotice]);
   const courseContext: CourseContext = {
     courseId: activeCourse?.id ?? null,
     courseName: activeCourse?.name ?? '任务',
@@ -647,7 +654,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                 type="button"
                 onClick={() => setShowInteractionPanel(true)}
                 aria-label="打开智能体历史聚合面板"
-                className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-3 py-2 text-xs font-bold text-primary hover:bg-surface-container xl:hidden"
+                className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-3 py-2 text-xs font-bold text-primary hover:bg-surface-container"
               >
                 <FolderClosed className="w-3.5 h-3.5" />智能体历史
               </button>
@@ -1299,9 +1306,15 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
           )}
 
           {/* 3. RIGHT PANEL: course-scoped agent history and the active workflow. */}
-          <aside className="w-96 h-full border-l border-outline-variant bg-surface-container-low flex flex-col overflow-y-auto shrink-0 hidden xl:flex">
-            {renderInteractionPanel()}
-          </aside>
+          {showInteractionPanel && (
+            <aside className="w-96 h-full border-l border-outline-variant bg-surface-container-low flex flex-col overflow-y-auto shrink-0 hidden xl:flex">
+              <div className="flex h-12 items-center justify-between border-b border-outline-variant px-4 shrink-0">
+                <p className="text-sm font-extrabold text-on-surface">智能体历史聚合</p>
+                <button type="button" onClick={() => setShowInteractionPanel(false)} aria-label="关闭智能体历史面板" className="rounded-lg px-2 py-1 text-xs font-bold text-outline hover:bg-surface-container">关闭</button>
+              </div>
+              <div className="flex-1 overflow-y-auto">{renderInteractionPanel()}</div>
+            </aside>
+          )}
 
           <AnimatePresence>
           {showInteractionPanel && (
