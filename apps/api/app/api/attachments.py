@@ -1,13 +1,16 @@
+import logging
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 
 from app.api.courses import get_course_repository, get_owned_course
 from app.attachments.dependencies import get_attachment_repository, get_object_storage
 from app.attachments.parsing import validate_filename
 from app.attachments.repositories import AttachmentRepository
+
+logger = logging.getLogger(__name__)
 from app.core.errors import AppError
 from app.integrations.embedding.providers import EmbeddingProvider
 from app.integrations.storage.base import ObjectStorage
@@ -101,14 +104,17 @@ def list_workspace_attachments(
 
 @workspace_attachment_router.get("/current/attachments", response_model=list[AttachmentResponse])
 def list_current_workspace_attachments(
-    course_id: UUID | None = None,
+    course_id: UUID | None = Query(None),
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
     courses: CourseRepository = Depends(get_course_repository),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
 ) -> list[AttachmentResponse]:
+    logger.info(f"[DEBUG] list_current_workspace_attachments called with course_id={course_id}")
     if course_id is not None:
         get_owned_course(courses, workspace.id, course_id)
-    return attachments.list_workspace_for_conversation(workspace.id, course_id)
+    result = attachments.list_workspace_for_conversation(workspace.id, course_id)
+    logger.info(f"[DEBUG] Returning {len(result)} attachments for course_id={course_id}")
+    return result
 
 
 @workspace_attachment_router.post(
@@ -118,7 +124,7 @@ def list_current_workspace_attachments(
 )
 async def upload_workspace_attachment(
     file: UploadFile = File(...),
-    course_id: UUID | None = None,
+    course_id: UUID | None = Query(None),
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
     courses: CourseRepository = Depends(get_course_repository),
     attachments: AttachmentRepository = Depends(get_attachment_repository),

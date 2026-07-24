@@ -37,6 +37,7 @@ services:
       - "8000:8000"
     volumes:
       - ./storage:/data/storage
+      - ./apps/api/app:/app/app:ro
 
   web:
     build:

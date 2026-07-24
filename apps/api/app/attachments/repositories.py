@@ -55,7 +55,7 @@ class AttachmentRepository:
         )
 
     def list_workspace_for_conversation(self, workspace_id: UUID, course_id: UUID | None = None) -> list[Attachment]:
-        course_filter = Attachment.course_id.is_(None) if course_id is None else ((Attachment.course_id == course_id) | Attachment.course_id.is_(None))
+        course_filter = Attachment.course_id.is_(None) if course_id is None else (Attachment.course_id == course_id)
         return list(
             self.session.scalars(
                 select(Attachment)
