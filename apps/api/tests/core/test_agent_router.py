@@ -82,6 +82,51 @@ def test_uncertain_route_uses_structured_llm_output() -> None:
     assert "resume_helper" in classifier.calls[0][0]["content"]
 
 
+def test_slide_deck_request_routes_to_course_iteration_over_inheritance() -> None:
+    """PPT/课件/幻灯 关键词必须压倒上一轮 learning_analysis 的短追问继承。"""
+    router = AgentRouter()
+
+    decision = asyncio.run(router.route(
+        RouteContext(
+            role="teacher",
+            content="生成一个python面向对象知识的ppt",
+            conversation_agent_id="learning_analysis",
+            recent_messages=(
+                {"role": "assistant", "agent_id": "learning_analysis", "content": "分析完成"},
+            ),
+        )
+    ))
+
+    assert decision.agent == "course_iteration"
+    assert decision.selection_source == "rule"
+
+
+def test_slide_deck_request_wins_even_with_learning_table_attached() -> None:
+    """挂着匿名成绩表的课程里，生成课件请求也必须路由到 course_iteration。"""
+    router = AgentRouter()
+
+    decision = asyncio.run(router.route(
+        RouteContext(
+            role="teacher",
+            content="生成一个python面向对象知识的ppt",
+            conversation_agent_id="learning_analysis",
+            recent_messages=(
+                {"role": "assistant", "agent_id": "learning_analysis", "content": "分析完成"},
+            ),
+            attachments=(
+                RouteAttachment(
+                    filename="匿名成绩表.csv",
+                    content_type="text/csv",
+                    headers=("匿名编号", "章节", "得分", "满分"),
+                    text_excerpt="匿名编号 | 章节 | 得分 | 满分\nA01 | 函数 | 72 | 100",
+                ),
+            ),
+        )
+    ))
+
+    assert decision.agent == "course_iteration"
+
+
 def test_llm_cannot_route_outside_the_current_role() -> None:
     classifier = FakeRouteClassifier(
         '{"agent":"learning_analysis","confidence":0.99,"reason":"bad","missing_inputs":[]}'

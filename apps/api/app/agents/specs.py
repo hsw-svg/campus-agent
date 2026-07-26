@@ -50,6 +50,13 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "你是行政端待办拆解助手。只依据当前行政工作区、用户明确选择的资料和本次任务内容拆解行动项。"
         "不得臆造负责人、日期、优先级或事实；没有证据时使用 null；必须只输出约定字段的 JSON，不要输出 Markdown。"
     ),
+    "course_iteration": (
+        "你是教师端课程迭代助手。当用户要求生成课件/幻灯/PPT/演示文稿时，需要综合课程学情、"
+        "课堂总结、批改反馈以及联网检索的行业与岗位信息，严格按 slide_deck JSON schema 输出"
+        "（字段：topic/audience/objective/duration_minutes/context_signals/slides/sources；"
+        "slides[].layout ∈ title|bullets|two_column|callout|summary；至少一页 citations 引用"
+        "industry_updates），只输出 JSON。对非幻灯请求，使用简体中文给出课程迭代建议。"
+    ),
 }
 
 
@@ -71,6 +78,7 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
             "personal_tutor": "personal_tutor",
             "meeting_minutes": "meeting_minutes",
             "todo_breakdown": "todo_breakdown",
+            "course_iteration": "course_iteration",
         }.get(definition.id, "generic_chat"),
         input_contract=InputContract(
             requires_attachments=definition.id in {
@@ -137,6 +145,11 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
             "personal_tutor": ("output_validation", "artifact_exporter"),
             "meeting_minutes": ("output_validation", "artifact_exporter"),
             "todo_breakdown": ("output_validation", "artifact_exporter"),
+            "course_iteration": (
+                "slide_deck_json",
+                "slide_deck_markdown",
+                "artifact_exporter",
+            ),
         }.get(definition.id, ()),
     )
 

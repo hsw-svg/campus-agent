@@ -258,6 +258,14 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
     )
     add("learning_analysis", 6, "任务明确要求进行班级整体学情分析") if explicit_learning_analysis else None
 
+    # Slide deck / PPT requests are explicit output declarations too: even when
+    # the course has learning tables attached, "生成一个 xx 的 ppt" should route
+    # to course_iteration rather than learning_analysis.
+    explicit_slide_deck = any(
+        term in content for term in ("课件", "幻灯", "幻灯片", "演示文稿", "ppt", "slide", "slides")
+    )
+    add("course_iteration", 6, "任务明确要求生成课件/幻灯") if explicit_slide_deck else None
+
     explicit_classroom_interaction = any(
         term in content
         for term in (
@@ -275,7 +283,12 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
     grade_terms = ("成绩", "得分", "分数", "满分", "正确率", "匿名编号", "student_no", "score")
     grade_headers = sum(term in attachment_text for term in grade_terms)
     neutral_message = _is_neutral_message(content)
-    if not explicit_lesson_design and not explicit_learning_analysis and not neutral_message:
+    if (
+        not explicit_lesson_design
+        and not explicit_learning_analysis
+        and not explicit_slide_deck
+        and not neutral_message
+    ):
         if tabular:
             add("learning_analysis", 2, "附件是 CSV/XLSX 等表格")
         if grade_headers >= 2:

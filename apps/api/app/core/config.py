@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     embedding_model: str = ""
     embedding_dimensions: int = 1024
 
+    bing_search_api_key: str | None = None
+    bing_search_endpoint: str = "https://api.bing.microsoft.com/v7.0/search"
+
     @property
     def chat_is_configured(self) -> bool:
         return all((self.chat_base_url.strip(), self.chat_api_key.strip(), self.chat_model.strip()))

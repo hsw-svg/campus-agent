@@ -27,7 +27,7 @@ interface TeacherAgentHistoryPanelProps {
   selectedArtifactIds: string[]
   onToggleArtifact: (artifactId: string) => void
   onPrompt: (content: string) => void
-  onExport: (artifact: Artifact, format: 'markdown' | 'csv') => Promise<void>
+  onExport: (artifact: Artifact, format: 'markdown' | 'csv' | 'pptx') => Promise<void>
   onViewHistoryItem: (item: AgentHistoryItem) => void
   isBusy: boolean
 }

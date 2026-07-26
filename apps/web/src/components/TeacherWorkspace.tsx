@@ -40,6 +40,7 @@ import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ConversationHistory from './ConversationHistory';
 import TeacherAgentHistoryPanel from './TeacherAgentHistoryPanel';
 import Markdown from './Markdown';
+import SlideDeckPreview from './SlideDeckPreview';
 
 interface TeacherWorkspaceProps {
   token: string | null;
@@ -459,14 +460,15 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
-  const handleExportArtifact = async (artifact: Artifact, format: 'markdown' | 'csv') => {
+  const handleExportArtifact = async (artifact: Artifact, format: 'markdown' | 'csv' | 'pptx') => {
     if (!token) return;
     try {
       const blob = await exportArtifact(token, artifact.id, format);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `${artifact.title || artifact.id}.${format === 'csv' ? 'csv' : 'md'}`;
+      const extension = format === 'csv' ? 'csv' : format === 'pptx' ? 'pptx' : 'md';
+      anchor.download = `${artifact.title || artifact.id}.${extension}`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -1022,6 +1024,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                     {chatMessages.map((msg, index) => {
                       const isUser = msg.sender === 'user';
                       const isLearningAnalysisMessage = isLearningAnalysisArtifactMessage(msg);
+                      const isSlideDeckMessage = isSlideDeckArtifactMessage(msg);
+                      const slideDeckArtifact = isSlideDeckMessage ? findArtifactForMessage(artifacts, msg, 'slide_deck') : null;
                       return (
                         <div key={msg.id} className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
                           
@@ -1033,7 +1037,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                           )}
 
                           {/* Message Content Bubble */}
-                          <div className={`${isLearningAnalysisMessage ? 'max-w-[98%]' : 'max-w-[85%]'} rounded-2xl px-5 py-4 shadow-xs ${
+                          <div className={`${isLearningAnalysisMessage || isSlideDeckMessage ? 'max-w-[98%]' : 'max-w-[85%]'} rounded-2xl px-5 py-4 shadow-xs ${
                             isUser 
                               ? 'bg-primary text-on-primary rounded-tr-none' 
                               : 'bg-[#FBFDFB] text-on-surface rounded-tl-none'
@@ -1045,7 +1049,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
                             <div className="text-sm leading-relaxed prose prose-sm max-w-none">
                               {/* Standard text renderer */}
-                              {!isLearningAnalysisMessage && msg.type !== 'quiz' && msg.type !== 'plan' ? (
+                              {!isLearningAnalysisMessage && !isSlideDeckMessage && msg.type !== 'quiz' && msg.type !== 'plan' ? (
                                 isUser ? (
                                   <div className="whitespace-pre-line">{msg.content}</div>
                                 ) : (
@@ -1057,6 +1061,19 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                                 <div ref={learningAnalysisReportRef} className="mt-2">
                                   <LearningAnalysisReport artifact={learningAnalysisArtifact} onCopy={(content) => copyToClipboard(content, 999)} onGenerate={() => handleSendMessage('根据学情分析生成课程迭代方案')} />
                                 </div>
+                              )}
+
+                              {isSlideDeckMessage && slideDeckArtifact && (
+                                <div className="mt-2">
+                                  <SlideDeckPreview
+                                    artifact={slideDeckArtifact}
+                                    onExport={(format) => { void handleExportArtifact(slideDeckArtifact, format); }}
+                                    onCopy={(content) => copyToClipboard(content, 997)}
+                                  />
+                                </div>
+                              )}
+                              {isSlideDeckMessage && !slideDeckArtifact && (
+                                <Markdown content={msg.content} />
                               )}
 
                               {/* Interactive Quiz renderer */}
@@ -1441,7 +1458,7 @@ function HistoryDetailModal({
 }: {
   item: AgentHistoryItem
   onClose: () => void
-  onExport: (artifact: Artifact, format: 'markdown' | 'csv') => Promise<void>
+  onExport: (artifact: Artifact, format: 'markdown' | 'csv' | 'pptx') => Promise<void>
   onCopy: (content: string) => void
 }) {
   const artifact = item.artifact
@@ -1531,6 +1548,15 @@ function HistoryDetailModal({
                   >
                     导出 CSV
                   </button>
+                  {artifact.type === 'slide_deck' && (
+                    <button
+                      type="button"
+                      onClick={() => void onExport(artifact, 'pptx')}
+                      className="rounded-lg border border-outline-variant/70 px-2 py-1 text-[10px] font-bold text-on-surface hover:border-primary/40 hover:text-primary"
+                    >
+                      导出 PPTX
+                    </button>
+                  )}
                 </div>
               </div>
               {artifact.type === 'learning_analysis' ? (
@@ -1539,6 +1565,14 @@ function HistoryDetailModal({
                     artifact={artifact}
                     onCopy={onCopy}
                     onGenerate={() => onClose()}
+                  />
+                </div>
+              ) : artifact.type === 'slide_deck' ? (
+                <div className="mt-3 overflow-hidden rounded-xl bg-surface">
+                  <SlideDeckPreview
+                    artifact={artifact}
+                    onExport={(format) => { void onExport(artifact, format); }}
+                    onCopy={onCopy}
                   />
                 </div>
               ) : artifact.content ? (
@@ -1609,6 +1643,30 @@ function isLearningAnalysisArtifactMessage(message: Message): boolean {
     item && typeof item === 'object' && (item as Record<string, unknown>).type === 'learning_analysis'
   ))) return true;
   return message.content.trimStart().startsWith('# 班级整体学情分析');
+}
+
+function isSlideDeckArtifactMessage(message: Message): boolean {
+  if (message.sender !== 'assistant') return false;
+  return Array.isArray(message.metadata) && message.metadata.some((item) => (
+    item && typeof item === 'object' && (item as Record<string, unknown>).type === 'slide_deck'
+  ));
+}
+
+function findArtifactForMessage(artifacts: Artifact[], message: Message, type: string): Artifact | null {
+  if (!Array.isArray(message.metadata)) {
+    return [...artifacts].reverse().find((a) => a.type === type) ?? null;
+  }
+  const referencedIds = message.metadata.flatMap((item): string[] => {
+    if (!item || typeof item !== 'object') return [];
+    const rec = item as Record<string, unknown>;
+    if (rec.type !== type) return [];
+    return typeof rec.artifact_id === 'string' ? [rec.artifact_id] : [];
+  });
+  if (referencedIds.length === 0) {
+    return [...artifacts].reverse().find((a) => a.type === type) ?? null;
+  }
+  const matched = artifacts.find((a) => referencedIds.includes(a.id));
+  return matched ?? ([...artifacts].reverse().find((a) => a.type === type) ?? null);
 }
 
 function LearningAnalysisReport({

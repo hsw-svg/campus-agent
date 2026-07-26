@@ -40,6 +40,23 @@ class ArtifactRepository:
             )
         )
 
+    def latest_by_conversation(
+        self,
+        workspace_id: UUID,
+        conversation_id: UUID,
+        artifact_type: str,
+    ) -> Artifact | None:
+        return self.session.scalar(
+            select(Artifact)
+            .where(
+                Artifact.workspace_id == workspace_id,
+                Artifact.conversation_id == conversation_id,
+                Artifact.type == artifact_type,
+            )
+            .order_by(Artifact.created_at.desc())
+            .limit(1)
+        )
+
     def list_selected_for_conversation(
         self,
         workspace_id: UUID,

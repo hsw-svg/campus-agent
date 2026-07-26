@@ -17,7 +17,17 @@ from app.conversations.models import Conversation, Message
 from app.conversations.streaming import stream_event
 from app.core.errors import AppError
 from app.integrations.llm.providers import ChatProvider
+from app.integrations.search.bing import BingSearchProvider
+from app.core.config import get_settings
 from app.repositories.conversations import ConversationRepository, MessageRepository
+
+
+def _build_bing_provider() -> BingSearchProvider:
+    settings = get_settings()
+    return BingSearchProvider(
+        api_key=settings.bing_search_api_key,
+        endpoint=settings.bing_search_endpoint,
+    )
 
 # The context sent to the chat model is capped so a long history does not grow
 # the prompt without bound; the shell still shows the full stored transcript.
@@ -324,7 +334,11 @@ async def stream_assistant_reply(
                     system_prompt="你是校园智能助手。只使用当前允许的资料回答，资料不足时明确说明。",
                     executor_id="generic_chat",
                 )
-            executor = AgentExecutorRegistry(chat_provider).resolve(spec)
+            executor = AgentExecutorRegistry(
+                chat_provider,
+                bing_provider=_build_bing_provider(),
+                artifact_repository_factory=(lambda repo=artifacts: repo),
+            ).resolve(spec)
             result = await executor.execute(request)
             source_payload = [
                 {

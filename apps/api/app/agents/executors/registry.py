@@ -1,7 +1,10 @@
 """Resolve stable agent specifications to isolated executors."""
 
+from collections.abc import Callable
+
 from app.agents.contracts import AgentExecutor
 from app.agents.executors.classroom_interaction import ClassroomInteractionExecutor
+from app.agents.executors.course_iteration import CourseIterationExecutor
 from app.agents.executors.generic_chat import GenericChatExecutor
 from app.agents.executors.learning_analysis import LearningAnalysisExecutor
 from app.agents.executors.lesson_design import LessonDesignExecutor
@@ -11,12 +14,21 @@ from app.agents.student.course_qa import CourseQAExecutor
 from app.agents.student.personal_tutor import PersonalTutorExecutor
 from app.agents.specs import AgentSpec
 from app.agents.specs import get_agent_spec
+from app.artifacts.repositories import ArtifactRepository
 from app.integrations.llm.providers import ChatProvider
+from app.integrations.search.bing import BingSearchProvider
 
 
 class AgentExecutorRegistry:
-    def __init__(self, chat_provider: ChatProvider) -> None:
+    def __init__(
+        self,
+        chat_provider: ChatProvider,
+        bing_provider: BingSearchProvider | None = None,
+        artifact_repository_factory: Callable[[], ArtifactRepository | None] | None = None,
+    ) -> None:
         self.chat_provider = chat_provider
+        self.bing_provider = bing_provider
+        self.artifact_repository_factory = artifact_repository_factory
 
     def resolve(self, spec_or_role: AgentSpec | str, agent_id: str | None = None) -> AgentExecutor:
         spec = (
@@ -32,6 +44,12 @@ class AgentExecutorRegistry:
             return LessonDesignExecutor(self.chat_provider)
         if spec.executor_id == "classroom_interaction":
             return ClassroomInteractionExecutor(self.chat_provider)
+        if spec.executor_id == "course_iteration":
+            return CourseIterationExecutor(
+                self.chat_provider,
+                self.bing_provider,
+                self.artifact_repository_factory,
+            )
         if spec.executor_id == "course_qa":
             return CourseQAExecutor(self.chat_provider)
         if spec.executor_id == "personal_tutor":

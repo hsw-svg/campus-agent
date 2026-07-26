@@ -235,7 +235,7 @@ export function getArtifact(token: string, artifactId: string): Promise<Artifact
 export async function exportArtifact(
   token: string,
   artifactId: string,
-  format: 'markdown' | 'csv' = 'markdown',
+  format: 'markdown' | 'csv' | 'pptx' = 'markdown',
 ): Promise<Blob> {
   const response = await fetch(`/api/artifacts/${artifactId}/export?format=${format}`, {
     headers: { 'X-Workspace-Token': token },
