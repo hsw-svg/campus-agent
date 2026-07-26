@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.api.courses import get_course_repository, get_owned_course
 from app.attachments.dependencies import get_attachment_repository, get_object_storage
-from app.attachments.parsing import validate_filename
+from app.attachments.parsing import MAX_ATTACHMENT_BYTES, validate_filename
 from app.attachments.repositories import AttachmentRepository
 
 logger = logging.getLogger(__name__)
@@ -157,7 +157,13 @@ async def _create_uploaded_attachment(
     embedding_provider: EmbeddingProvider,
 ) -> AttachmentResponse:
     filename = validate_filename(file.filename)
-    content = await file.read()
+    content = await file.read(MAX_ATTACHMENT_BYTES + 1)
+    if len(content) > MAX_ATTACHMENT_BYTES:
+        raise AppError(
+            code="attachment_too_large",
+            message="The attachment exceeds the 25 MB limit.",
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+        )
     attachment_id = uuid4()
     owner_key = str(conversation_id) if conversation_id is not None else "workspace"
     storage_key = f"{workspace.id}/{owner_key}/{attachment_id}/{filename}"

@@ -72,3 +72,10 @@
 - `ClassroomInteractionPanel` 只保留课堂工作流、运行摘要和成果索引，不再渲染资料选择区。
 - 教师课程任务由 `useWorkspaceChat` 生成 `requestAttachmentIds`，覆盖当前课程资料和当前对话附件。
 - 后端 `AttachmentRepository.list_selected_for_conversation` 在课程任务收到 `None` 或空附件 ID 时解析全部课程可见资料，作为首次发送竞态的兜底。
+
+## Course Library Direct Upload (2026-07-26)
+
+- 课程资料库直接复用 `POST /api/workspaces/current/attachments?course_id=...`，创建 `scope=workspace`、`conversation_id=null` 的课程附件，不为上传创建空任务。
+- 前端在异步上传前快照目标课程 ID，并将其显式传入 `uploadFile`；Hook 仅在目标课程仍为当前课程时合并响应，避免课程切换造成 UI 串库。
+- 文件选择器只声明后端实际支持的 `.txt`、`.md`、`.docx`、`.pdf`、`.xlsx`、`.csv`；25 MB 校验在数据库记录创建和对象存储写入前完成。
+- UI 根据返回附件的解析/存储状态展示成功、降级或失败提示，不能把 `status=failed` 解释为上传成功。

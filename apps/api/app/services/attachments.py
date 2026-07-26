@@ -60,10 +60,19 @@ def process_attachment(
             extracted_chars=len(parsed.text),
         )
     except AppError as error:
+        reason = None
+        if isinstance(error.details, dict):
+            reason_value = error.details.get("reason")
+            if reason_value:
+                reason = str(reason_value)
+        if error.code == "attachment_parse_failed":
+            status_message = f"文件解析失败：{reason}" if reason else "文件解析失败，请检查文件是否损坏或加密。"
+        else:
+            status_message = f"{error.message}（{reason}）" if reason else error.message
         return repository.update(
             attachment,
             status="failed",
-            status_message=error.message,
+            status_message=status_message,
         )
     except Exception as error:  # noqa: BLE001 - preserve a retryable attachment record
         return repository.update(

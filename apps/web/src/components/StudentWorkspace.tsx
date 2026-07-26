@@ -380,7 +380,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                     <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-outline hover:text-secondary transition-colors rounded-lg hover:bg-surface-container cursor-pointer">
                       <Paperclip className="w-4 h-4" />
                     </button>
-                    <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.xlsx,.xls,.pdf,.doc,.docx,.txt" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file); event.currentTarget.value = ''; }} />
+                    <input ref={fileInputRef} type="file" className="hidden" accept=".txt,.md,.docx,.pdf,.xlsx,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file); event.currentTarget.value = ''; }} />
                     <button className="p-1.5 text-outline hover:text-secondary transition-colors rounded-lg hover:bg-surface-container cursor-pointer">
                       <Mic className="w-4 h-4" />
                     </button>

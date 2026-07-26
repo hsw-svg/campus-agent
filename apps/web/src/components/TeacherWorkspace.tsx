@@ -55,7 +55,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const [stage, setStage] = useState<'welcome' | 'analyzing' | 'report'>('welcome');
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisStep, setAnalysisStep] = useState(0);
-  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [isUploadingCourseMaterial, setIsUploadingCourseMaterial] = useState(false);
   const [activeTab, setActiveTab] = useState<'workbench' | 'resources' | 'analytics'>('workbench');
   const [courses, setCourses] = useState<Course[]>([]);
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
@@ -119,6 +119,12 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const chatEndRef = useRef<HTMLDivElement>(null);
   const learningAnalysisReportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const courseMaterialInputRef = useRef<HTMLInputElement>(null);
+  const activeCourseIdRef = useRef<string | null>(activeCourseId);
+
+  useEffect(() => {
+    activeCourseIdRef.current = activeCourseId;
+  }, [activeCourseId]);
 
   useEffect(() => {
     if (!token) return;
@@ -253,6 +259,26 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     void sendMessage('分析学情', 'learning_analysis');
   };
 
+  const handleCourseMaterialUpload = async (file: File) => {
+    const uploadCourseId = courseContext.courseId;
+    if (!uploadCourseId) {
+      setAnalysisActionNotice('请先选择一门课程，再上传课程资料。');
+      return;
+    }
+    setIsUploadingCourseMaterial(true);
+    try {
+      const attachment = await uploadFile(file, 'workspace', uploadCourseId);
+      if (attachment && activeCourseIdRef.current === uploadCourseId) {
+        const parsedSuccessfully = ['indexed', 'degraded'].includes(attachment.status);
+        setAnalysisActionNotice(parsedSuccessfully
+          ? `“${attachment.filename}”已上传到当前课程资料库。`
+          : `“${attachment.filename}”已保存，但解析失败：${attachment.status_message ?? '请检查文件内容后重试。'}`);
+      }
+    } finally {
+      setIsUploadingCourseMaterial(false);
+    }
+  };
+
   // Preset Responses for smart interactive tasks
   const getAiResponse = (prompt: string): Partial<Message> => {
     const p = prompt.trim();
@@ -379,12 +405,18 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     }
   };
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = (textToSend?: string, requestedAgentId?: string | null) => {
     const finalMsg = textToSend || inputVal;
     if (!finalMsg.trim()) return;
     setAnalysisActionNotice(null);
     setInputVal('');
-    void sendMessage(finalMsg, finalMsg.trim() === '分析学情' ? 'learning_analysis' : null);
+    const trimmed = finalMsg.trim();
+    const agentId = requestedAgentId !== undefined
+      ? requestedAgentId
+      : trimmed === '分析学情'
+        ? 'learning_analysis'
+        : null;
+    void sendMessage(finalMsg, agentId);
   };
 
   const handleQuizAnswer = (questionId: string, optionIdx: number) => {
@@ -498,7 +530,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
           onClick={() => {
             setStage('welcome');
             clearChat();
-            setUploadedFile(null);
           }}
           className="flex items-center justify-center gap-2 w-full py-3 mb-6 bg-primary text-on-primary rounded-xl font-semibold text-sm hover:opacity-95 transition-all active:scale-95 shadow-sm cursor-pointer"
         >
@@ -514,7 +545,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             onClick={() => {
               setStage('welcome');
               clearChat();
-              setUploadedFile(null);
             }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
               stage === 'welcome' 
@@ -701,7 +731,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
                       <button 
                         onClick={() => {
-                          setUploadedFile('课堂互动备课案.xlsx');
                           handleSendMessage('根据本节课目标生成 Python 练习');
                         }}
                         className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
@@ -714,7 +743,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
                       <button 
                         onClick={() => {
-                          setUploadedFile('破冰互动表.xlsx');
                           handleSendMessage('帮我设计一个破冰环节');
                         }}
                         className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
@@ -1124,17 +1152,17 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <button 
-                        onClick={() => handleSendMessage('生成针对性小测')}
+                      <button
+                        onClick={() => handleSendMessage('针对本次学情分析结果生成一份包含 5 道选择题的针对性小测，并给出评分量规。', 'lesson_design')}
                         className="p-4 bg-white border border-outline-variant rounded-xl text-left hover:border-primary hover:shadow-xs transition-all group cursor-pointer"
                       >
                         <HelpCircle className="w-6 h-6 text-primary mb-2" />
                         <h4 className="font-bold text-xs text-on-surface mb-1">生成针对性小测</h4>
-                        <p className="text-[11px] text-on-surface-variant leading-relaxed">针对 Python 切片知识点生成 5 道选择题</p>
+                        <p className="text-[11px] text-on-surface-variant leading-relaxed">针对薄弱知识点生成 5 道选择题</p>
                       </button>
 
-                      <button 
-                        onClick={() => handleSendMessage('更新教学课件')}
+                      <button
+                        onClick={() => handleSendMessage('结合本次学情分析结果，给出当前课件的更新建议与可视化图表补充点。', 'course_iteration')}
                         className="p-4 bg-white border border-outline-variant rounded-xl text-left hover:border-primary hover:shadow-xs transition-all group cursor-pointer"
                       >
                         <BookOpen className="w-6 h-6 text-primary mb-2" />
@@ -1142,8 +1170,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         <p className="text-[11px] text-on-surface-variant leading-relaxed">自动在索引章节加入可视化图表建议</p>
                       </button>
 
-                      <button 
-                        onClick={() => handleSendMessage('撰写学情概况邮件')}
+                      <button
+                        onClick={() => handleSendMessage('基于当前学情分析结果，撰写一份发给课程组的学情概况邮件草稿。', 'teaching_report')}
                         className="p-4 bg-white border border-outline-variant rounded-xl text-left hover:border-primary hover:shadow-xs transition-all group cursor-pointer"
                       >
                         <FileText className="w-6 h-6 text-primary mb-2" />
@@ -1206,7 +1234,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         >
                           <Paperclip className="w-4 h-4" />
                         </button>
-                        <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.xlsx,.xls,.pdf,.doc,.docx,.txt" onChange={(event) => { const file = event.target.files?.[0]; if (file) { setUploadedFile(file.name); void uploadFile(file, courseContext.courseId ? 'workspace' : 'conversation'); } event.currentTarget.value = ''; }} />
+                        <input ref={fileInputRef} type="file" className="hidden" accept=".txt,.md,.docx,.pdf,.xlsx,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file, courseContext.courseId ? 'workspace' : 'conversation'); event.currentTarget.value = ''; }} />
                         <button type="button" aria-label="录音输入" className="p-1.5 text-outline hover:text-primary transition-colors rounded-lg hover:bg-surface-container cursor-pointer">
                           <Mic className="w-4 h-4" />
                         </button>
@@ -1233,10 +1261,34 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
           {/* Fallback tabs (Resources and Analytics mockup states) */}
           {activeTab === 'resources' && (
             <div className="mx-auto flex-1 max-w-5xl space-y-6 overflow-y-auto p-10">
-              <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-primary">{courseContext.courseName}</p>
-                <h2 className="mt-1 font-display text-xl font-black text-primary">课程资料库</h2>
-                <p className="mt-2 text-xs font-medium leading-relaxed text-on-surface-variant">这里只显示当前课程和通用资料，其他课程的文件不会出现在这里。</p>
+              <div className="flex items-start justify-between gap-6">
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-primary">{courseContext.courseName}</p>
+                  <h2 className="mt-1 font-display text-xl font-black text-primary">课程资料库</h2>
+                  <p className="mt-2 text-xs font-medium leading-relaxed text-on-surface-variant">这里只显示当前课程和通用资料，其他课程的文件不会出现在这里。支持 TXT、Markdown、DOCX、PDF、XLSX 和 CSV，单个文件不超过 25 MB。</p>
+                </div>
+                <div className="shrink-0">
+                  <button
+                    type="button"
+                    disabled={!courseContext.courseId || isUploadingCourseMaterial}
+                    onClick={() => courseMaterialInputRef.current?.click()}
+                    className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-extrabold text-on-primary shadow-sm transition hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <UploadCloud className="h-4 w-4" />
+                    {isUploadingCourseMaterial ? '上传中…' : '上传课程资料'}
+                  </button>
+                  <input
+                    ref={courseMaterialInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".txt,.md,.docx,.pdf,.xlsx,.csv"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void handleCourseMaterialUpload(file);
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </div>
               </div>
 
               {visibleCourseAttachments.length === 0 ? (
@@ -1258,6 +1310,9 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         <div className="min-w-0">
                           <h4 className="truncate text-xs font-extrabold text-on-surface" title={attachment.filename}>{attachment.filename}</h4>
                           <p className="mt-1 text-[10px] text-on-surface-variant">{attachment.scope === 'workspace' ? '课程资料' : '当前任务附件'} · {attachment.status === 'indexed' ? '已完成解析' : attachment.status === 'degraded' ? '已完成解析（降级）' : attachment.status === 'parsing' ? '解析中' : attachment.status === 'failed' ? '解析失败' : '等待处理'}</p>
+                          {attachment.status === 'failed' && attachment.status_message && (
+                            <p className="mt-1 truncate text-[10px] font-medium text-error" title={attachment.status_message}>失败原因：{attachment.status_message}</p>
+                          )}
                         </div>
                         {learningTable && (
                           <button type="button" disabled={!ready} onClick={() => startAnalysis(attachment.filename)} className="text-xs font-extrabold text-primary transition-colors hover:text-primary-container disabled:cursor-not-allowed disabled:text-outline">

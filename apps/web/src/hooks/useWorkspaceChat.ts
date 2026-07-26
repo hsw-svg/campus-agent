@@ -117,6 +117,8 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
   const resourceVersionRef = useRef(0)
   const workspaceResourceVersionRef = useRef(0)
   const agentHistoryVersionRef = useRef(0)
+  const currentCourseIdRef = useRef<string | null>(courseContext?.courseId ?? null)
+  currentCourseIdRef.current = courseContext?.courseId ?? null
 
   const refreshConversations = useCallback(async () => {
     if (!token) return
@@ -485,14 +487,21 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       : [...current, artifactId])
   }, [])
 
-  const uploadFile = useCallback(async (file: File, scope: 'conversation' | 'workspace' = 'conversation') => {
-    if (!token) return
+  const uploadFile = useCallback(async (
+    file: File,
+    scope: 'conversation' | 'workspace' = 'conversation',
+    workspaceCourseId: string | null = courseContext?.courseId ?? null,
+  ): Promise<Attachment | null> => {
+    if (!token) return null
     try {
+      let attachment: Attachment
       if (scope === 'workspace') {
-        const attachment = await uploadWorkspaceAttachment(token, file, courseContext?.courseId)
-        setWorkspaceAttachments((current) => mergeAttachments(current, [attachment]))
-        if (courseContext?.courseId) {
-          setSelectedAttachmentIds((current) => current.includes(attachment.id) ? current : [...current, attachment.id])
+        attachment = await uploadWorkspaceAttachment(token, file, workspaceCourseId)
+        if (currentCourseIdRef.current === workspaceCourseId) {
+          setWorkspaceAttachments((current) => mergeAttachments(current, [attachment]))
+          if (workspaceCourseId) {
+            setSelectedAttachmentIds((current) => current.includes(attachment.id) ? current : [...current, attachment.id])
+          }
         }
       } else {
         let conversationId = activeConversationId
@@ -502,15 +511,17 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
           setConversations((current) => [created, ...current])
           setActiveConversationId(conversationId)
         }
-        const attachment = await uploadAttachment(token, conversationId, file, 'conversation')
+        attachment = await uploadAttachment(token, conversationId, file, 'conversation')
         setConversationAttachments((current) => mergeAttachments(current, [attachment]))
         if (courseContext?.courseId) {
           setSelectedAttachmentIds((current) => current.includes(attachment.id) ? current : [...current, attachment.id])
         }
       }
       setError(null)
+      return attachment
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '附件上传失败。')
+      return null
     }
   }, [token, activeConversationId, courseContext?.courseId])
 

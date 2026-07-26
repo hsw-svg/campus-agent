@@ -141,6 +141,57 @@ def test_workspace_attachment_can_be_uploaded_and_listed_without_conversation(
     assert client.get("/api/conversations", headers=auth(token)).json() == []
 
 
+def test_course_library_upload_rejects_unsupported_file_type(
+    client: TestClient, tmp_path: Path
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    token = make_workspace(client, "teacher")
+    course = client.post("/api/courses", json={"name": "程序设计"}, headers=auth(token)).json()
+
+    response = client.post(
+        "/api/workspaces/current/attachments",
+        params={"course_id": course["id"]},
+        files={"file": ("legacy.xls", b"not-an-xls", "application/vnd.ms-excel")},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == {
+        "code": "unsupported_attachment_type",
+        "message": "Only txt, md, docx, pdf, xlsx and csv files are supported.",
+        "details": {"supported_extensions": [".csv", ".docx", ".md", ".pdf", ".txt", ".xlsx"]},
+    }
+    assert client.get(
+        "/api/workspaces/current/attachments",
+        params={"course_id": course["id"]},
+        headers=auth(token),
+    ).json() == []
+
+
+def test_course_library_upload_rejects_oversized_file_without_creating_attachment(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    token = make_workspace(client, "teacher")
+    course = client.post("/api/courses", json={"name": "程序设计"}, headers=auth(token)).json()
+    monkeypatch.setattr("app.api.attachments.MAX_ATTACHMENT_BYTES", 8)
+
+    response = client.post(
+        "/api/workspaces/current/attachments",
+        params={"course_id": course["id"]},
+        files={"file": ("large.txt", b"123456789", "text/plain")},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "attachment_too_large"
+    assert client.get(
+        "/api/workspaces/current/attachments",
+        params={"course_id": course["id"]},
+        headers=auth(token),
+    ).json() == []
+
+
 def test_workspace_attachment_listing_is_isolated_by_course(
     client: TestClient, tmp_path: Path
 ) -> None:

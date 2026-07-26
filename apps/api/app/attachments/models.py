@@ -11,14 +11,15 @@ from app.db.base import Base
 
 try:
     from pgvector.sqlalchemy import Vector
-except ImportError:  # pragma: no cover - the production dependency provides this
-    Vector = None
+except ImportError as error:  # pragma: no cover - the production dependency provides this
+    raise RuntimeError(
+        "pgvector 未安装：material_chunk.embedding 在数据库中为 vector 类型，"
+        "运行期缺少 pgvector 会导致 INSERT 时被当作 JSONB。请在当前 Python 环境执行 `pip install pgvector`。"
+    ) from error
 
 
-EmbeddingColumn = (
-    JSON().with_variant(Vector(get_settings().embedding_dimensions), "postgresql")
-    if Vector is not None
-    else JsonColumn
+EmbeddingColumn = JSON().with_variant(
+    Vector(get_settings().embedding_dimensions), "postgresql"
 )
 
 
