@@ -34,11 +34,12 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { createCourse, deleteCourse, exportArtifact, listCourses, updateCourse, type Artifact, type Attachment, type Course, type CourseContext } from '../api';
+import { createCourse, deleteCourse, exportArtifact, listCourses, updateCourse, type AgentHistoryItem, type Artifact, type Attachment, type Course, type CourseContext } from '../api';
 import { Role, Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ConversationHistory from './ConversationHistory';
 import TeacherAgentHistoryPanel from './TeacherAgentHistoryPanel';
+import Markdown from './Markdown';
 
 interface TeacherWorkspaceProps {
   token: string | null;
@@ -71,6 +72,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   // Interactive Quiz State
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [historyDetail, setHistoryDetail] = useState<AgentHistoryItem | null>(null);
 
   // Chat/Input states
   const [inputVal, setInputVal] = useState('');
@@ -229,6 +231,23 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     if (distanceToBottom < 200) chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isAiTyping]);
 
+  // Force-snap to the tail whenever a conversation is (re)loaded so the user
+  // lands on the latest message instead of the earliest one.
+  const lastLoadedConversationRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeConversationId) {
+      lastLoadedConversationRef.current = null;
+      return;
+    }
+    if (chatMessages.length === 0) return;
+    if (lastLoadedConversationRef.current === activeConversationId) return;
+    lastLoadedConversationRef.current = activeConversationId;
+    const timer = window.setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    }, 30);
+    return () => window.clearTimeout(timer);
+  }, [activeConversationId, chatMessages.length]);
+
   useEffect(() => {
     if (isAiTyping) {
       setStage('analyzing');
@@ -240,6 +259,14 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     }
     setStage('welcome');
   }, [artifacts, isAiTyping]);
+
+  useEffect(() => {
+    if (!historyDetail) return;
+    const timer = window.setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    }, 30);
+    return () => window.clearTimeout(timer);
+  }, [historyDetail]);
 
   const startAnalysis = (_fileName?: string) => {
     setActiveTab('workbench');
@@ -461,16 +488,15 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       onToggleArtifact={toggleArtifact}
       onPrompt={handleSendMessage}
       onExport={handleExportArtifact}
-      onOpenConversation={(conversationId) => void openConversation(conversationId)}
+      onViewHistoryItem={(item) => setHistoryDetail(item)}
       isBusy={isAiTyping}
     />
   );
   const learningAnalysisArtifact = [...artifacts].reverse().find((artifact) => artifact.type === 'learning_analysis') ?? null;
 
-  useEffect(() => {
-    if (!learningAnalysisArtifact || isAiTyping) return;
-    learningAnalysisReportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [chatMessages.length, learningAnalysisArtifact?.id, isAiTyping]);
+  // Removed: the previous auto-scroll pinned the chat to the top of the
+  // learning-analysis report and pushed follow-up buttons/messages out of view.
+  // The generic near-bottom scroll effect above keeps the tail in view instead.
 
   return (
     <div className="flex h-screen w-full font-sans antialiased bg-[#EEF3F0] text-on-surface overflow-hidden">
@@ -1020,7 +1046,11 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                             <div className="text-sm leading-relaxed prose prose-sm max-w-none">
                               {/* Standard text renderer */}
                               {!isLearningAnalysisMessage && msg.type !== 'quiz' && msg.type !== 'plan' ? (
-                                <div className="whitespace-pre-line">{msg.content}</div>
+                                isUser ? (
+                                  <div className="whitespace-pre-line">{msg.content}</div>
+                                ) : (
+                                  <Markdown content={msg.content} />
+                                )
                               ) : null}
 
                               {isLearningAnalysisMessage && (
@@ -1388,8 +1418,189 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         </div>
       </main>
 
+      <AnimatePresence>
+        {historyDetail && (
+          <HistoryDetailModal
+            item={historyDetail}
+            onClose={() => setHistoryDetail(null)}
+            onExport={handleExportArtifact}
+            onCopy={(content) => copyToClipboard(content, 998)}
+          />
+        )}
+      </AnimatePresence>
+
     </div>
   );
+}
+
+function HistoryDetailModal({
+  item,
+  onClose,
+  onExport,
+  onCopy,
+}: {
+  item: AgentHistoryItem
+  onClose: () => void
+  onExport: (artifact: Artifact, format: 'markdown' | 'csv') => Promise<void>
+  onCopy: (content: string) => void
+}) {
+  const artifact = item.artifact
+  const title = artifact?.title || item.conversation_title || '未命名教学任务'
+  const createdAt = formatDetailTime(item.created_at)
+  const agentLabel = describeAgent(item.agent_id)
+  const statusText = describeStatus(item.status)
+  return (
+    <motion.div
+      key="history-detail"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-on-surface/35 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="history-detail-title"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        transition={{ type: 'spring', bounce: 0, duration: 0.28 }}
+        className="relative flex max-h-[88vh] w-full max-w-5xl flex-col rounded-3xl bg-surface shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-outline-variant/60 px-6 py-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-extrabold uppercase tracking-wider text-primary">智能体历史记录</p>
+            <h3 id="history-detail-title" className="mt-1 truncate text-base font-black text-on-surface">{title}</h3>
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-on-surface-variant">
+              <span>{agentLabel}</span>
+              <span className="text-outline">·</span>
+              <span>{statusText}</span>
+              <span className="text-outline">·</span>
+              <span>{createdAt}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="关闭历史详情"
+            className="shrink-0 rounded-xl px-2 py-1 text-xs font-bold text-outline hover:bg-surface-container"
+          >
+            关闭
+          </button>
+        </header>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+          {item.summary && (
+            <section className="rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-4">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-outline">回复摘要</p>
+              <div className="mt-2">
+                <Markdown content={item.summary} className="text-xs leading-relaxed text-on-surface" />
+              </div>
+            </section>
+          )}
+
+          {artifact ? (
+            <section className="rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-outline">成果 · {artifactLabelForModal(artifact.type)}</p>
+                  <p className="mt-1 truncate text-sm font-bold text-on-surface">{artifact.title}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onCopy(artifact.content || '')}
+                    className="rounded-lg border border-outline-variant/70 px-2 py-1 text-[10px] font-bold text-on-surface hover:border-primary/40 hover:text-primary"
+                  >
+                    复制
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void onExport(artifact, 'markdown')}
+                    className="rounded-lg border border-outline-variant/70 px-2 py-1 text-[10px] font-bold text-on-surface hover:border-primary/40 hover:text-primary"
+                  >
+                    导出 MD
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void onExport(artifact, 'csv')}
+                    className="rounded-lg border border-outline-variant/70 px-2 py-1 text-[10px] font-bold text-on-surface hover:border-primary/40 hover:text-primary"
+                  >
+                    导出 CSV
+                  </button>
+                </div>
+              </div>
+              {artifact.type === 'learning_analysis' ? (
+                <div className="mt-3 overflow-hidden rounded-xl bg-surface">
+                  <LearningAnalysisReport
+                    artifact={artifact}
+                    onCopy={onCopy}
+                    onGenerate={() => onClose()}
+                  />
+                </div>
+              ) : artifact.content ? (
+                <div className="mt-3 max-h-[46vh] overflow-auto rounded-xl bg-surface p-3">
+                  <Markdown content={artifact.content} className="text-xs leading-relaxed text-on-surface" />
+                </div>
+              ) : null}
+            </section>
+          ) : (
+            !item.summary && (
+              <p className="rounded-2xl border border-dashed border-outline-variant px-4 py-6 text-center text-xs font-semibold text-outline">
+                该记录暂无可展示的成果内容。
+              </p>
+            )
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+function formatDetailTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.valueOf())) return ''
+  return date.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function describeAgent(agentId: string | null): string {
+  switch (agentId) {
+    case 'learning_analysis': return '学情分析'
+    case 'classroom_interaction': return '课堂互动'
+    case 'course_iteration': return '课程迭代'
+    case 'grading': return '作业批改'
+    case 'teaching_report': return '教学报告'
+    case 'lesson_design': return '教案设计'
+    default: return agentId ? agentId : '通用智能体'
+  }
+}
+
+function describeStatus(status: string): string {
+  switch (status) {
+    case 'completed': return '已完成'
+    case 'running': return '执行中'
+    case 'needs_input': return '待补充输入'
+    case 'failed': return '执行失败'
+    case 'stopped': return '已停止'
+    default: return status || '已记录'
+  }
+}
+
+function artifactLabelForModal(type: string): string {
+  switch (type) {
+    case 'learning_analysis': return '学情分析报告'
+    case 'classroom_activity_package': return '课堂活动包'
+    case 'classroom_observation': return '课堂观察'
+    case 'classroom_summary': return '课后总结'
+    case 'lesson_design': return '教案与题目'
+    case 'course_iteration': return '课程迭代'
+    case 'grading': return '作业批改'
+    case 'teaching_report': return '教学报告'
+    default: return '结构化成果'
+  }
 }
 
 function isLearningAnalysisArtifactMessage(message: Message): boolean {

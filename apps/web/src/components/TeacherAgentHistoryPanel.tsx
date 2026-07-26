@@ -28,7 +28,7 @@ interface TeacherAgentHistoryPanelProps {
   onToggleArtifact: (artifactId: string) => void
   onPrompt: (content: string) => void
   onExport: (artifact: Artifact, format: 'markdown' | 'csv') => Promise<void>
-  onOpenConversation: (conversationId: string) => void
+  onViewHistoryItem: (item: AgentHistoryItem) => void
   isBusy: boolean
 }
 
@@ -58,7 +58,7 @@ export default function TeacherAgentHistoryPanel({
   onToggleArtifact,
   onPrompt,
   onExport,
-  onOpenConversation,
+  onViewHistoryItem,
   isBusy,
 }: TeacherAgentHistoryPanelProps) {
   const routedGroup = agentGroupFor(activeAgentId)
@@ -161,7 +161,7 @@ export default function TeacherAgentHistoryPanel({
                 <HistoryItem
                   item={item}
                   isActive={item.conversation_id === activeConversationId}
-                  onOpen={() => onOpenConversation(item.conversation_id)}
+                  onOpen={() => onViewHistoryItem(item)}
                 />
               </motion.div>
             ))}
