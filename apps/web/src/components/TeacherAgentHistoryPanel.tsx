@@ -7,8 +7,10 @@ import {
   FileOutput,
   History,
   MessageCircleQuestion,
+  MoreVertical,
   Play,
   Sparkles,
+  Trash2,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
@@ -29,6 +31,7 @@ interface TeacherAgentHistoryPanelProps {
   onPrompt: (content: string) => void
   onExport: (artifact: Artifact, format: 'markdown' | 'csv' | 'pptx') => Promise<void>
   onViewHistoryItem: (item: AgentHistoryItem) => void
+  onDeleteHistoryItem: (item: AgentHistoryItem) => void
   isBusy: boolean
 }
 
@@ -59,6 +62,7 @@ export default function TeacherAgentHistoryPanel({
   onPrompt,
   onExport,
   onViewHistoryItem,
+  onDeleteHistoryItem,
   isBusy,
 }: TeacherAgentHistoryPanelProps) {
   const routedGroup = agentGroupFor(activeAgentId)
@@ -162,6 +166,7 @@ export default function TeacherAgentHistoryPanel({
                   item={item}
                   isActive={item.conversation_id === activeConversationId}
                   onOpen={() => onViewHistoryItem(item)}
+                  onDelete={() => onDeleteHistoryItem(item)}
                 />
               </motion.div>
             ))}
@@ -233,24 +238,101 @@ function EmptyHistory({ group, onPrompt, isBusy }: { group: TeacherAgentGroup; o
   )
 }
 
-function HistoryItem({ item, isActive, onOpen }: { item: AgentHistoryItem; isActive: boolean; onOpen: () => void }) {
+function HistoryItem({ item, isActive, onOpen, onDelete }: { item: AgentHistoryItem; isActive: boolean; onOpen: () => void; onDelete: () => void }) {
   const title = item.artifact?.title || item.conversation_title || '未命名教学任务'
   const time = formatHistoryTime(item.created_at)
   const status = statusLabel(item.status)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const close = () => {
+      setMenuOpen(false)
+      setConfirming(false)
+    }
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [menuOpen])
+
   return (
-    <button type="button" onClick={onOpen} className={`w-full rounded-xl border px-2.5 py-2 text-left transition-colors ${isActive ? 'border-primary/30 bg-primary/5' : 'border-outline-variant/70 bg-white hover:border-primary/30 hover:bg-primary/5'}`}>
-      <div className="flex items-start gap-2">
-        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'completed' ? 'bg-primary' : item.status === 'running' ? 'animate-pulse bg-secondary' : 'bg-outline'}`} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-[10px] font-extrabold text-on-surface">{title}</p>
-            <span className="shrink-0 text-[9px] font-semibold text-outline">{time}</span>
+    <div className={`relative w-full rounded-xl border px-2.5 py-2 text-left transition-colors ${isActive ? 'border-primary/30 bg-primary/5' : 'border-outline-variant/70 bg-white hover:border-primary/30 hover:bg-primary/5'}`}>
+      <button type="button" onClick={onOpen} className="block w-full text-left">
+        <div className="flex items-start gap-2">
+          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'completed' ? 'bg-primary' : item.status === 'running' ? 'animate-pulse bg-secondary' : 'bg-outline'}`} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-[10px] font-extrabold text-on-surface">{title}</p>
+              <span className="shrink-0 pr-5 text-[9px] font-semibold text-outline">{time}</span>
+            </div>
+            <p className="mt-0.5 truncate text-[9px] font-bold text-primary">{status}{item.artifact ? ` · ${artifactLabel(item.artifact.type)}` : ' · 文本任务'}</p>
+            {item.summary && <p className="mt-1 line-clamp-2 text-[9px] leading-relaxed text-on-surface-variant">{item.summary}</p>}
           </div>
-          <p className="mt-0.5 truncate text-[9px] font-bold text-primary">{status}{item.artifact ? ` · ${artifactLabel(item.artifact.type)}` : ' · 文本任务'}</p>
-          {item.summary && <p className="mt-1 line-clamp-2 text-[9px] leading-relaxed text-on-surface-variant">{item.summary}</p>}
         </div>
+      </button>
+
+      <div className="absolute right-1.5 top-1.5">
+        <button
+          type="button"
+          aria-label="更多操作"
+          onClick={(event) => {
+            event.stopPropagation()
+            setConfirming(false)
+            setMenuOpen((current) => !current)
+          }}
+          className="flex h-5 w-5 items-center justify-center rounded-md text-outline transition-colors hover:bg-black/5 hover:text-on-surface"
+        >
+          <MoreVertical className="h-3.5 w-3.5" />
+        </button>
+        <AnimatePresence>
+          {menuOpen && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -4 }}
+              transition={{ duration: 0.12 }}
+              onClick={(event) => event.stopPropagation()}
+              className="absolute right-0 top-6 z-20 w-32 overflow-hidden rounded-xl border border-outline-variant/70 bg-white p-1 shadow-[0_12px_32px_rgba(25,28,26,0.12)]"
+            >
+              {confirming ? (
+                <div className="p-1">
+                  <p className="px-1 pb-1.5 text-[9px] font-bold text-on-surface-variant">确认删除该记录？</p>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setConfirming(false)
+                        onDelete()
+                      }}
+                      className="flex-1 rounded-lg bg-error px-2 py-1.5 text-[9px] font-extrabold text-on-error transition-opacity hover:opacity-90"
+                    >
+                      删除
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirming(false)}
+                      className="flex-1 rounded-lg bg-black/5 px-2 py-1.5 text-[9px] font-extrabold text-on-surface transition-colors hover:bg-black/10"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirming(true)}
+                  className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold text-error transition-colors hover:bg-error/10"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  删除记录
+                </button>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </button>
+    </div>
   )
 }
 

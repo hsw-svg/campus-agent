@@ -228,6 +228,10 @@ export function listCourseAgentHistory(token: string, courseId: string): Promise
   return request<AgentHistoryItem[]>(`/courses/${courseId}/agent-history`, undefined, token)
 }
 
+export function deleteCourseAgentHistory(token: string, courseId: string, runId: string): Promise<void> {
+  return request<void>(`/courses/${courseId}/agent-history/${runId}`, { method: 'DELETE' }, token)
+}
+
 export function getArtifact(token: string, artifactId: string): Promise<Artifact> {
   return request<Artifact>(`/artifacts/${artifactId}`, undefined, token)
 }

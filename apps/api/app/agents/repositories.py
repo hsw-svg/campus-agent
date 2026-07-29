@@ -75,3 +75,7 @@ class AgentRunRepository:
         self.session.commit()
         self.session.refresh(run)
         return run
+
+    def delete(self, run: AgentRun) -> None:
+        self.session.delete(run)
+        self.session.commit()

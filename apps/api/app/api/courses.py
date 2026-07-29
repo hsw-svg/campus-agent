@@ -107,6 +107,21 @@ def list_course_agent_history(
     return [_history_response(record) for record in agent_runs.list_for_course(workspace.id, course_id)]
 
 
+@router.delete("/{course_id}/agent-history/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_course_agent_history(
+    course_id: UUID,
+    run_id: UUID,
+    workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    courses: CourseRepository = Depends(get_course_repository),
+    agent_runs: AgentRunRepository = Depends(get_agent_run_repository),
+) -> None:
+    get_owned_course(courses, workspace.id, course_id)
+    run = agent_runs.get(workspace.id, run_id)
+    if run is None:
+        raise AppError(code="agent_run_not_found", message="Agent run was not found.", status_code=404)
+    agent_runs.delete(run)
+
+
 def get_owned_course(courses: CourseRepository, workspace_id: UUID, course_id: UUID):
     course = courses.get(workspace_id, course_id)
     if course is None:

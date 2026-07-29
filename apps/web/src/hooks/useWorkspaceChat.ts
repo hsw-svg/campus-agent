@@ -3,6 +3,7 @@ import {
   ApiError,
   createConversation,
   deleteConversation,
+  deleteCourseAgentHistory,
   getArtifact,
   listArtifacts,
   listConversationAttachments,
@@ -536,6 +537,17 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     }
   }, [token, activeConversationId, clearChat])
 
+  const removeAgentHistory = useCallback(async (runId: string) => {
+    const courseId = courseContext?.courseId
+    if (!token || !courseId) return
+    try {
+      await deleteCourseAgentHistory(token, courseId, runId)
+      setAgentHistory((current) => current.filter((item) => item.run_id !== runId))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '删除智能体记录失败。')
+    }
+  }, [token, courseContext?.courseId])
+
   return {
     chatMessages,
     setChatMessages,
@@ -563,6 +575,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     toggleArtifact,
     openConversation,
     removeConversation,
+    removeAgentHistory,
     refreshResources,
     refreshWorkspaceAttachments,
     error,

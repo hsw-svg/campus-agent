@@ -106,6 +106,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     attachments,
     artifacts,
     agentHistory,
+    removeAgentHistory,
     route,
     selectedArtifactIds,
     toggleArtifact,
@@ -491,6 +492,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       onPrompt={handleSendMessage}
       onExport={handleExportArtifact}
       onViewHistoryItem={(item) => setHistoryDetail(item)}
+      onDeleteHistoryItem={(item) => void removeAgentHistory(item.run_id)}
       isBusy={isAiTyping}
     />
   );
