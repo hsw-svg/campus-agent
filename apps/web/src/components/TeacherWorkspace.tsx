@@ -63,7 +63,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
   const [showInteractionPanel, setShowInteractionPanel] = useState(false);
-  const sidebarCollapsed = showInteractionPanel;
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showCreateCourseDialog, setShowCreateCourseDialog] = useState(false);
   const [newCourseName, setNewCourseName] = useState('');
   const [newCourseDescription, setNewCourseDescription] = useState('');
@@ -620,6 +620,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             <p className="text-xs font-bold truncate">匿名教师</p>
             <p className="text-[10px] text-on-surface-variant truncate font-semibold tracking-wider">独立工作空间</p>
           </div>
+          <button type="button" aria-label="折叠侧边栏" onClick={() => setSidebarCollapsed(true)} className="rounded-lg p-1 text-outline hover:bg-surface-container hover:text-primary"><ChevronRight className="w-4 h-4" /></button>
           <button type="button" aria-label="更多工作空间选项" className="rounded-lg p-1 text-outline hover:bg-surface-container hover:text-primary"><MoreVertical className="w-4 h-4" /></button>
         </div>
       </aside>
@@ -634,7 +635,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             {sidebarCollapsed && (
               <button
                 type="button"
-                onClick={() => setShowInteractionPanel(false)}
+                onClick={() => setSidebarCollapsed(false)}
                 aria-label="展开侧边栏"
                 className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-3 py-2 text-xs font-bold text-primary hover:bg-surface-container"
               >
@@ -704,7 +705,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
               </button>
               <button
                 type="button"
-                onClick={() => setShowInteractionPanel(true)}
+                onClick={() => { setShowInteractionPanel(true); setSidebarCollapsed(true); }}
                 aria-label="打开智能体历史聚合面板"
                 className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-3 py-2 text-xs font-bold text-primary hover:bg-surface-container"
               >
@@ -1405,7 +1406,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             <aside className={`w-96 h-full border-l border-outline-variant bg-surface-container-low flex flex-col overflow-y-auto shrink-0 ${sidebarCollapsed ? 'flex' : 'hidden xl:flex'}`}>
               <div className="flex h-12 items-center justify-between border-b border-outline-variant px-4 shrink-0">
                 <p className="text-sm font-extrabold text-on-surface">智能体历史聚合</p>
-                <button type="button" onClick={() => setShowInteractionPanel(false)} aria-label="关闭智能体历史面板" className="rounded-lg px-2 py-1 text-xs font-bold text-outline hover:bg-surface-container">关闭</button>
+                <button type="button" onClick={() => { setShowInteractionPanel(false); setSidebarCollapsed(false); }} aria-label="关闭智能体历史面板" className="rounded-lg px-2 py-1 text-xs font-bold text-outline hover:bg-surface-container">关闭</button>
               </div>
               <div className="flex-1 overflow-y-auto">{renderInteractionPanel()}</div>
             </aside>
