@@ -503,7 +503,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   // The generic near-bottom scroll effect above keeps the tail in view instead.
 
   return (
-    <div className="flex h-screen w-full font-sans antialiased bg-[#EEF3F0] text-on-surface overflow-hidden">
+    <div className="flex h-screen w-full font-sans antialiased bg-background text-on-surface overflow-hidden">
       
       {/* 1. SIDEBAR NAVIGATION */}
       {showCreateCourseDialog && (
@@ -751,7 +751,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full pt-4">
                       <button 
                         onClick={() => startAnalysis('匿名学情表.xlsx')}
-                        className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
+                        className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
                       >
                         <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
                           <Activity className="w-6 h-6" />
@@ -763,7 +763,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         onClick={() => {
                           handleSendMessage('根据本节课目标生成 Python 练习');
                         }}
-                        className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
+                        className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
                       >
                         <div className="w-12 h-12 rounded-full bg-tertiary-container/20 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
                           <Brain className="w-6 h-6" />
@@ -775,7 +775,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         onClick={() => {
                           handleSendMessage('帮我设计一个破冰环节');
                         }}
-                        className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
+                        className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
                       >
                         <div className="w-12 h-12 rounded-full bg-primary-container/20 text-primary flex items-center justify-center group-hover:scale-105 transition-transform">
                           <BookOpen className="w-6 h-6" />
@@ -800,7 +800,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                       </div>
 
                       {/* Horizontal timeline of checklist */}
-                      <div className="relative py-8 bg-[#FBFDFB] border border-[#D9E4DF] rounded-2xl px-6 shadow-xs">
+                      <div className="relative py-8 bg-surface-container-lowest border border-outline-variant/60 rounded-2xl px-6 shadow-xs">
                         <div className="absolute top-1/2 left-8 right-8 h-0.5 bg-outline-variant -translate-y-1/2 z-0"></div>
                         <div className="absolute top-1/2 left-8 right-8 h-0.5 bg-primary -translate-y-1/2 z-0 origin-left transition-all duration-500" style={{ width: `${analysisProgress}%` }}></div>
                         
@@ -837,7 +837,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4 }}
-                    className="bg-[#FBFDFB] border border-[#D9E4DF] rounded-2xl overflow-hidden shadow-xs w-full"
+                    className="bg-surface-container-lowest border border-outline-variant/60 rounded-2xl overflow-hidden shadow-xs w-full"
                   >
                     {/* Card Header */}
                     <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low/40">
@@ -904,7 +904,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                       </div>
 
                       {/* Row 2: Visual High-Fidelity SVG Bar Chart */}
-                      <div className="col-span-12 md:col-span-7 bg-[#FBFDFB] border border-[#D9E4DF] p-5 rounded-2xl shadow-xs">
+                      <div className="col-span-12 md:col-span-7 bg-surface-container-lowest border border-outline-variant/60 p-5 rounded-2xl shadow-xs">
                         <div className="flex justify-between items-center mb-3">
                            <h3 className="font-display font-extrabold text-sm text-on-surface">单元平均成绩</h3>
                            <span className="text-[10px] font-bold text-primary bg-primary-container/20 px-2 py-0.5 rounded-full">第三单元最高</span>
@@ -1042,7 +1042,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                           <div className={`${isLearningAnalysisMessage || isSlideDeckMessage ? 'max-w-[98%]' : 'max-w-[85%]'} rounded-2xl px-5 py-4 shadow-xs ${
                             isUser 
                               ? 'bg-primary text-on-primary rounded-tr-none' 
-                              : 'bg-[#FBFDFB] text-on-surface rounded-tl-none'
+                              : 'bg-surface-container-lowest text-on-surface rounded-tl-none'
                           }`}>
                             <div className="text-xs opacity-70 mb-1 flex items-center justify-between">
                               <span>{isUser ? '用户（您）' : '校园智能助手'}</span>
@@ -1173,7 +1173,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container shrink-0">
                           <Brain className="w-4 h-4" />
                         </div>
-                        <div className="bg-[#FBFDFB] border border-[#D9E4DF] rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
+                        <div className="bg-surface-container-lowest border border-outline-variant/60 rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
                           <span className="animate-pulse">校园智能助手正在梳理教学思路</span>
                           <span className="flex gap-0.5">
                             <span className="w-1 h-1 bg-primary rounded-full animate-bounce"></span>
@@ -1259,7 +1259,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                   </div>
 
                   {/* Primary text entry form */}
-                  <div className="bg-[#FBFDFB] rounded-2xl shadow-xs border-2 border-outline-variant focus-within:border-primary transition-all p-3">
+                  <div className="bg-surface-container-lowest rounded-2xl shadow-xs border-2 border-outline-variant focus-within:border-primary transition-all p-3">
                     <textarea 
                       ref={textareaRef}
                       value={inputVal}
@@ -1703,7 +1703,7 @@ function LearningAnalysisReport({
   const markdown = artifact?.content || '学情分析结果尚未同步。'
 
   return (
-    <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="w-full overflow-hidden rounded-2xl bg-[#FBFDFB] shadow-sm">
+    <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="w-full overflow-hidden rounded-2xl bg-surface-container-lowest shadow-sm">
       <div className="flex items-center justify-between bg-surface-container-low/40 px-6 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary"><Activity className="h-4.5 w-4.5" /></div>

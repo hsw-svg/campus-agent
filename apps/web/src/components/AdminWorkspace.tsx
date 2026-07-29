@@ -122,7 +122,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
   );
 
   return (
-    <div className="flex h-screen w-full font-sans antialiased bg-[#EEF3F0] text-on-surface overflow-hidden">
+    <div className="flex h-screen w-full font-sans antialiased bg-background text-on-surface overflow-hidden">
       
       {/* SIDEBAR NAVIGATION */}
       <aside className="h-screen w-72 flex flex-col fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant py-4 px-3 z-50">
@@ -265,7 +265,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full pt-4">
                   <button 
                     onClick={() => handleSendMessage('全自动生成班级指标教务对比报表')}
-                    className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-tertiary hover:shadow-md transition-all group cursor-pointer text-center"
+                    className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-tertiary hover:shadow-md transition-all group cursor-pointer text-center"
                   >
                     <div className="w-12 h-12 rounded-full bg-tertiary-container/25 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
                       <Table className="w-6 h-6" />
@@ -275,7 +275,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
 
                   <button 
                     onClick={() => handleSendMessage('设计智能排课课表')}
-                    className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-tertiary hover:shadow-md transition-all group cursor-pointer text-center"
+                    className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-tertiary hover:shadow-md transition-all group cursor-pointer text-center"
                   >
                     <div className="w-12 h-12 rounded-full bg-tertiary-container/25 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
                       <Calendar className="w-6 h-6" />
@@ -285,7 +285,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
 
                   <button 
                     onClick={() => handleSendMessage('生成一篇放假安排通知模板')}
-                    className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-tertiary hover:shadow-md transition-all group cursor-pointer text-center"
+                    className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-tertiary hover:shadow-md transition-all group cursor-pointer text-center"
                   >
                     <div className="w-12 h-12 rounded-full bg-tertiary-container/25 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
                       <FileText className="w-6 h-6" />
@@ -298,7 +298,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
 
             {/* DYNAMIC RENDERS FOR VIEW MODES */}
             {viewMode === 'table' && (
-              <div className="bg-white border border-[#D9E4DF] rounded-2xl overflow-hidden shadow-xs">
+              <div className="bg-white border border-outline-variant/60 rounded-2xl overflow-hidden shadow-xs">
                 <div className="p-4 border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
                   <span className="font-bold text-sm text-tertiary">2026春・综合学术教务考核表</span>
                   <span className="text-[10px] bg-primary-container/20 text-primary-container px-2 py-0.5 rounded-full font-bold">已同步教务系统</span>
@@ -343,7 +343,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
             )}
 
             {viewMode === 'calendar' && (
-              <div className="bg-white border border-[#D9E4DF] rounded-2xl overflow-hidden shadow-xs">
+              <div className="bg-white border border-outline-variant/60 rounded-2xl overflow-hidden shadow-xs">
                 <div className="p-4 border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
                   <span className="font-bold text-sm text-tertiary">周课程表优化方案（周一至周五）</span>
                   <span className="text-[10px] bg-tertiary-container/20 text-tertiary-container px-2 py-0.5 rounded-full font-bold">已避开会议重叠</span>
@@ -382,7 +382,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
                       )}
 
                       {dIdx === 4 && (
-                        <div className="bg-[#EEF3F0] text-outline p-2 rounded-lg border border-dashed border-outline/30">
+                        <div className="bg-background text-outline p-2 rounded-lg border border-dashed border-outline/30">
                           <p className="font-bold">学生活动</p>
                           <p className="text-[9px] opacity-75">下午整天</p>
                         </div>
@@ -408,7 +408,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
                       <div className={`max-w-[85%] rounded-2xl px-5 py-4 shadow-xs ${
                         isUser 
                           ? 'bg-tertiary text-on-tertiary rounded-tr-none' 
-                          : 'bg-[#FBFDFB] border border-[#D9E4DF] text-on-surface rounded-tl-none'
+                          : 'bg-surface-container-lowest border border-outline-variant/60 text-on-surface rounded-tl-none'
                       }`}>
                         <div className="text-xs opacity-70 mb-1 flex items-center justify-between">
                           <span>{isUser ? '管理员（您）' : '教务智能助手'}</span>
@@ -437,7 +437,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
                     <div className="w-8 h-8 rounded-full bg-tertiary-container/20 flex items-center justify-center text-tertiary shrink-0">
                       <ShieldAlert className="w-4 h-4" />
                     </div>
-                    <div className="bg-[#FBFDFB] border border-[#D9E4DF] rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
+                    <div className="bg-surface-container-lowest border border-outline-variant/60 rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
                       <span className="animate-pulse">教务智能助手正在检测冲突并生成最优排课方案</span>
                       <span className="flex gap-0.5">
                         <span className="w-1 h-1 bg-tertiary rounded-full animate-bounce"></span>
@@ -477,7 +477,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
                 </button>
               </div>
 
-              <div className="bg-[#FBFDFB] rounded-2xl shadow-xs border-2 border-outline-variant focus-within:border-tertiary transition-all p-3">
+              <div className="bg-surface-container-lowest rounded-2xl shadow-xs border-2 border-outline-variant focus-within:border-tertiary transition-all p-3">
                 <textarea 
                   ref={textareaRef}
                   value={inputVal}
@@ -521,7 +521,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
             {resourcePicker}
             <div className="space-y-3">
               <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider px-1">全校资源看板</h3>
-              <div className="bg-[#FBFDFB] border border-[#D9E4DF] p-4 rounded-xl space-y-2">
+              <div className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-xl space-y-2">
                 <p className="text-xs font-bold text-on-surface">教室状态一览</p>
                 <div className="flex items-center justify-between text-xs">
                   <span>302阶梯教室</span>
@@ -536,7 +536,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
 
             <div className="space-y-3">
               <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider px-1">排课引擎进度</h3>
-              <div className="bg-[#FBFDFB] border border-[#D9E4DF] p-4 rounded-xl space-y-2">
+              <div className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-xl space-y-2">
                 <div className="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
                   <div className="h-full bg-tertiary w-full"></div>
                 </div>

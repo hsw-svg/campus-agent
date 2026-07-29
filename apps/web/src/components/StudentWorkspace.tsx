@@ -120,7 +120,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   );
 
   return (
-    <div className="flex h-screen w-full font-sans antialiased bg-[#EEF3F0] text-on-surface overflow-hidden">
+    <div className="flex h-screen w-full font-sans antialiased bg-background text-on-surface overflow-hidden">
       
       {/* SIDEBAR NAVIGATION */}
       <aside className="h-screen w-72 flex flex-col fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant py-4 px-3 z-50">
@@ -245,7 +245,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full pt-4">
                   <button 
                     onClick={() => handleSendMessage('论文辅助：生成计算机大模型相关大纲')}
-                    className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
+                    className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
                   >
                     <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
                       <FileText className="w-6 h-6" />
@@ -255,7 +255,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
                   <button 
                     onClick={() => handleSendMessage('知识问答：Python 列表与元组的深度区别')}
-                    className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
+                    className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
                   >
                     <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
                       <HelpCircle className="w-6 h-6" />
@@ -265,7 +265,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
                   <button 
                     onClick={() => handleSendMessage('课程总结：自动生成 Python 复习备考冲刺计划')}
-                    className="bg-[#FBFDFB] border border-[#D9E4DF] p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
+                    className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
                   >
                     <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
                       <ClipboardList className="w-6 h-6" />
@@ -291,7 +291,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                       <div className={`max-w-[85%] rounded-2xl px-5 py-4 shadow-xs ${
                         isUser 
                           ? 'bg-secondary text-on-secondary rounded-tr-none' 
-                          : 'bg-[#FBFDFB] border border-[#D9E4DF] text-on-surface rounded-tl-none'
+                          : 'bg-surface-container-lowest border border-outline-variant/60 text-on-surface rounded-tl-none'
                       }`}>
                         <div className="text-xs opacity-70 mb-1 flex items-center justify-between">
                           <span>{isUser ? '学生（您）' : '学生智能助手'}</span>
@@ -320,7 +320,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                     <div className="w-8 h-8 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container shrink-0">
                       <BookOpen className="w-4 h-4" />
                     </div>
-                    <div className="bg-[#FBFDFB] border border-[#D9E4DF] rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
+                    <div className="bg-surface-container-lowest border border-outline-variant/60 rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
                       <span className="animate-pulse">学生智能助手正在提炼课程纲领与要点</span>
                       <span className="flex gap-0.5">
                         <span className="w-1 h-1 bg-secondary rounded-full animate-bounce"></span>
@@ -360,7 +360,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                 </button>
               </div>
 
-              <div className="bg-[#FBFDFB] rounded-2xl shadow-xs border-2 border-outline-variant focus-within:border-secondary transition-all p-3">
+              <div className="bg-surface-container-lowest rounded-2xl shadow-xs border-2 border-outline-variant focus-within:border-secondary transition-all p-3">
                 <textarea 
                   ref={textareaRef}
                   value={inputVal}
@@ -404,7 +404,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
             {resourcePicker}
             <div className="space-y-3">
               <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider px-1">学习备考资料袋</h3>
-              <div className="bg-[#FBFDFB] border border-[#D9E4DF] p-4 rounded-xl space-y-2">
+              <div className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-xl space-y-2">
                 <p className="text-xs font-bold text-on-surface">我的期末复习档案</p>
                 <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                   <CheckCircle className="w-4 h-4 text-secondary" />
@@ -419,7 +419,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
             <div className="space-y-3">
               <h3 className="text-[11px] font-bold text-on-surface-variant tracking-wider px-1">智能学习辅导进度</h3>
-              <div className="bg-[#FBFDFB] border border-[#D9E4DF] p-4 rounded-xl space-y-2">
+              <div className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-xl space-y-2">
                 <div className="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
                   <div className="h-full bg-secondary w-2/3"></div>
                 </div>
