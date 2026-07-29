@@ -117,6 +117,7 @@ def _normalise_slide(item: Any, fallback_index: int) -> dict[str, Any]:
         "notes": str(item.get("notes") or "").strip(),
         "key_points": _string_list(item.get("key_points")),
         "citations": _normalise_sources(item.get("citations")),
+        "media": _normalise_media(item.get("media")),
         "columns": _normalise_columns(item.get("columns")),
     }
 
@@ -171,6 +172,36 @@ def _normalise_columns(value: Any) -> list[dict[str, Any]]:
             }
         )
     return columns
+
+
+def _normalise_media(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    media_items: list[dict[str, Any]] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        kind = str(entry.get("kind") or "").strip().lower()
+        url = str(entry.get("url") or "").strip()
+        if not kind and not url:
+            continue
+        media_items.append(
+            {
+                "kind": kind if kind in {"image", "video", "gif", "embed", "animation"} else "image",
+                "url": url,
+                "title": str(entry.get("title") or "").strip(),
+                "caption": str(entry.get("caption") or "").strip(),
+                "alt": str(entry.get("alt") or "").strip(),
+                "poster": str(entry.get("poster") or "").strip(),
+                "placement": str(entry.get("placement") or "inline").strip().lower() or "inline",
+                "autoplay": bool(entry.get("autoplay")),
+                "loop": bool(entry.get("loop")),
+                "muted": bool(entry.get("muted")),
+                "start_ms": _coerce_int(entry.get("start_ms")),
+                "end_ms": _coerce_int(entry.get("end_ms")),
+            }
+        )
+    return media_items
 
 
 def _string_list(value: Any) -> list[str]:

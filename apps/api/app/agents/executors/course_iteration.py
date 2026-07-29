@@ -43,10 +43,15 @@ _SLIDE_DECK_SYSTEM = (
     ' "industry_updates": [{"title": str, "url": str, "snippet": str}]},\n'
     '  "slides": [{"index": int, "layout": "title|bullets|two_column|callout|summary",'
     ' "title": str, "subtitle": str, "bullets": [str], "notes": str,'
-    ' "key_points": [str], "citations": [{"title": str, "url": str}]}],\n'
+    ' "key_points": [str], "citations": [{"title": str, "url": str}],'
+    ' "media": [{"kind": "image|video|gif|embed|animation", "url": str, "title": str,'
+    ' "caption": str, "alt": str, "poster": str, "placement": "top|right|left|background|inline",'
+    ' "autoplay": bool, "loop": bool, "muted": bool, "start_ms": int, "end_ms": int}]},\n'
     '  "sources": [{"title": str, "url": str, "snippet": str}]\n'
     "}\n"
     "layout 仅可取 title/bullets/two_column/callout/summary；"
+    "当知识点更适合动态演示、情境播放、过程讲解时，可在 media 中增加 0~2 个素材建议，"
+    "优先使用可直接打开的公开视频链接、动图或示意图，并说明其插入位置；"
     "至少有一页 citations 引用 industry_updates 中的条目；"
     "只输出 JSON 对象。"
 )

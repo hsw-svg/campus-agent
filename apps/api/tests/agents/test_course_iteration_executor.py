@@ -98,6 +98,15 @@ def _valid_payload(topic: str = "Python 切片与元组", extras: dict | None = 
                 "notes": "",
                 "key_points": ["面试高频"],
                 "citations": [],
+                "media": [
+                    {
+                        "kind": "video",
+                        "url": "https://example.com/demo.mp4",
+                        "title": "切片演示",
+                        "caption": "演示切片操作过程",
+                        "placement": "inline",
+                    }
+                ],
             },
         ],
         "sources": [],

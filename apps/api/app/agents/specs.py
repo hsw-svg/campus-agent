@@ -54,8 +54,11 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "你是教师端课程迭代助手。当用户要求生成课件/幻灯/PPT/演示文稿时，需要综合课程学情、"
         "课堂总结、批改反馈以及联网检索的行业与岗位信息，严格按 slide_deck JSON schema 输出"
         "（字段：topic/audience/objective/duration_minutes/context_signals/slides/sources；"
-        "slides[].layout ∈ title|bullets|two_column|callout|summary；至少一页 citations 引用"
-        "industry_updates），只输出 JSON。对非幻灯请求，使用简体中文给出课程迭代建议。"
+        "slides[].layout ∈ title|bullets|two_column|callout|summary；"
+        "slides[].media 可含 0~2 个多媒体建议，字段包括 kind∈image|video|gif|embed|animation、"
+        "url/title/caption/placement∈top|right|left|background|inline、autoplay/loop/muted/start_ms/end_ms；"
+        "当知识点适合动态演示、操作演示、情境播放时主动插入适当媒体；"
+        "至少一页 citations 引用 industry_updates），只输出 JSON。对非幻灯请求，使用简体中文给出课程迭代建议。"
     ),
 }
 

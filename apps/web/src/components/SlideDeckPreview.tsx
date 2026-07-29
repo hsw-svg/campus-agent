@@ -5,8 +5,10 @@ import {
   Copy,
   Download,
   FileCode,
+  Film,
   Layers,
   Link as LinkIcon,
+  Play,
   Presentation,
   Star,
 } from 'lucide-react'
@@ -17,6 +19,21 @@ interface Citation {
   title?: string
   url?: string
   snippet?: string
+}
+
+interface MediaItem {
+  kind?: string
+  url?: string
+  title?: string
+  caption?: string
+  alt?: string
+  poster?: string
+  placement?: string
+  autoplay?: boolean
+  loop?: boolean
+  muted?: boolean
+  start_ms?: number
+  end_ms?: number
 }
 
 interface Slide {
@@ -33,6 +50,7 @@ interface Slide {
   notes?: string
   key_points?: string[]
   citations?: Citation[]
+  media?: MediaItem[]
 }
 
 interface SlideDeckData {
@@ -91,6 +109,27 @@ function normalizeSlides(value: unknown): Slide[] {
         notes: typeof rec.notes === 'string' ? rec.notes : undefined,
         key_points: toStringList(rec.key_points),
         citations: toCitationList(rec.citations),
+        media: Array.isArray(rec.media) ? rec.media.flatMap((item): MediaItem[] => {
+          if (!item || typeof item !== 'object') return []
+          const media = item as Record<string, unknown>
+          const url = typeof media.url === 'string' ? media.url : undefined
+          const kind = typeof media.kind === 'string' ? media.kind : undefined
+          if (!url && !kind) return []
+          return [{
+            kind,
+            url,
+            title: typeof media.title === 'string' ? media.title : undefined,
+            caption: typeof media.caption === 'string' ? media.caption : undefined,
+            alt: typeof media.alt === 'string' ? media.alt : undefined,
+            poster: typeof media.poster === 'string' ? media.poster : undefined,
+            placement: typeof media.placement === 'string' ? media.placement : undefined,
+            autoplay: typeof media.autoplay === 'boolean' ? media.autoplay : undefined,
+            loop: typeof media.loop === 'boolean' ? media.loop : undefined,
+            muted: typeof media.muted === 'boolean' ? media.muted : undefined,
+            start_ms: typeof media.start_ms === 'number' ? media.start_ms : undefined,
+            end_ms: typeof media.end_ms === 'number' ? media.end_ms : undefined,
+          }]
+        }) : [],
       }
     })
     .filter((slide): slide is Slide => slide !== null)
@@ -347,6 +386,7 @@ function SlideBody({ slide }: { slide: Slide }) {
             ))}
           </div>
         )}
+        <MediaRail media={slide.media ?? []} />
       </div>
     )
   }
@@ -359,6 +399,7 @@ function SlideBody({ slide }: { slide: Slide }) {
           <ColumnBlock title={slide.left_title || '左侧'} bullets={slide.left_bullets ?? []} keyPoints={keyPoints} />
           <ColumnBlock title={slide.right_title || '右侧'} bullets={slide.right_bullets ?? []} keyPoints={keyPoints} />
         </div>
+        <MediaRail media={slide.media ?? []} />
       </div>
     )
   }
@@ -377,6 +418,7 @@ function SlideBody({ slide }: { slide: Slide }) {
         )}
         {slide.bullets && slide.bullets.length > 0 && <BulletList bullets={slide.bullets} keyPoints={keyPoints} />}
         {keyPoints.length > 0 && !slide.callout && <KeyPointsRow points={keyPoints} />}
+        <MediaRail media={slide.media ?? []} />
       </div>
     )
   }
@@ -390,6 +432,7 @@ function SlideBody({ slide }: { slide: Slide }) {
           <BulletList bullets={slide.bullets ?? []} keyPoints={keyPoints} />
         </div>
         {keyPoints.length > 0 && <KeyPointsRow points={keyPoints} />}
+        <MediaRail media={slide.media ?? []} />
       </div>
     )
   }
@@ -400,6 +443,7 @@ function SlideBody({ slide }: { slide: Slide }) {
       <SlideHeader slide={slide} />
       <BulletList bullets={slide.bullets ?? []} keyPoints={keyPoints} />
       {keyPoints.length > 0 && <KeyPointsRow points={keyPoints} />}
+      <MediaRail media={slide.media ?? []} />
     </div>
   )
 }
@@ -475,4 +519,82 @@ function KeyPointChip({ text }: { text: string }) {
       {text}
     </span>
   )
+}
+
+function MediaRail({ media }: { media: MediaItem[] }) {
+  if (!media.length) return null
+  return (
+    <div className="rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-primary">
+        <Film className="h-3 w-3" />
+        多媒体建议
+      </p>
+      <ul className="space-y-2">
+        {media.map((item, idx) => {
+          const kindLabel = kindDisplayName(item.kind)
+          const placementLabel = placementDisplayName(item.placement)
+          const isVideo = item.kind === 'video' || item.kind === 'embed'
+          return (
+            <li key={`${item.url ?? idx}-${idx}`} className="flex items-start gap-3 rounded-xl border border-outline-variant/50 bg-white p-2.5">
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isVideo ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'}`}>
+                {isVideo ? <Play className="h-4 w-4" /> : <Film className="h-4 w-4" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-[11px] font-extrabold text-on-surface">{item.title || item.alt || '未命名素材'}</p>
+                  <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">{kindLabel}</span>
+                  {placementLabel && <span className="shrink-0 rounded-full bg-surface-container px-1.5 py-0.5 text-[9px] font-bold text-outline">{placementLabel}</span>}
+                </div>
+                {item.caption && <p className="mt-0.5 text-[10px] leading-relaxed text-on-surface-variant">{item.caption}</p>}
+                {item.url && (
+                  <a href={item.url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-primary underline underline-offset-2 hover:opacity-80">
+                    <LinkIcon className="h-2.5 w-2.5" />
+                    <span className="truncate max-w-[16rem]">{item.url}</span>
+                  </a>
+                )}
+                {(item.autoplay || item.loop || item.muted || typeof item.start_ms === 'number' || typeof item.end_ms === 'number') && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {item.autoplay && <span className="rounded bg-surface-container px-1.5 py-0.5 text-[9px] font-bold text-outline">自动播放</span>}
+                    {item.loop && <span className="rounded bg-surface-container px-1.5 py-0.5 text-[9px] font-bold text-outline">循环</span>}
+                    {item.muted && <span className="rounded bg-surface-container px-1.5 py-0.5 text-[9px] font-bold text-outline">静音</span>}
+                    {typeof item.start_ms === 'number' && <span className="rounded bg-surface-container px-1.5 py-0.5 text-[9px] font-bold text-outline">起始 {formatMs(item.start_ms)}</span>}
+                    {typeof item.end_ms === 'number' && <span className="rounded bg-surface-container px-1.5 py-0.5 text-[9px] font-bold text-outline">结束 {formatMs(item.end_ms)}</span>}
+                  </div>
+                )}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function kindDisplayName(kind?: string): string {
+  switch (kind) {
+    case 'video': return '视频'
+    case 'gif': return '动图'
+    case 'embed': return '嵌入'
+    case 'animation': return '动画'
+    case 'image': return '图片'
+    default: return '素材'
+  }
+}
+
+function placementDisplayName(placement?: string): string {
+  switch (placement) {
+    case 'top': return '顶部'
+    case 'right': return '右侧'
+    case 'left': return '左侧'
+    case 'background': return '背景'
+    case 'inline': return '内嵌'
+    default: return ''
+  }
+}
+
+function formatMs(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
 }

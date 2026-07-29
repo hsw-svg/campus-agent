@@ -68,8 +68,11 @@ class SlideDeckPptxSkill:
                 _fill_body(pptx_slide, bullets)
 
             notes = str(slide.get("notes") or "").strip()
-            if notes:
-                pptx_slide.notes_slide.notes_text_frame.text = notes
+            media = list(slide.get("media") or [])
+            media_notes = _build_media_notes(media)
+            combined_notes = "\n".join(filter(None, [notes, media_notes])).strip()
+            if combined_notes:
+                pptx_slide.notes_slide.notes_text_frame.text = combined_notes
 
         buffer = io.BytesIO()
         presentation.save(buffer)
@@ -133,3 +136,38 @@ def _find_body_placeholder(slide):
         if shape.placeholder_format.idx != 0:
             return shape
     return None
+
+
+_MEDIA_KIND_LABELS: dict[str, str] = {
+    "image": "图片",
+    "video": "视频",
+    "gif": "动图",
+    "embed": "嵌入",
+    "animation": "动画",
+}
+
+_PLACEMENT_LABELS: dict[str, str] = {
+    "top": "顶部",
+    "right": "右侧",
+    "left": "左侧",
+    "background": "背景",
+    "inline": "内嵌",
+}
+
+
+def _build_media_notes(media: list[dict[str, Any]]) -> str:
+    if not media:
+        return ""
+    lines: list[str] = ["[多媒体建议]"]
+    for item in media:
+        kind = str(item.get("kind") or "素材")
+        kind_label = _MEDIA_KIND_LABELS.get(kind, kind)
+        title = str(item.get("title") or item.get("alt") or "未命名素材")
+        url = str(item.get("url") or "").strip()
+        placement = str(item.get("placement") or "inline")
+        placement_label = _PLACEMENT_LABELS.get(placement, placement)
+        line = f"• {kind_label}: {title}（{placement_label}）"
+        if url:
+            line += f"\n  链接: {url}"
+        lines.append(line)
+    return "\n".join(lines)

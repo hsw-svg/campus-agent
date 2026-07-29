@@ -73,6 +73,12 @@ def render(data: dict[str, Any]) -> str:
                 lines.append(f"- {bullet}")
         if slide.get("key_points"):
             lines.append("重点：" + "、".join(slide["key_points"]))
+        if slide.get("media"):
+            lines.append("媒体建议：")
+            for media in slide["media"]:
+                label = media.get("title") or media.get("url") or media.get("kind") or "未命名素材"
+                placement = media.get("placement") or "inline"
+                lines.append(f"- [{label}]({media.get('url')}) · {media.get('kind')} · {placement}")
         if slide.get("notes"):
             lines.append(f"> 备注：{slide['notes']}")
         if slide.get("citations"):

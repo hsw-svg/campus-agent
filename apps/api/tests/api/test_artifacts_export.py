@@ -46,6 +46,15 @@ SAMPLE_DECK_DATA = {
             "key_points": [],
             "citations": [],
             "columns": [],
+            "media": [
+                {
+                    "kind": "video",
+                    "url": "https://example.com/slice-demo.mp4",
+                    "title": "切片演示",
+                    "caption": "动态演示切片操作",
+                    "placement": "inline",
+                }
+            ],
         },
     ],
     "sources": [],
