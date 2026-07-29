@@ -1,25 +1,27 @@
 import { useState, useRef, useEffect } from 'react';
-import { 
-  GraduationCap, 
-  Calendar, 
-  History, 
-  FolderOpen, 
-  Settings, 
-  MoreVertical, 
-  ShieldCheck, 
-  Search, 
-  Activity, 
-  Bell, 
-  UserRoundCheck, 
-  Send, 
-  Paperclip, 
-  Mic, 
-  Image as ImageIcon, 
-  ShieldAlert, 
-  Sparkles, 
-  Table, 
-  FileSpreadsheet, 
-  FileText, 
+import {
+  GraduationCap,
+  Calendar,
+  History,
+  FolderOpen,
+  Settings,
+  MoreVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ShieldCheck,
+  Search,
+  Activity,
+  Bell,
+  UserRoundCheck,
+  Send,
+  Paperclip,
+  Mic,
+  Image as ImageIcon,
+  ShieldAlert,
+  Sparkles,
+  Table,
+  FileSpreadsheet,
+  FileText,
   ArrowRight,
   ClipboardList,
   Check,
@@ -64,6 +66,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
   const [inputVal, setInputVal] = useState('');
   const [copied, setCopied] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
   // Custom dashboard tables/calendar states: 'none' | 'table' | 'calendar'
   const [viewMode, setViewMode] = useState<'none' | 'table' | 'calendar'>('none');
@@ -125,15 +128,18 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
     <div className="flex h-screen w-full font-sans antialiased bg-background text-on-surface overflow-hidden">
       
       {/* SIDEBAR NAVIGATION */}
-      <aside className="h-screen w-72 flex flex-col fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant py-4 px-3 z-50">
+      <aside className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-outline-variant bg-surface-container-low py-4 px-3 transition-transform duration-300 ${sidebarCollapsed ? '-translate-x-full' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="flex items-center gap-3 px-2 mb-6">
           <div className="w-10 h-10 rounded-lg bg-tertiary flex items-center justify-center text-white shadow-sm">
             <ShieldAlert className="w-6 h-6" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="font-display text-lg font-extrabold text-tertiary leading-tight">校园智能助手</h1>
             <p className="text-xs text-on-surface-variant font-medium">教务工作台</p>
           </div>
+          <button type="button" aria-label="折叠侧边栏" onClick={() => setSidebarCollapsed(true)} className="rounded-lg p-1.5 text-outline transition-all duration-200 hover:bg-surface-container hover:text-tertiary">
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
         </div>
 
         <button 
@@ -211,7 +217,7 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
       </aside>
 
       {/* MAIN CONTENT CANVAS */}
-      <main className="ml-72 flex-1 flex flex-col bg-background min-h-screen relative overflow-hidden">
+      <main className={`flex-1 flex flex-col bg-background min-h-screen relative overflow-hidden transition-[margin-left] duration-300 ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-72'}`}>
         {(error || exportError) && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error || exportError}</div>}
         {(toolStatus || route || runStatus === 'failed' || runStatus === 'needs_input') && (
           <div className="mx-10 mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-tertiary/20 bg-tertiary-container/10 px-4 py-2 text-xs text-on-surface-variant">
@@ -226,6 +232,16 @@ export default function AdminWorkspace({ token, onBackToRoles }: AdminWorkspaceP
         {/* Top App Bar */}
         <header className="sticky top-0 z-40 h-16 bg-surface border-b border-outline-variant flex justify-between items-center px-10 shrink-0">
           <div className="flex items-center gap-3">
+            {sidebarCollapsed && (
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(false)}
+                aria-label="展开侧边栏"
+                className="rounded-lg p-2 text-tertiary transition-all duration-200 hover:bg-surface-container"
+              >
+                <PanelLeftOpen className="w-5 h-5" />
+              </button>
+            )}
             <div className="flex items-center gap-1 px-3 py-1 bg-surface-container-high rounded-full border border-outline-variant shadow-xs">
               <ShieldCheck className="w-4 h-4 text-tertiary" />
               <span className="text-xs font-bold text-on-surface-variant">教务工作空间</span>
