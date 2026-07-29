@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useRef, type FormEvent } from 'react';
 import { 
-  GraduationCap, 
-  MessageSquarePlus, 
-  History, 
-  FolderOpen, 
-  MoreVertical, 
-  ShieldCheck, 
+  GraduationCap,
+  MessageSquarePlus,
+  History,
+  FolderOpen,
+  MoreVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ShieldCheck,
   Search, 
   Activity, 
   Bell, 
@@ -544,16 +546,19 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       )}
 
       <aside className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-white/70 bg-surface-container-low/90 px-3 py-4 shadow-[8px_0_30px_rgba(25,28,26,0.04)] backdrop-blur-xl transition-transform duration-300 ${sidebarCollapsed ? '-translate-x-full' : '-translate-x-full lg:translate-x-0'}`}>
-        
+
         {/* Header Identity */}
         <div className="flex items-center gap-3 px-2 mb-6">
           <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-white shadow-sm">
             <GraduationCap className="w-6 h-6" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="font-display text-lg font-extrabold text-primary leading-tight">校园智能助手</h1>
             <p className="text-xs text-on-surface-variant font-medium">教师工作台</p>
           </div>
+          <button type="button" aria-label="折叠侧边栏" onClick={() => setSidebarCollapsed(true)} className="rounded-lg p-1.5 text-outline transition-all duration-200 hover:bg-surface-container hover:text-primary">
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Action Button */}
@@ -620,7 +625,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             <p className="text-xs font-bold truncate">匿名教师</p>
             <p className="text-[10px] text-on-surface-variant truncate font-semibold tracking-wider">独立工作空间</p>
           </div>
-          <button type="button" aria-label="折叠侧边栏" onClick={() => setSidebarCollapsed(true)} className="rounded-lg p-1 text-outline hover:bg-surface-container hover:text-primary"><ChevronRight className="w-4 h-4" /></button>
           <button type="button" aria-label="更多工作空间选项" className="rounded-lg p-1 text-outline hover:bg-surface-container hover:text-primary"><MoreVertical className="w-4 h-4" /></button>
         </div>
       </aside>
@@ -637,9 +641,9 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                 type="button"
                 onClick={() => setSidebarCollapsed(false)}
                 aria-label="展开侧边栏"
-                className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-3 py-2 text-xs font-bold text-primary hover:bg-surface-container"
+                className="rounded-lg p-2 text-primary transition-all duration-200 hover:bg-surface-container"
               >
-                <FolderClosed className="w-3.5 h-3.5" />展开侧边栏
+                <PanelLeftOpen className="w-5 h-5" />
               </button>
             )}
             <div className="hidden sm:flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[10px] font-bold text-primary">
