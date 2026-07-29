@@ -543,7 +543,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         </div>
       )}
 
-      <aside className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-white/70 bg-surface-container-low/90 px-3 py-4 shadow-[8px_0_30px_rgba(25,28,26,0.04)] backdrop-blur-xl transition-transform duration-300 lg:translate-x-0 ${sidebarCollapsed ? '-translate-x-full lg:-translate-x-full' : '-translate-x-full'}`}>
+      <aside className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-white/70 bg-surface-container-low/90 px-3 py-4 shadow-[8px_0_30px_rgba(25,28,26,0.04)] backdrop-blur-xl transition-transform duration-300 ${sidebarCollapsed ? '-translate-x-full' : '-translate-x-full lg:translate-x-0'}`}>
         
         {/* Header Identity */}
         <div className="flex items-center gap-3 px-2 mb-6">
