@@ -63,6 +63,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
   const [showInteractionPanel, setShowInteractionPanel] = useState(false);
+  const sidebarCollapsed = showInteractionPanel;
   const [showCreateCourseDialog, setShowCreateCourseDialog] = useState(false);
   const [newCourseName, setNewCourseName] = useState('');
   const [newCourseDescription, setNewCourseDescription] = useState('');
@@ -542,7 +543,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         </div>
       )}
 
-      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-72 flex-col border-r border-white/70 bg-surface-container-low/90 px-3 py-4 shadow-[8px_0_30px_rgba(25,28,26,0.04)] backdrop-blur-xl lg:flex">
+      <aside className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-white/70 bg-surface-container-low/90 px-3 py-4 shadow-[8px_0_30px_rgba(25,28,26,0.04)] backdrop-blur-xl transition-transform duration-300 lg:translate-x-0 ${sidebarCollapsed ? '-translate-x-full lg:-translate-x-full' : '-translate-x-full'}`}>
         
         {/* Header Identity */}
         <div className="flex items-center gap-3 px-2 mb-6">
@@ -624,12 +625,22 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       </aside>
 
       {/* 2. MAIN WORKSPACE CONTENT */}
-      <main className="relative flex min-h-screen flex-1 flex-col overflow-hidden bg-background lg:ml-72">
+      <main className={`relative flex min-h-screen flex-1 flex-col overflow-hidden bg-background transition-[margin-left] duration-300 ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-72'}`}>
         {error && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error}</div>}
         
         {/* Top App Bar */}
         <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between border-b border-white/70 bg-surface/80 px-10 shadow-[0_1px_20px_rgba(25,28,26,0.04)] backdrop-blur-xl">
           <div className="flex items-center gap-6">
+            {sidebarCollapsed && (
+              <button
+                type="button"
+                onClick={() => setShowInteractionPanel(false)}
+                aria-label="展开侧边栏"
+                className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-3 py-2 text-xs font-bold text-primary hover:bg-surface-container"
+              >
+                <FolderClosed className="w-3.5 h-3.5" />展开侧边栏
+              </button>
+            )}
             <div className="hidden sm:flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[10px] font-bold text-primary">
               <BookOpen className="h-3.5 w-3.5" />
               <span>{courseContext.courseName}</span>
@@ -1391,7 +1402,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
           {/* 3. RIGHT PANEL: course-scoped agent history and the active workflow. */}
           {showInteractionPanel && (
-            <aside className="w-96 h-full border-l border-outline-variant bg-surface-container-low flex flex-col overflow-y-auto shrink-0 hidden xl:flex">
+            <aside className={`w-96 h-full border-l border-outline-variant bg-surface-container-low flex flex-col overflow-y-auto shrink-0 ${sidebarCollapsed ? 'flex' : 'hidden xl:flex'}`}>
               <div className="flex h-12 items-center justify-between border-b border-outline-variant px-4 shrink-0">
                 <p className="text-sm font-extrabold text-on-surface">智能体历史聚合</p>
                 <button type="button" onClick={() => setShowInteractionPanel(false)} aria-label="关闭智能体历史面板" className="rounded-lg px-2 py-1 text-xs font-bold text-outline hover:bg-surface-container">关闭</button>
