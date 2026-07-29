@@ -195,28 +195,24 @@ export default function TeacherAgentHistoryPanel({
 
       <AnimatePresence initial={false} mode="wait">
         {selectedGroup.id === 'classroom_interaction' && (
-        <motion.section key="classroom-workflow" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ type: 'spring', bounce: 0, duration: 0.32 }} className="overflow-hidden rounded-2xl border border-white/80 bg-white/75 p-1 shadow-xs backdrop-blur-xl">
-          <div className="flex items-center gap-2 px-3 pt-2 text-[10px] font-extrabold text-on-surface-variant">
-            <Activity className="h-3.5 w-3.5 text-primary" />当前课堂工作流
-          </div>
-          <ClassroomInteractionPanel
-            embedded
-            courseContext={courseContext}
-            attachments={attachments}
-            artifacts={artifacts}
-            selectedArtifactIds={selectedArtifactIds}
-            onToggleArtifact={onToggleArtifact}
-            onPrompt={onPrompt}
-            onExport={onExport}
-            isBusy={isBusy}
-          />
-        </motion.section>
+          <motion.section key="classroom-workflow" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ type: 'spring', bounce: 0, duration: 0.32 }} className="overflow-hidden rounded-2xl border border-white/80 bg-white/75 p-1 shadow-xs backdrop-blur-xl">
+            <div className="flex items-center gap-2 px-3 pt-2 text-[10px] font-extrabold text-on-surface-variant">
+              <Activity className="h-3.5 w-3.5 text-primary" />当前课堂工作流
+            </div>
+            <ClassroomInteractionPanel
+              embedded
+              courseContext={courseContext}
+              attachments={attachments}
+              artifacts={artifacts}
+              selectedArtifactIds={selectedArtifactIds}
+              onToggleArtifact={onToggleArtifact}
+              onPrompt={onPrompt}
+              onExport={onExport}
+              isBusy={isBusy}
+            />
+          </motion.section>
         )}
       </AnimatePresence>
-
-      <div className="flex items-center justify-center gap-1 px-2 pb-1 text-[9px] text-outline">
-        <FileOutput className="h-3 w-3" />右侧为历史索引，完整成果详情请在中间对话区查看
-      </div>
     </motion.div>
   )
 }
@@ -231,7 +227,6 @@ function EmptyHistory({ group, onPrompt, isBusy }: { group: TeacherAgentGroup; o
     <div className="mt-3 rounded-xl border border-dashed border-outline-variant px-3 py-5 text-center">
       <History className="mx-auto mb-1.5 h-5 w-5 text-outline" />
       <p className="text-[10px] font-bold text-on-surface-variant">本课程还没有{group.name}记录</p>
-      <p className="mt-1 text-[9px] leading-relaxed text-outline">从中间对话区发起一次任务，完成后会自动归档到这里。</p>
       {action && <button type="button" disabled={isBusy} onClick={() => onPrompt(action.prompt)} className="mt-3 rounded-lg border border-primary/30 px-2.5 py-1.5 text-[10px] font-extrabold text-primary disabled:opacity-40">{action.label}</button>}
       {group.id === 'classroom_interaction' && <p className="mt-2 text-[9px] text-outline">下方课堂工作流可直接生成活动包或记录课堂观察。</p>}
     </div>

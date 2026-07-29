@@ -570,23 +570,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         {/* Navigation Links */}
         <nav className="flex-1 space-y-1 overflow-y-auto">
           <div className="px-3 py-1 mb-1 text-[11px] text-outline font-bold tracking-wider">导航</div>
-          
-          <button 
-            onClick={() => {
-              setStage('welcome');
-              clearChat();
-            }}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              stage === 'welcome' 
-                ? 'text-primary bg-primary-container/10 border-r-4 border-primary' 
-                : 'text-on-surface-variant hover:bg-surface-container-high'
-            }`}
-          >
-            <MessageSquarePlus className="w-4.5 h-4.5" />
-            <span>新建任务</span>
-          </button>
 
-          <button 
+          <button
             onClick={() => startAnalysis()}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
               stage === 'report' 
@@ -645,10 +630,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         {/* Top App Bar */}
         <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between border-b border-white/70 bg-surface/80 px-10 shadow-[0_1px_20px_rgba(25,28,26,0.04)] backdrop-blur-xl">
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-1 px-3 py-1 bg-surface-container-high rounded-full border border-outline-variant shadow-xs">
-              <ShieldCheck className="w-4 h-4 text-primary" />
-              <span className="text-xs font-bold text-on-surface-variant font-sans">匿名教师工作空间</span>
-            </div>
             <div className="hidden sm:flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[10px] font-bold text-primary">
               <BookOpen className="h-3.5 w-3.5" />
               <span>{courseContext.courseName}</span>
@@ -1301,7 +1282,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                       </button>
                     </div>
                   </div>
-                  <p className="text-[10px] text-center text-outline">智能生成内容仅供参考，请结合实际教学情况进行调整。</p>
                 </div>
               </div>
             </div>
