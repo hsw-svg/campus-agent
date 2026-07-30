@@ -33,6 +33,7 @@ import { Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ConversationHistory from './ConversationHistory';
 import ResourcePicker from './ResourcePicker';
+import StudentLearningCenter from './student/StudentLearningCenter';
 
 interface StudentWorkspaceProps {
   token: string | null;
@@ -68,6 +69,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   const [copied, setCopied] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeView, setActiveView] = useState<'chat' | 'courses'>('courses');
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -88,7 +90,13 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
     const finalMsg = textToSend || inputVal;
     if (!finalMsg.trim()) return;
     setInputVal('');
+    setActiveView('chat');
     void sendMessage(finalMsg);
+  };
+
+  const handleNewTask = () => {
+    clearChat();
+    setActiveView('chat');
   };
 
   const copyText = (txt: string) => {
@@ -140,10 +148,8 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           </button>
         </div>
 
-        <button 
-          onClick={() => {
-            clearChat();
-          }}
+        <button
+          onClick={handleNewTask}
           className="flex items-center justify-center gap-2 w-full py-3 mb-6 bg-secondary text-on-secondary rounded-xl font-semibold text-sm hover:opacity-95 transition-all active:scale-95 shadow-sm cursor-pointer"
         >
           <Compass className="w-4.5 h-4.5" />
@@ -153,11 +159,11 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         <nav className="flex-1 space-y-1 overflow-y-auto">
           <div className="px-3 py-1 mb-1 text-[11px] text-outline font-bold tracking-wider">菜单</div>
           
-          <button 
-            onClick={clearChat}
+          <button
+            onClick={() => setActiveView('courses')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              chatMessages.length === 0 
-                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary' 
+              activeView === 'courses'
+                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
                 : 'text-on-surface-variant hover:bg-surface-container-high'
             }`}
           >
@@ -237,9 +243,18 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           </button>
         </header>
 
+        {/* Learning center overlays the whole content area (chat + right toolbar) */}
+        {activeView === 'courses' ? (
+          <StudentLearningCenter
+            token={token}
+            onStartChat={(prompt) => handleSendMessage(prompt)}
+            onNewTask={handleNewTask}
+          />
+        ) : (
+        <>
         {/* Chat / Workbench layout */}
         <div className="flex-1 flex overflow-hidden">
-          
+
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             <section className="flex-1 flex flex-col p-6 overflow-y-auto max-w-4xl mx-auto w-full space-y-6">
             
@@ -445,6 +460,8 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           </aside>
 
         </div>
+        </>
+        )}
       </main>
 
     </div>

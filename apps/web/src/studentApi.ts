@@ -11,6 +11,14 @@ import { ApiError } from './api'
 
 export type { Artifact }
 
+export interface StudentCourse {
+  id: string
+  name: string
+  description: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface StudentAgentHistoryItem {
   run_id: string
   conversation_id: string
@@ -44,6 +52,11 @@ async function studentRequest<T>(path: string, init?: RequestInit, token?: strin
     )
   }
   return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>)
+}
+
+/** Fetch the list of courses available to the student workspace. */
+export function listStudentCourses(token: string): Promise<StudentCourse[]> {
+  return studentRequest<StudentCourse[]>('/courses', undefined, token)
 }
 
 /** Fetch recent agent run history for the current student workspace. */
