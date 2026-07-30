@@ -13,6 +13,7 @@ from app.api.attachments import workspace_attachment_router
 from app.api.agent_runs import router as agent_runs_router
 from app.api.artifacts import router as artifacts_router
 from app.api.courses import router as courses_router
+from app.api.student_agents import router as student_agents_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
@@ -20,6 +21,7 @@ from app.db.session import create_database_engine, create_session_factory, make_
 from app.integrations.embedding.providers import OpenAICompatibleEmbeddingProvider
 from app.integrations.llm.providers import OpenAICompatibleChatProvider
 from app.integrations.search.bing import BingSearchProvider
+from app.integrations.pptx_renderer import PptxRenderer
 from app.integrations.storage.local import LocalObjectStorage
 from app.services.artifact_presentations import ArtifactPresentationService
 from app.services.background_tasks import BackgroundTaskManager
@@ -52,8 +54,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.embedding_model,
     )
     app.state.object_storage = LocalObjectStorage(settings.local_storage_root)
+
+    # PPTX renderer with LibreOffice + PyMuPDF; None if unavailable
+    try:
+        renderer = PptxRenderer(
+            converter_path=settings.pptx_converter_path,
+            timeout_seconds=settings.pptx_renderer_timeout,
+        )
+    except Exception:
+        logger.warning(
+            "PPTX renderer initialization failed; previews will be unavailable",
+            exc_info=True,
+        )
+        renderer = None
+
     app.state.artifact_presentation_service = ArtifactPresentationService(
         app.state.object_storage,
+        renderer=renderer,
     )
     app.state.background_task_manager = BackgroundTaskManager()
     app.state.workspace_model = AnonymousWorkspace
@@ -70,6 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.nanobot_runner = NanobotRunner(
                 build_nanobot_config(settings),
                 bing_provider=app.state.bing_provider,
+                chat_provider=app.state.chat_provider,
             )
         except (ImportError, ValueError, TypeError):
             logger.exception(
@@ -100,6 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(agent_runs_router)
     app.include_router(artifacts_router)
     app.include_router(courses_router)
+    app.include_router(student_agents_router)
     return app
 
 
