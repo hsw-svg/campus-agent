@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agents.dependencies import get_agent_run_repository
+from app.agents.dependencies import get_agent_router, get_agent_run_repository
 from app.agents.registry import AUTO_AGENT_ID, list_agents
 from app.agents.repositories import AgentRunRepository
 from app.agents.router import AgentRouter
@@ -187,12 +187,12 @@ async def route_message(
     messages: MessageRepository = Depends(get_message_repository),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
     agent_runs: AgentRunRepository = Depends(get_agent_run_repository),
-    chat_provider=Depends(get_chat_provider),
+    agent_router: AgentRouter = Depends(get_agent_router),
 ) -> RouteResponse:
     conversation = get_owned_conversation(conversations, workspace.id, conversation_id)
     agent_id = _normalize_agent_id(payload.agent_id)
     decision = await classify_message(
-        router=AgentRouter(chat_provider),
+        router=agent_router,
         role=workspace.role,
         conversation=conversation,
         content=payload.content,
@@ -230,6 +230,7 @@ async def stream_message(
     conversations: ConversationRepository = Depends(get_conversation_repository),
     messages: MessageRepository = Depends(get_message_repository),
     chat_provider=Depends(get_chat_provider),
+    agent_router: AgentRouter = Depends(get_agent_router),
     retriever: Retriever = Depends(get_retriever),
     embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
@@ -251,7 +252,7 @@ async def stream_message(
         attachments=attachments,
         agent_runs=agent_runs,
         artifacts=artifacts,
-        router=AgentRouter(chat_provider),
+        router=agent_router,
         selected_attachment_ids=payload.selected_attachment_ids,
         selected_artifact_ids=payload.selected_artifact_ids,
         course_id=payload.course_id,

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.agents.intent_retrieval import IntentCandidate
 from app.integrations.storage.local import LocalObjectStorage
 from tests.api.conftest import make_workspace
 
@@ -28,6 +29,17 @@ class FakeChatProvider:
         self.calls.append(list(messages))
         for delta in self.deltas:
             yield delta
+
+
+class StaticCandidateRetriever:
+    def __init__(self, *agent_ids: str) -> None:
+        self.agent_ids = agent_ids
+
+    async def retrieve(self, query, agents):
+        return tuple(
+            IntentCandidate(agent_id=agent_id, similarity=0.95 - index * 0.1)
+            for index, agent_id in enumerate(self.agent_ids)
+        )
 
 
 class FailingChatProvider:
@@ -85,6 +97,12 @@ def read_events(text: str) -> dict[str, dict]:
 def test_route_endpoint_recognizes_resume_without_crossing_role_boundary(client: TestClient) -> None:
     token = make_workspace(client, "student")
     conversation = create_conversation(client, token)
+    client.app.state.intent_candidate_retriever = StaticCandidateRetriever(
+        "resume_helper", "study_planner", "personal_tutor"
+    )
+    client.app.state.chat_provider = FakeChatProvider(
+        route_response='{"agent":"resume_helper","confidence":0.95,"reason":"请求是简历优化"}'
+    )
 
     response = client.post(
         f"/api/conversations/{conversation['id']}/route",
@@ -95,8 +113,13 @@ def test_route_endpoint_recognizes_resume_without_crossing_role_boundary(client:
     assert response.status_code == 200
     body = response.json()
     assert body["agent"] == "resume_helper"
-    assert body["selection_source"] == "rule"
+    assert body["selection_source"] == "semantic_llm"
     assert body["requires_confirmation"] is False
+    assert body["candidate_agent_ids"] == [
+        "resume_helper",
+        "study_planner",
+        "personal_tutor",
+    ]
     assert body["run_id"]
 
 
@@ -132,6 +155,9 @@ def test_manual_foreign_agent_is_rejected_by_streaming_route(client: TestClient)
 def test_meeting_record_is_routed_to_admin_minutes(client: TestClient) -> None:
     token = make_workspace(client, "admin")
     conversation = create_conversation(client, token)
+    client.app.state.chat_provider = FakeChatProvider(
+        route_response='{"agent":"meeting_minutes","confidence":0.94,"reason":"请求整理会议纪要"}'
+    )
 
     response = client.post(
         f"/api/conversations/{conversation['id']}/route",
@@ -144,7 +170,7 @@ def test_meeting_record_is_routed_to_admin_minutes(client: TestClient) -> None:
     assert response.json()["confidence"] >= 0.8
 
 
-def test_low_confidence_stream_requires_agent_confirmation(client: TestClient) -> None:
+def test_low_confidence_stream_falls_back_to_generic_chat(client: TestClient) -> None:
     token = make_workspace(client, "student")
     conversation = create_conversation(client, token)
     client.app.state.chat_provider = FakeChatProvider(
@@ -159,8 +185,10 @@ def test_low_confidence_stream_requires_agent_confirmation(client: TestClient) -
 
     assert response.status_code == 200
     events = read_events(response.text)
-    assert events["error"]["code"] == "route_confirmation_required"
-    assert "resume_helper" in events["error"]["candidates"]
+    assert events["message_start"]["agent_id"] is None
+    assert events["route_decision"]["selection_source"] == "fallback"
+    assert events["done"]["run_id"] == events["message_start"]["run_id"]
+    assert "error" not in events
 
 
 def test_failed_agent_run_can_be_retried_without_crossing_workspace(client: TestClient) -> None:
@@ -188,7 +216,10 @@ def test_failed_agent_run_can_be_retried_without_crossing_workspace(client: Test
 def test_auto_stream_emits_selected_agent_and_run_id(client: TestClient) -> None:
     token = make_workspace(client, "teacher")
     conversation = create_conversation(client, token)
-    client.app.state.chat_provider = FakeChatProvider(deltas=("学情", "分析结果"))
+    client.app.state.chat_provider = FakeChatProvider(
+        route_response='{"agent":"learning_analysis","confidence":0.96,"reason":"请求分析匿名成绩表"}',
+        deltas=("学情", "分析结果"),
+    )
 
     upload = client.post(
         f"/api/conversations/{conversation['id']}/attachments",
@@ -283,14 +314,17 @@ def test_new_conversation_ignores_previous_workspace_attachment_for_routing(
     assert response.status_code == 200
     body = response.json()
     assert body["agent"] == "lesson_design"
-    assert body["selection_source"] == "rule"
+    assert body["selection_source"] == "llm_fallback"
 
 
 def test_explicit_classroom_practice_intent_wins_over_learning_sheet(client: TestClient) -> None:
     client.app.state.object_storage = LocalObjectStorage(Path(".tmp-storage"))
     token = make_workspace(client, "teacher")
     conversation = create_conversation(client, token)
-    client.app.state.chat_provider = FakeChatProvider(deltas=("课堂练习",))
+    client.app.state.chat_provider = FakeChatProvider(
+        route_response='{"agent":"lesson_design","confidence":0.96,"reason":"当前指令要求生成课堂练习"}',
+        deltas=("课堂练习",),
+    )
 
     upload = client.post(
         f"/api/conversations/{conversation['id']}/attachments",

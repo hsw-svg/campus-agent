@@ -20,6 +20,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
 | [Attachment Upload](./attachment-upload.md) | Course/workspace upload API, validation, isolation, and frontend concurrency contract | Active |
+| [Agent Intent Routing](./agent-intent-routing.md) | Semantic candidate retrieval, Intent LLM selection, and non-blocking fallback contract | Active |
 
 ---
 

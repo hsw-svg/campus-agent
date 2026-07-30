@@ -51,7 +51,11 @@ def test_learning_analysis_creates_class_artifact_without_chat_credentials(clien
 
     response = client.post(
         f"/api/conversations/{conversation['id']}/messages/stream",
-        json={"content": "分析学情", "selected_attachment_ids": [selected_attachment_id]},
+        json={
+            "content": "分析学情",
+            "agent_id": "learning_analysis",
+            "selected_attachment_ids": [selected_attachment_id],
+        },
         headers=auth(teacher),
     )
 
@@ -96,7 +100,7 @@ def test_learning_analysis_requires_explicit_attachment_selection(client: TestCl
 
     response = client.post(
         f"/api/conversations/{conversation['id']}/messages/stream",
-        json={"content": "分析学情"},
+        json={"content": "分析学情", "agent_id": "learning_analysis"},
         headers=auth(teacher),
     )
 
@@ -185,7 +189,7 @@ def test_course_learning_analysis_uses_all_course_materials_by_default(client: T
 
     response = client.post(
         f"/api/conversations/{conversation['id']}/messages/stream",
-        json={"content": "分析学情"},
+        json={"content": "分析学情", "agent_id": "learning_analysis"},
         headers=auth(teacher),
     )
 
@@ -241,7 +245,11 @@ def test_learning_artifact_is_isolated_by_workspace(client: TestClient) -> None:
     assert upload.status_code == 201
     response = client.post(
         f"/api/conversations/{conversation['id']}/messages/stream",
-        json={"content": "分析学情", "selected_attachment_ids": [upload.json()["id"]]},
+        json={
+            "content": "分析学情",
+            "agent_id": "learning_analysis",
+            "selected_attachment_ids": [upload.json()["id"]],
+        },
         headers=auth(teacher),
     )
     artifact_event = next(

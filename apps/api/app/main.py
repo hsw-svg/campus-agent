@@ -20,6 +20,7 @@ from app.integrations.llm.providers import OpenAICompatibleChatProvider
 from app.integrations.storage.local import LocalObjectStorage
 from app.attachments.models import Attachment, MaterialChunk  # noqa: F401
 from app.agents.models import AgentRun  # noqa: F401
+from app.agents.intent_retrieval import SemanticIntentRetriever
 from app.artifacts.models import Artifact  # noqa: F401
 from app.workspaces.models import AnonymousWorkspace
 from app.courses.models import Course  # noqa: F401
@@ -43,6 +44,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.embedding_base_url,
         settings.embedding_api_key,
         settings.embedding_model,
+    )
+    app.state.intent_candidate_retriever = SemanticIntentRetriever(
+        app.state.embedding_provider
     )
     app.state.object_storage = LocalObjectStorage(settings.local_storage_root)
     app.state.workspace_model = AnonymousWorkspace

@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from app.agents.dependencies import get_agent_run_repository
+from app.agents.dependencies import get_agent_router, get_agent_run_repository
 from app.agents.repositories import AgentRunRepository
 from app.agents.router import AgentRouter
 from app.artifacts.dependencies import get_artifact_repository
@@ -34,6 +34,7 @@ async def retry_agent_run(
     messages: MessageRepository = Depends(get_message_repository),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
     chat_provider=Depends(get_chat_provider),
+    agent_router: AgentRouter = Depends(get_agent_router),
     retriever: Retriever = Depends(get_retriever),
     embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
     artifacts: ArtifactRepository = Depends(get_artifact_repository),
@@ -87,7 +88,7 @@ async def retry_agent_run(
         attachments=attachments,
         agent_runs=agent_runs,
         artifacts=artifacts,
-        router=AgentRouter(chat_provider),
+        router=agent_router,
         selected_attachment_ids=tuple(UUID(item) for item in (run.selected_attachment_ids or [])),
         selected_artifact_ids=tuple(UUID(item) for item in (run.selected_artifact_ids or [])),
         course_id=run.course_id,
