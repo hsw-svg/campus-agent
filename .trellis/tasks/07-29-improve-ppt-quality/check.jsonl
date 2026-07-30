@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review migration, ownership, legacy null handling, and persistence consistency."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Review stable failure behavior and cleanup semantics."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Review backend tests and bounded retry implementation."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review frontend lint/build and preview behavior."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Review API/SSE/frontend contract consistency."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Audit semantic JSON, stored PPTX, preview pages, API, and UI end to end."}
+{"file":".trellis/tasks/07-29-improve-ppt-quality/research/pptagent-evaluation.md","reason":"Verify implementation follows the staged recommendation and leaves PPTAgent deferred."}

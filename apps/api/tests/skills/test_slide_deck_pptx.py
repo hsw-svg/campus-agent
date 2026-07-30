@@ -99,5 +99,5 @@ def test_slide_deck_pptx_is_a_valid_zip_with_expected_slide_count() -> None:
             for name in archive.namelist()
             if name.startswith("ppt/slides/slide") and name.endswith(".xml")
         ]
-    # Cover slide + 5 declared slides = 6 slides total.
-    assert len(slide_files) == 6
+    # One semantic slide maps to one PPTX page; no implicit cover is added.
+    assert len(slide_files) == len(SAMPLE_DECK["slides"])

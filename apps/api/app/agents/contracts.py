@@ -69,6 +69,7 @@ class AgentRequest:
     parent_run_id: UUID | None = None
     input_refs: tuple[str, ...] = ()
     context: AgentContext = field(default_factory=AgentContext)
+    previous_slide_deck: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

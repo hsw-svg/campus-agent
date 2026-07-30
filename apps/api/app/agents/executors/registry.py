@@ -1,6 +1,9 @@
 """Resolve stable agent specifications to isolated executors."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from app.agents.contracts import AgentExecutor
 from app.agents.executors.classroom_interaction import ClassroomInteractionExecutor
@@ -18,6 +21,11 @@ from app.artifacts.repositories import ArtifactRepository
 from app.integrations.llm.providers import ChatProvider
 from app.integrations.search.bing import BingSearchProvider
 
+if TYPE_CHECKING:
+    from app.agents.nanobot.runner import NanobotRunner
+else:
+    NanobotRunner = Any
+
 
 class AgentExecutorRegistry:
     def __init__(
@@ -25,10 +33,12 @@ class AgentExecutorRegistry:
         chat_provider: ChatProvider,
         bing_provider: BingSearchProvider | None = None,
         artifact_repository_factory: Callable[[], ArtifactRepository | None] | None = None,
+        nanobot_runner: NanobotRunner | None = None,
     ) -> None:
         self.chat_provider = chat_provider
         self.bing_provider = bing_provider
         self.artifact_repository_factory = artifact_repository_factory
+        self.nanobot_runner = nanobot_runner
 
     def resolve(self, spec_or_role: AgentSpec | str, agent_id: str | None = None) -> AgentExecutor:
         spec = (
@@ -45,6 +55,16 @@ class AgentExecutorRegistry:
         if spec.executor_id == "classroom_interaction":
             return ClassroomInteractionExecutor(self.chat_provider)
         if spec.executor_id == "course_iteration":
+            if self.nanobot_runner is not None:
+                from app.agents.executors.course_iteration_v2 import (
+                    CourseIterationExecutorV2,
+                )
+
+                return CourseIterationExecutorV2(
+                    self.chat_provider,
+                    self.nanobot_runner,
+                    self.artifact_repository_factory,
+                )
             return CourseIterationExecutor(
                 self.chat_provider,
                 self.bing_provider,

@@ -8,9 +8,11 @@ def test_local_storage_round_trips_data(tmp_path) -> None:
     storage = LocalObjectStorage(tmp_path)
 
     storage.put("workspace/a.txt", b"x")
+    storage.put("workspace/a.txt", b"replacement")
 
-    assert storage.get("workspace/a.txt") == b"x"
+    assert storage.get("workspace/a.txt") == b"replacement"
     assert storage.exists("workspace/a.txt") is True
+    assert list((tmp_path / "workspace").iterdir()) == [tmp_path / "workspace" / "a.txt"]
 
 
 @pytest.mark.parametrize("key", ["../secret", "C:/outside.txt", "/outside.txt"])

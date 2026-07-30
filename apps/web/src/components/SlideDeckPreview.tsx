@@ -13,7 +13,9 @@ import {
   Star,
 } from 'lucide-react'
 import type { Artifact } from '../api'
+import { exportArtifact } from '../api'
 import Markdown from './Markdown'
+import PptxNativePreview from './PptxNativePreview'
 
 interface Citation {
   title?: string
@@ -37,6 +39,7 @@ interface MediaItem {
 }
 
 interface Slide {
+  id?: string
   index: number
   layout: 'title' | 'bullets' | 'two_column' | 'callout' | 'summary' | string
   title?: string
@@ -65,6 +68,7 @@ interface SlideDeckData {
 
 interface SlideDeckPreviewProps {
   artifact: Artifact
+  token: string
   onExport?: (format: 'markdown' | 'pptx') => void
   onCopy?: (content: string) => void
 }
@@ -96,6 +100,7 @@ function normalizeSlides(value: unknown): Slide[] {
       const indexNum = typeof rec.index === 'number' ? rec.index : idx + 1
       const layoutStr = typeof rec.layout === 'string' ? rec.layout : 'bullets'
       return {
+        id: typeof rec.id === 'string' ? rec.id : undefined,
         index: indexNum,
         layout: layoutStr,
         title: typeof rec.title === 'string' ? rec.title : undefined,
@@ -136,10 +141,11 @@ function normalizeSlides(value: unknown): Slide[] {
     .sort((a, b) => a.index - b.index)
 }
 
-export default function SlideDeckPreview({ artifact, onExport, onCopy }: SlideDeckPreviewProps) {
+export default function SlideDeckPreview({ artifact, token, onExport, onCopy }: SlideDeckPreviewProps) {
   const data = (artifact.data ?? {}) as SlideDeckData
   const slides = useMemo(() => normalizeSlides(data.slides), [data.slides])
-  const total = slides.length
+  const authoritative = artifact.presentation !== null && artifact.object_key !== null
+  const total = authoritative ? (artifact.presentation?.page_count ?? slides.length) : slides.length
   const topic = typeof data.topic === 'string' && data.topic.length > 0 ? data.topic : (artifact.title || '未命名幻灯')
   const sources = useMemo(() => toCitationList(data.sources), [data.sources])
 
@@ -147,13 +153,39 @@ export default function SlideDeckPreview({ artifact, onExport, onCopy }: SlideDe
   const [notesOpen, setNotesOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
 
+  // PPTX bytes for authoritative preview
+  const [pptxBuffer, setPptxBuffer] = useState<ArrayBuffer | null>(null)
+  const [pptxState, setPptxState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [pptxError, setPptxError] = useState('')
+
+  useEffect(() => {
+    if (!authoritative) return
+    let cancelled = false
+    setPptxState('loading')
+    setPptxError('')
+    void exportArtifact(token, artifact.id, 'pptx')
+      .then(async (blob) => {
+        if (cancelled) return
+        const buffer = await blob.arrayBuffer()
+        if (cancelled) return
+        setPptxBuffer(buffer)
+        setPptxState('ready')
+      })
+      .catch((reason) => {
+        if (cancelled) return
+        setPptxState('error')
+        setPptxError(reason instanceof Error ? reason.message : '权威课件加载失败。')
+      })
+    return () => { cancelled = true }
+  }, [artifact.id, authoritative, token])
+
   useEffect(() => {
     if (currentIndex >= total && total > 0) {
       setCurrentIndex(0)
     }
   }, [total, currentIndex])
 
-  if (total === 0) {
+  if (!authoritative && total === 0) {
     return (
       <div className="w-full rounded-2xl border border-dashed border-outline-variant bg-surface-container-lowest px-6 py-8 text-center">
         <Presentation className="mx-auto mb-3 h-6 w-6 text-outline" />
@@ -163,7 +195,27 @@ export default function SlideDeckPreview({ artifact, onExport, onCopy }: SlideDe
     )
   }
 
-  const current = slides[Math.min(currentIndex, total - 1)]
+  if (authoritative && pptxState !== 'ready') {
+    return (
+      <div className="w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-6 py-8 text-center" role="status">
+        <Presentation className="mx-auto mb-3 h-6 w-6 text-outline" />
+        <p className="text-sm font-bold text-on-surface">
+          {pptxState === 'error' ? '权威课件加载失败' : '正在加载课件'}
+        </p>
+        <p className="mt-1 text-xs text-on-surface-variant">
+          {pptxState === 'error' ? pptxError : '正在读取 PPTX 并在浏览器中渲染。'}
+        </p>
+        <button type="button" onClick={() => onExport?.('pptx')} className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-bold text-on-primary">
+          <Download className="h-3.5 w-3.5" />
+          下载 PPTX
+        </button>
+      </div>
+    )
+  }
+
+  const current = authoritative
+    ? slides[Math.min(currentIndex, slides.length - 1)]
+    : slides[Math.min(currentIndex, total - 1)]
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'ArrowRight') {
@@ -200,7 +252,7 @@ export default function SlideDeckPreview({ artifact, onExport, onCopy }: SlideDe
           <div className="min-w-0">
             <h3 className="truncate font-display text-sm font-extrabold text-on-surface md:text-base">{topic}</h3>
             <p className="text-[10px] font-semibold text-on-surface-variant">
-              第 {current.index} 页 / 共 {total} 页{data.audience ? ` · ${data.audience}` : ''}{typeof data.duration_minutes === 'number' ? ` · ${data.duration_minutes} 分钟` : ''}
+              第 {current?.index ?? currentIndex + 1} 页 / 共 {total} 页{data.audience ? ` · ${data.audience}` : ''}{typeof data.duration_minutes === 'number' ? ` · ${data.duration_minutes} 分钟` : ''}
             </p>
           </div>
         </div>
@@ -247,6 +299,7 @@ export default function SlideDeckPreview({ artifact, onExport, onCopy }: SlideDe
           </p>
           <ul className="space-y-1.5">
             {slides.map((slide, idx) => {
+              const pageNumber = slide.index
               const active = idx === currentIndex
               return (
                 <li key={`${slide.index}-${idx}`}>
@@ -260,10 +313,10 @@ export default function SlideDeckPreview({ artifact, onExport, onCopy }: SlideDe
                     }`}
                   >
                     <p className={`text-[10px] font-black tracking-wider ${active ? 'text-primary' : 'text-outline'}`}>
-                      {String(slide.index).padStart(2, '0')}
+                      {String(pageNumber).padStart(2, '0')}
                     </p>
                     <p className="mt-0.5 line-clamp-2 text-[11px] font-bold leading-snug text-on-surface">
-                      {slide.title || `第 ${slide.index} 页`}
+                      {slide.title || `第 ${pageNumber} 页`}
                     </p>
                   </button>
                 </li>
@@ -275,11 +328,19 @@ export default function SlideDeckPreview({ artifact, onExport, onCopy }: SlideDe
         {/* Main slide view */}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto px-6 py-6">
-            <SlideBody slide={current} />
+            {authoritative && pptxBuffer ? (
+              <PptxNativePreview
+                pptxBuffer={pptxBuffer}
+                initialSlide={currentIndex}
+                slideIndex={currentIndex}
+              />
+            ) : (
+              <SlideBody slide={current} />
+            )}
           </div>
 
           {/* Speaker notes */}
-          {current.notes && (
+          {current?.notes && (
             <div className="border-t border-outline-variant/50 bg-surface-container-low/40 px-6 py-3">
               <button
                 type="button"
@@ -302,7 +363,7 @@ export default function SlideDeckPreview({ artifact, onExport, onCopy }: SlideDe
           )}
 
           {/* Citations */}
-          {(current.citations && current.citations.length > 0) && (
+          {(current?.citations && current.citations.length > 0) && (
             <div className="border-t border-outline-variant/50 bg-surface-container-lowest px-6 py-3">
               <p className="mb-2 text-[10px] font-extrabold uppercase tracking-wider text-outline">
                 <LinkIcon className="mr-1 inline h-3 w-3" />

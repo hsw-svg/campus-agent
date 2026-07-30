@@ -45,6 +45,13 @@ class CourseArtifactResponse(BaseModel):
     content: str
     data: dict
     format: str
+    object_key: str | None
+    mime_type: str | None
+    sha256: str | None
+    size_bytes: int | None
+    page_count: int | None
+    preview_status: str | None
+    presentation: dict | None
     created_at: datetime
     updated_at: datetime
 

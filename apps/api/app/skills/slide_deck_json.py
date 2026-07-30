@@ -83,11 +83,21 @@ def _normalise(payload: dict[str, Any]) -> dict[str, Any]:
         )
     slides = [_normalise_slide(item, index + 1) for index, item in enumerate(raw_slides)]
     slides.sort(key=lambda item: item["index"])
+    seen_ids: set[str] = set()
     for pos, slide in enumerate(slides, start=1):
         slide["index"] = pos
+        slide_id = slide["id"] or f"slide-{pos:03d}"
+        if slide_id in seen_ids:
+            raise AppError(
+                code="slide_deck_json_invalid",
+                message=f"Slide deck contains duplicate slide ID '{slide_id}'.",
+                status_code=422,
+            )
+        slide["id"] = slide_id
+        seen_ids.add(slide_id)
     context_signals = _normalise_context_signals(payload.get("context_signals"))
     sources = _normalise_sources(payload.get("sources"))
-    return {
+    normalized = {
         "topic": topic,
         "audience": str(payload.get("audience") or "").strip(),
         "objective": str(payload.get("objective") or "").strip(),
@@ -96,6 +106,10 @@ def _normalise(payload: dict[str, Any]) -> dict[str, Any]:
         "slides": slides,
         "sources": sources,
     }
+    previous_slide_deck = payload.get("previous_slide_deck")
+    if isinstance(previous_slide_deck, dict):
+        normalized["previous_slide_deck"] = previous_slide_deck
+    return normalized
 
 
 def _normalise_slide(item: Any, fallback_index: int) -> dict[str, Any]:
@@ -109,6 +123,7 @@ def _normalise_slide(item: Any, fallback_index: int) -> dict[str, Any]:
     layout = layout_raw if layout_raw in ALLOWED_LAYOUTS else "bullets"
     index = _coerce_int(item.get("index")) or fallback_index
     return {
+        "id": str(item.get("id") or "").strip(),
         "index": index,
         "layout": layout,
         "title": str(item.get("title") or "").strip(),

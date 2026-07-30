@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -17,12 +19,17 @@ from app.core.logging import configure_logging
 from app.db.session import create_database_engine, create_session_factory, make_database_probe
 from app.integrations.embedding.providers import OpenAICompatibleEmbeddingProvider
 from app.integrations.llm.providers import OpenAICompatibleChatProvider
+from app.integrations.search.bing import BingSearchProvider
 from app.integrations.storage.local import LocalObjectStorage
+from app.services.artifact_presentations import ArtifactPresentationService
+from app.services.background_tasks import BackgroundTaskManager
 from app.attachments.models import Attachment, MaterialChunk  # noqa: F401
 from app.agents.models import AgentRun  # noqa: F401
 from app.artifacts.models import Artifact  # noqa: F401
 from app.workspaces.models import AnonymousWorkspace
 from app.courses.models import Course  # noqa: F401
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -45,7 +52,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.embedding_model,
     )
     app.state.object_storage = LocalObjectStorage(settings.local_storage_root)
+    app.state.artifact_presentation_service = ArtifactPresentationService(
+        app.state.object_storage,
+    )
+    app.state.background_task_manager = BackgroundTaskManager()
     app.state.workspace_model = AnonymousWorkspace
+    app.state.bing_provider = BingSearchProvider(
+        api_key=settings.bing_search_api_key,
+        endpoint=settings.bing_search_endpoint,
+    )
+
+    if settings.chat_is_configured:
+        try:
+            from app.agents.nanobot.config import build_nanobot_config
+            from app.agents.nanobot.runner import NanobotRunner
+
+            app.state.nanobot_runner = NanobotRunner(
+                build_nanobot_config(settings),
+                bing_provider=app.state.bing_provider,
+            )
+        except (ImportError, ValueError, TypeError):
+            logger.exception(
+                "Nanobot initialization failed; course iteration will use the v1 executor"
+            )
+            app.state.nanobot_runner = None
+    else:
+        app.state.nanobot_runner = None
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,

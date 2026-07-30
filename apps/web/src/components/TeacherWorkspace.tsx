@@ -1066,6 +1066,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                                 <div className="mt-2">
                                   <SlideDeckPreview
                                     artifact={slideDeckArtifact}
+                                    token={token}
                                     onExport={(format) => { void handleExportArtifact(slideDeckArtifact, format); }}
                                     onCopy={(content) => copyToClipboard(content, 997)}
                                   />
@@ -1437,6 +1438,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         {historyDetail && (
           <HistoryDetailModal
             item={historyDetail}
+            token={token}
             onClose={() => setHistoryDetail(null)}
             onExport={handleExportArtifact}
             onCopy={(content) => copyToClipboard(content, 998)}
@@ -1450,11 +1452,13 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
 function HistoryDetailModal({
   item,
+  token,
   onClose,
   onExport,
   onCopy,
 }: {
   item: AgentHistoryItem
+  token: string
   onClose: () => void
   onExport: (artifact: Artifact, format: 'markdown' | 'csv' | 'pptx') => Promise<void>
   onCopy: (content: string) => void
@@ -1569,6 +1573,7 @@ function HistoryDetailModal({
                 <div className="mt-3 overflow-hidden rounded-xl bg-surface">
                   <SlideDeckPreview
                     artifact={artifact}
+                    token={token}
                     onExport={(format) => { void onExport(artifact, format); }}
                     onCopy={onCopy}
                   />

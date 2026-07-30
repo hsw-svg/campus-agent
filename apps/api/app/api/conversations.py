@@ -5,12 +5,23 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agents.dependencies import get_agent_run_repository
+from app.agents.dependencies import (
+    get_agent_run_repository,
+    get_background_task_manager,
+    get_bing_provider,
+    get_nanobot_runner,
+)
+from app.agents.nanobot.runner import NanobotRunner
 from app.agents.registry import AUTO_AGENT_ID, list_agents
 from app.agents.repositories import AgentRunRepository
 from app.agents.router import AgentRouter
-from app.artifacts.dependencies import get_artifact_repository
+from app.artifacts.dependencies import (
+    get_artifact_presentation_service,
+    get_artifact_repository,
+)
 from app.artifacts.repositories import ArtifactRepository
+from app.services.artifact_presentations import ArtifactPresentationService
+from app.services.background_tasks import BackgroundTaskManager
 from app.attachments.dependencies import get_attachment_repository
 from app.attachments.repositories import AttachmentRepository
 from app.conversations.dependencies import (
@@ -29,6 +40,7 @@ from app.services.routing import classify_message
 from app.workspaces.dependencies import get_chat_provider, get_current_workspace, get_embedding_provider
 from app.attachments.repositories import Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
+from app.integrations.search.bing import BingSearchProvider
 from app.workspaces.models import AnonymousWorkspace
 from app.api.courses import get_owned_course
 from app.api.courses import get_course_repository
@@ -71,6 +83,13 @@ class ConversationArtifactResponse(BaseModel):
     content: str
     data: dict
     format: str
+    object_key: str | None
+    mime_type: str | None
+    sha256: str | None
+    size_bytes: int | None
+    page_count: int | None
+    preview_status: str | None
+    presentation: dict | None
     created_at: datetime
     updated_at: datetime
 
@@ -235,6 +254,10 @@ async def stream_message(
     attachments: AttachmentRepository = Depends(get_attachment_repository),
     agent_runs: AgentRunRepository = Depends(get_agent_run_repository),
     artifacts: ArtifactRepository = Depends(get_artifact_repository),
+    presentation_service: ArtifactPresentationService = Depends(get_artifact_presentation_service),
+    bing_provider: BingSearchProvider = Depends(get_bing_provider),
+    nanobot_runner: NanobotRunner | None = Depends(get_nanobot_runner),
+    background_task_manager: BackgroundTaskManager = Depends(get_background_task_manager),
 ) -> StreamingResponse:
     conversation = get_owned_conversation(conversations, workspace.id, conversation_id)
     generator = await stream_assistant_reply(
@@ -258,6 +281,10 @@ async def stream_message(
         workflow_id=payload.workflow_id,
         parent_run_id=payload.parent_run_id,
         input_refs=payload.input_refs,
+        bing_provider=bing_provider,
+        nanobot_runner=nanobot_runner,
+        presentation_service=presentation_service,
+        background_task_manager=background_task_manager,
     )
     return StreamingResponse(
         generator,

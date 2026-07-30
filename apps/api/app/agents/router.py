@@ -150,9 +150,12 @@ class AgentRouter:
                 candidates = (llm_result.agent,)
             else:
                 candidates = _candidate_ids(available, rule_match)
+            # When LLM returns no specific agent, use generic chat fallback
+            # instead of requiring confirmation. Confirmation is only needed
+            # when a specific agent is returned with low confidence.
             requires_confirmation = (
-                llm_result.agent is None
-                or llm_result.confidence < self.confidence_threshold
+                llm_result.agent is not None
+                and llm_result.confidence < self.confidence_threshold
             )
             return RouteDecision(
                 agent=llm_result.agent if not requires_confirmation else None,
@@ -248,8 +251,18 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
     # precedence over incidental evidence in a workspace attachment.  A
     # teacher may keep a learning sheet in the workspace while asking for a
     # classroom exercise; that request is lesson design, not analysis.
-    explicit_lesson_design = any(
-        term in content for term in ("课堂练习", "练习题", "课堂题", "教案", "教学设计")
+    #
+    # Slide deck / PPT requests are checked first: a message like "根据上述
+    # 教案，生成ppt" references a prior lesson plan as context but the actual
+    # requested output is a deck, so the ppt keyword must win the tie against
+    # the incidental "教案" mention rather than lose it by scan order.
+    explicit_slide_deck = any(
+        term in content for term in ("课件", "幻灯", "幻灯片", "演示文稿", "ppt", "slide", "slides")
+    )
+    add("course_iteration", 6, "任务明确要求生成课件/幻灯") if explicit_slide_deck else None
+
+    explicit_lesson_design = not explicit_slide_deck and any(
+        term in content for term in ("课堂练习", "练习题", "课堂题", "教案", "教学设计", "练习", "习题")
     )
     add("lesson_design", 6, "任务明确要求生成课堂练习或教学设计") if explicit_lesson_design else None
 
@@ -257,14 +270,6 @@ def _match_rules(context: RouteContext, available: set[str]) -> _RuleMatch | Non
         term in content for term in ("分析学情", "学情分析", "研判学情", "分析成绩表")
     )
     add("learning_analysis", 6, "任务明确要求进行班级整体学情分析") if explicit_learning_analysis else None
-
-    # Slide deck / PPT requests are explicit output declarations too: even when
-    # the course has learning tables attached, "生成一个 xx 的 ppt" should route
-    # to course_iteration rather than learning_analysis.
-    explicit_slide_deck = any(
-        term in content for term in ("课件", "幻灯", "幻灯片", "演示文稿", "ppt", "slide", "slides")
-    )
-    add("course_iteration", 6, "任务明确要求生成课件/幻灯") if explicit_slide_deck else None
 
     explicit_classroom_interaction = any(
         term in content

@@ -71,6 +71,15 @@ export interface ArtifactReference {
   title: string
 }
 
+export interface PresentationDescriptor {
+  status: string | null
+  mime_type: string | null
+  sha256: string | null
+  size_bytes: number | null
+  page_count: number | null
+  download_url: string
+}
+
 export interface Artifact {
   id: string
   workspace_id: string
@@ -80,6 +89,13 @@ export interface Artifact {
   content: string
   data: Record<string, unknown>
   format: string
+  object_key: string | null
+  mime_type: string | null
+  sha256: string | null
+  size_bytes: number | null
+  page_count: number | null
+  preview_status: string | null
+  presentation: PresentationDescriptor | null
   created_at: string
   updated_at: string
 }
@@ -234,6 +250,18 @@ export function deleteCourseAgentHistory(token: string, courseId: string, runId:
 
 export function getArtifact(token: string, artifactId: string): Promise<Artifact> {
   return request<Artifact>(`/artifacts/${artifactId}`, undefined, token)
+}
+
+export interface AgentRunStatus {
+  run_id: string
+  status: string
+  error_code: string | null
+  error_message: string | null
+  artifact_id: string | null
+}
+
+export function getAgentRunStatus(token: string, runId: string): Promise<AgentRunStatus> {
+  return request<AgentRunStatus>(`/agent-runs/${runId}/status`, undefined, token)
 }
 
 export async function exportArtifact(

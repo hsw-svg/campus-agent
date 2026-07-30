@@ -4,6 +4,7 @@ import {
   createConversation,
   deleteConversation,
   deleteCourseAgentHistory,
+  getAgentRunStatus,
   getArtifact,
   listArtifacts,
   listConversationAttachments,
@@ -109,6 +110,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
   const [route, setRoute] = useState<RouteState | null>(null)
   const [toolStatus, setToolStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [backgroundRunId, setBackgroundRunId] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const loadVersionRef = useRef(0)
   const streamFailedRef = useRef(false)
@@ -272,6 +274,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     setRunStatus('idle')
     setToolStatus(null)
     setError(null)
+    setBackgroundRunId(null)
   }, [courseContext?.courseId, workspaceAttachments])
 
   const attachments = useMemo(
@@ -290,6 +293,43 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       return allAttachmentIds
     })
   }, [attachments, courseContext?.courseId, courseContext?.workflowId])
+
+  // --- Polling effect for background tasks ---
+  useEffect(() => {
+    if (!backgroundRunId || !token) return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await getAgentRunStatus(token, backgroundRunId)
+        if (status.status === 'completed') {
+          setBackgroundRunId(null)
+          setRunStatus('completed')
+          setToolStatus('已完成')
+          setIsAiTyping(false)
+          // Refresh messages and history
+          if (activeConversationId) {
+            await Promise.all([
+              refreshResources(activeConversationId),
+              listMessages(token, activeConversationId).then((history) => setChatMessages(history.map(toUiMessage))),
+            ])
+          }
+          await Promise.all([refreshConversations(), refreshWorkspaceAttachments(), refreshAgentHistory()])
+          clearInterval(pollInterval)
+        } else if (status.status === 'failed') {
+          setBackgroundRunId(null)
+          setRunStatus('failed')
+          setError(status.error_message || '任务执行失败')
+          setIsAiTyping(false)
+          clearInterval(pollInterval)
+        }
+        // Otherwise keep polling (status is 'running' or 'pending')
+      } catch {
+        // Polling request failed, will retry on next interval
+      }
+    }, 5000)
+
+    return () => clearInterval(pollInterval)
+  }, [backgroundRunId, token, activeConversationId, refreshResources, refreshConversations, refreshWorkspaceAttachments, refreshAgentHistory])
 
   const sendMessage = useCallback(async (rawContent: string, requestedAgentId: string | null = null) => {
     const content = rawContent.trim()
@@ -414,6 +454,13 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
           runId: typeof event.data.run_id === 'string' ? event.data.run_id : null,
         })
       } else if (event.type === 'tool_status') {
+        if (event.data.status === 'background_task_submitted' && typeof event.data.run_id === 'string') {
+          setBackgroundRunId(event.data.run_id)
+          setRunStatus('running')
+          setToolStatus(typeof event.data.message === 'string' ? event.data.message : 'PPT 生成中，可在智能体历史查看进度')
+          streamCompletedRef.current = true
+          return
+        }
         setToolStatus(typeof event.data.status === 'string' ? event.data.status : '处理中')
       } else if (event.type === 'delta' && typeof event.data.text === 'string') {
         setChatMessages((current) => current.map((message) =>
@@ -429,6 +476,9 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         const artifactId = typeof event.data.artifact_id === 'string' ? event.data.artifact_id : null
         if (artifactId) {
           const now = new Date().toISOString()
+          const presentation = event.data.presentation && typeof event.data.presentation === 'object'
+            ? event.data.presentation as Artifact['presentation']
+            : null
           const liveArtifact: Artifact = {
             id: artifactId,
             workspace_id: '',
@@ -437,7 +487,14 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
             title: typeof event.data.title === 'string' ? event.data.title : '课堂成果',
             content: '',
             data: event.data.data && typeof event.data.data === 'object' ? event.data.data as Record<string, unknown> : {},
-            format: 'markdown',
+            format: typeof event.data.format === 'string' ? event.data.format : 'markdown',
+            object_key: null,
+            mime_type: presentation?.mime_type ?? null,
+            sha256: presentation?.sha256 ?? null,
+            size_bytes: presentation?.size_bytes ?? null,
+            page_count: presentation?.page_count ?? null,
+            preview_status: presentation?.status ?? null,
+            presentation,
             created_at: now,
             updated_at: now,
           }
@@ -565,6 +622,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     runStatus,
     route,
     toolStatus,
+    backgroundRunId,
     setIsAiTyping,
     clearChat,
     sendMessage,

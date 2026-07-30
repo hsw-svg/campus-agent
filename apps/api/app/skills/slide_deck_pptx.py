@@ -154,30 +154,19 @@ class SlideDeckPptxSkill:
         audience = str(data.get("audience") or "").strip()
         objective = str(data.get("objective") or "").strip()
 
-        # Cover slide
-        cover = presentation.slides.add_slide(title_layout)
-        _set_title(cover, topic)
-        _apply_font_color(cover.shapes.title.text_frame, meta["cover_title"])
-        subtitle_bits: list[str] = []
-        if audience:
-            subtitle_bits.append(audience)
-        if objective:
-            subtitle_bits.append(objective)
-        if subtitle_bits:
-            _set_subtitle(cover, " · ".join(subtitle_bits))
-            _apply_font_color(
-                _find_placeholder_text_frame(cover, 1), meta["cover_sub"]
-            )
-
-        # Content slides
+        # Each semantic slide maps to exactly one PPTX page. Topic metadata is
+        # used only as a fallback when a declared title slide omits its text.
         for slide in data.get("slides") or []:
             layout_key = slide.get("layout") or "bullets"
             if layout_key == "title":
                 pptx_slide = presentation.slides.add_slide(title_layout)
-                _set_title(pptx_slide, str(slide.get("title") or ""))
+                _set_title(pptx_slide, str(slide.get("title") or topic))
                 _apply_font_color(pptx_slide.shapes.title.text_frame, meta["cover_title"])
-                if slide.get("subtitle"):
-                    _set_subtitle(pptx_slide, str(slide["subtitle"]))
+                subtitle = str(slide.get("subtitle") or "").strip()
+                if not subtitle:
+                    subtitle = " · ".join(bit for bit in (audience, objective) if bit)
+                if subtitle:
+                    _set_subtitle(pptx_slide, subtitle)
                     _apply_font_color(
                         _find_placeholder_text_frame(pptx_slide, 1), meta["cover_sub"]
                     )

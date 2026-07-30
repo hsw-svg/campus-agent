@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend module and validation conventions for FastAPI, services, integrations, and tests."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Artifact schema migration, repository ownership, nullable legacy compatibility, and transaction conventions."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Stable application errors for converter and preview failures."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend implementation and test quality checks."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend package conventions and required lint/build validation."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"API/SSE and preview manifest type synchronization."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"SlideDeckPreview component changes."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Authoritative PPTX metadata must remain consistent across storage, database, API, SSE, and frontend."}
+{"file":".trellis/tasks/07-29-improve-ppt-quality/research/pptagent-evaluation.md","reason":"Primary-source evaluation supporting native staged generation and deferring direct PPTAgent integration."}

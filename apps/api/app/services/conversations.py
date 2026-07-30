@@ -1,10 +1,11 @@
 from collections.abc import AsyncIterator, Sequence
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.agents.registry import is_agent_available_for_role
 from app.agents.contracts import AgentRequest
 from app.agents.executors.registry import AgentExecutorRegistry
 from app.agents.context import ContextBuilder
+from app.agents.nanobot.runner import NanobotRunner
 from app.agents.specs import AgentSpec, get_agent_spec
 from app.agents.models import AgentRun
 from app.agents.repositories import AgentRunRepository
@@ -12,23 +13,15 @@ from app.agents.router import AgentRouter, RouteDecision
 from app.artifacts.repositories import ArtifactRepository
 from app.attachments.repositories import AttachmentRepository, Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
+from app.services.background_tasks import BackgroundTaskManager, is_long_running_agent
 from app.services.routing import classify_message
+from app.services.artifact_presentations import ArtifactPresentation, ArtifactPresentationService
 from app.conversations.models import Conversation, Message
 from app.conversations.streaming import stream_event
 from app.core.errors import AppError
 from app.integrations.llm.providers import ChatProvider
 from app.integrations.search.bing import BingSearchProvider
-from app.core.config import get_settings
 from app.repositories.conversations import ConversationRepository, MessageRepository
-
-
-def _build_bing_provider() -> BingSearchProvider:
-    settings = get_settings()
-    return BingSearchProvider(
-        api_key=settings.bing_search_api_key,
-        endpoint=settings.bing_search_endpoint,
-    )
-
 # The context sent to the chat model is capped so a long history does not grow
 # the prompt without bound; the shell still shows the full stored transcript.
 MAX_CONTEXT_MESSAGES = 20
@@ -103,6 +96,10 @@ async def stream_assistant_reply(
     input_refs: Sequence[str] | None = None,
     existing_run: AgentRun | None = None,
     existing_user_message: Message | None = None,
+    bing_provider: BingSearchProvider | None = None,
+    nanobot_runner: NanobotRunner | None = None,
+    presentation_service: ArtifactPresentationService | None = None,
+    background_task_manager: BackgroundTaskManager | None = None,
 ) -> AsyncIterator[str]:
     """Persist the user turn, stream the assistant reply, and persist the result.
 
@@ -336,9 +333,45 @@ async def stream_assistant_reply(
                 )
             executor = AgentExecutorRegistry(
                 chat_provider,
-                bing_provider=_build_bing_provider(),
+                bing_provider=bing_provider,
                 artifact_repository_factory=(lambda repo=artifacts: repo),
+                nanobot_runner=nanobot_runner,
             ).resolve(spec)
+
+            # --- Background task dispatch for long-running agents ---
+            if (
+                background_task_manager is not None
+                and run is not None
+                and agent_runs is not None
+                and is_long_running_agent(resolved_agent)
+            ):
+                background_task_manager.submit(
+                    run.id,
+                    _execute_background_task(
+                        run=run,
+                        request=request,
+                        executor=executor,
+                        agent_runs=agent_runs,
+                        artifacts=artifacts,
+                        messages=messages,
+                        conversations=conversations,
+                        workspace_id=workspace_id,
+                        conversation=conversation,
+                        resolved_agent=resolved_agent,
+                        source_payload=[],
+                        presentation_service=presentation_service,
+                    ),
+                )
+                yield stream_event(
+                    "tool_status",
+                    {
+                        "status": "background_task_submitted",
+                        "run_id": str(run.id),
+                        "message": "PPT 生成任务已提交，可在智能体历史中查看进度。",
+                    },
+                )
+                return
+
             result = await executor.execute(request)
             source_payload = [
                 {
@@ -400,44 +433,93 @@ async def stream_assistant_reply(
         artifact_id = None
         artifact_payload = None
         message_artifacts = None
-        if result.artifact is not None and artifacts is not None:
-            artifact = artifacts.create(
+        prepared_presentation: ArtifactPresentation | None = None
+        persisted_artifact = None
+        try:
+            if result.artifact is not None and artifacts is not None:
+                artifact_values = {
+                    "workspace_id": workspace_id,
+                    "conversation_id": conversation.id,
+                    "type": result.artifact.type,
+                    "title": result.artifact.title,
+                    "content": result.artifact.content,
+                    "data": result.artifact.data,
+                    "format": result.artifact.format,
+                }
+                if result.artifact.type == "slide_deck":
+                    if presentation_service is None:
+                        raise AppError(
+                            code="artifact_presentation_unavailable",
+                            message="Presentation finalization is not available.",
+                            status_code=503,
+                        )
+                    scope_id = uuid4()
+                    prepared_presentation = presentation_service.prepare(
+                        result.artifact.data,
+                        workspace_id=workspace_id,
+                        conversation_id=conversation.id,
+                        scope_id=scope_id,
+                    )
+                    artifact_values["id"] = scope_id
+                    artifact_values.update(prepared_presentation.artifact_values())
+                persisted_artifact = artifacts.create(**artifact_values)
+                artifact_id = persisted_artifact.id
+                artifact_payload = _artifact_event_payload(persisted_artifact)
+                message_artifacts = [
+                    {
+                        "type": result.artifact.type,
+                        "artifact_id": str(persisted_artifact.id),
+                        "title": persisted_artifact.title,
+                    }
+                ]
+            assistant_message = messages.add(
                 workspace_id=workspace_id,
                 conversation_id=conversation.id,
-                type=result.artifact.type,
-                title=result.artifact.title,
-                content=result.artifact.content,
-                data=result.artifact.data,
-                format=result.artifact.format,
+                role="assistant",
+                content=result.text,
+                agent_id=resolved_agent,
+                artifacts=message_artifacts
+                or ([{"type": "sources", "sources": source_payload}] if source_payload else None),
             )
-            artifact_id = artifact.id
-            artifact_payload = {
-                "type": result.artifact.type,
-                "artifact_id": str(artifact.id),
-                "title": artifact.title,
-                "data": result.artifact.data,
-            }
-            message_artifacts = [
-                {"type": result.artifact.type, "artifact_id": str(artifact.id), "title": artifact.title}
-            ]
-        assistant_message = messages.add(
-            workspace_id=workspace_id,
-            conversation_id=conversation.id,
-            role="assistant",
-            content=result.text,
-            agent_id=resolved_agent,
-            artifacts=message_artifacts
-            or ([{"type": "sources", "sources": source_payload}] if source_payload else None),
-        )
-        conversations.touch(conversation)
-        if run is not None and agent_runs is not None:
-            agent_runs.update(
-                run,
-                status="completed",
-                result_message_id=assistant_message.id,
-                artifact_id=artifact_id,
-                artifact_status="completed" if artifact_id else "none",
+            conversations.touch(conversation)
+            if run is not None and agent_runs is not None:
+                agent_runs.update(
+                    run,
+                    status="completed",
+                    result_message_id=assistant_message.id,
+                    artifact_id=artifact_id,
+                    artifact_status="completed" if artifact_id else "none",
+                )
+        except Exception as error:
+            if persisted_artifact is not None and artifacts is not None:
+                try:
+                    artifacts.delete(persisted_artifact)
+                except Exception:
+                    try:
+                        artifacts.session.rollback()
+                    except Exception:
+                        pass
+            if prepared_presentation is not None and presentation_service is not None:
+                presentation_service.cleanup(prepared_presentation)
+            if run is not None and agent_runs is not None:
+                agent_runs.update(
+                    run,
+                    status="failed",
+                    error_code=error.code if isinstance(error, AppError) else "artifact_persistence_failed",
+                    error_message=error.message if isinstance(error, AppError) else "The artifact could not be persisted.",
+                    artifact_status="failed",
+                )
+            yield stream_event(
+                "error",
+                {
+                    "code": error.code if isinstance(error, AppError) else "artifact_persistence_failed",
+                    "message": error.message if isinstance(error, AppError) else "The artifact could not be persisted.",
+                    "details": error.details if isinstance(error, AppError) else None,
+                    "retryable": True,
+                    "run_id": str(run.id) if run else None,
+                },
             )
+            return
         yield stream_event("delta", {"text": result.text})
         if artifact_payload is not None:
             yield stream_event("artifact", artifact_payload)
@@ -455,9 +537,148 @@ async def stream_assistant_reply(
     return generator()
 
 
+def _presentation_descriptor(artifact) -> dict | None:
+    return artifact.presentation
+
+
+def _artifact_event_payload(artifact) -> dict:
+    return {
+        "type": artifact.type,
+        "artifact_id": str(artifact.id),
+        "title": artifact.title,
+        "data": artifact.data,
+        "format": artifact.format,
+        "presentation": _presentation_descriptor(artifact),
+    }
+
+
 def _agent_name(role: str, agent_id: str | None) -> str | None:
     if agent_id is None:
         return None
     from app.agents.registry import list_agents
 
     return next((agent.name for agent in list_agents(role) if agent.id == agent_id), None)
+
+
+async def _execute_background_task(
+    *,
+    run: AgentRun,
+    request: AgentRequest,
+    executor,
+    agent_runs: AgentRunRepository,
+    artifacts: ArtifactRepository | None,
+    messages: MessageRepository,
+    conversations: ConversationRepository,
+    workspace_id: UUID,
+    conversation: Conversation,
+    resolved_agent: str | None,
+    source_payload: list[dict],
+    presentation_service: ArtifactPresentationService | None,
+) -> None:
+    """Execute a long-running agent task in the background.
+
+    Updates the AgentRun lifecycle (running -> completed/failed) and persists
+    the artifact and assistant message when the executor finishes.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        agent_runs.update(run, status="running")
+        result = await executor.execute(request)
+
+        artifact_id = None
+        persisted_artifact = None
+        prepared_presentation = None
+        try:
+            if result.artifact is not None and artifacts is not None:
+                artifact_values = {
+                    "workspace_id": workspace_id,
+                    "conversation_id": conversation.id,
+                    "type": result.artifact.type,
+                    "title": result.artifact.title,
+                    "content": result.artifact.content,
+                    "data": result.artifact.data,
+                    "format": result.artifact.format,
+                }
+                if result.artifact.type == "slide_deck":
+                    if presentation_service is None:
+                        raise AppError(
+                            code="artifact_presentation_unavailable",
+                            message="Presentation finalization is not available.",
+                            status_code=503,
+                        )
+                    scope_id = uuid4()
+                    prepared_presentation = presentation_service.prepare(
+                        result.artifact.data,
+                        workspace_id=workspace_id,
+                        conversation_id=conversation.id,
+                        scope_id=scope_id,
+                    )
+                    artifact_values["id"] = scope_id
+                    artifact_values.update(prepared_presentation.artifact_values())
+                persisted_artifact = artifacts.create(**artifact_values)
+                artifact_id = persisted_artifact.id
+
+            message_artifacts = (
+                [
+                    {
+                        "type": result.artifact.type,
+                        "artifact_id": str(persisted_artifact.id),
+                        "title": persisted_artifact.title,
+                    }
+                ]
+                if persisted_artifact is not None
+                else ([{"type": "sources", "sources": source_payload}] if source_payload else None)
+            )
+            assistant_message = messages.add(
+                workspace_id=workspace_id,
+                conversation_id=conversation.id,
+                role="assistant",
+                content=result.text,
+                agent_id=resolved_agent,
+                artifacts=message_artifacts,
+            )
+            conversations.touch(conversation)
+            agent_runs.update(
+                run,
+                status="completed",
+                result_message_id=assistant_message.id,
+                artifact_id=artifact_id,
+                artifact_status="completed" if artifact_id else "none",
+            )
+            logger.info("Background task completed for run %s", run.id)
+        except Exception as error:
+            if persisted_artifact is not None and artifacts is not None:
+                try:
+                    artifacts.delete(persisted_artifact)
+                except Exception:
+                    try:
+                        artifacts.session.rollback()
+                    except Exception:
+                        pass
+            if prepared_presentation is not None and presentation_service is not None:
+                presentation_service.cleanup(prepared_presentation)
+            agent_runs.update(
+                run,
+                status="failed",
+                error_code=error.code if isinstance(error, AppError) else "artifact_persistence_failed",
+                error_message=error.message if isinstance(error, AppError) else "The artifact could not be persisted.",
+                artifact_status="failed",
+            )
+            logger.exception("Background task artifact persistence failed for run %s", run.id)
+    except Exception as error:
+        if isinstance(error, AppError):
+            error_code = error.code
+            error_message = error.message
+        else:
+            error_code = "chat_stream_failed"
+            error_message = "The chat model did not complete the response."
+        agent_runs.update(
+            run,
+            status="failed",
+            error_code=error_code,
+            error_message=error_message,
+        )
+        logger.exception("Background task failed for run %s", run.id)

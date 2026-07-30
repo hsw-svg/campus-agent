@@ -1,3 +1,4 @@
+from typing import Any, NotRequired, TypedDict, Unpack
 from uuid import UUID
 
 from sqlalchemy import select
@@ -7,18 +8,47 @@ from app.artifacts.models import Artifact
 from app.core.errors import AppError
 
 
+class ArtifactValues(TypedDict):
+    workspace_id: NotRequired[UUID]
+    conversation_id: NotRequired[UUID]
+    type: NotRequired[str]
+    title: NotRequired[str]
+    content: NotRequired[str]
+    data: NotRequired[dict[str, Any]]
+    format: NotRequired[str]
+    id: NotRequired[UUID]
+    object_key: NotRequired[str | None]
+    mime_type: NotRequired[str | None]
+    sha256: NotRequired[str | None]
+    size_bytes: NotRequired[int | None]
+    page_count: NotRequired[int | None]
+    preview_status: NotRequired[str | None]
+    preview_manifest: NotRequired[list[dict[str, Any]] | None]
+
+
 class ArtifactRepository:
     """Artifact access that always includes the caller's workspace."""
 
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def create(self, **values) -> Artifact:
+    def create(self, **values: Unpack[ArtifactValues]) -> Artifact:
         artifact = Artifact(**values)
         self.session.add(artifact)
         self.session.commit()
         self.session.refresh(artifact)
         return artifact
+
+    def update(self, artifact: Artifact, **values: Unpack[ArtifactValues]) -> Artifact:
+        for key, value in values.items():
+            setattr(artifact, key, value)
+        self.session.commit()
+        self.session.refresh(artifact)
+        return artifact
+
+    def delete(self, artifact: Artifact) -> None:
+        self.session.delete(artifact)
+        self.session.commit()
 
     def get(self, workspace_id: UUID, artifact_id: UUID) -> Artifact | None:
         return self.session.scalar(

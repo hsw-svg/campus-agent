@@ -1,4 +1,5 @@
 from pathlib import Path, PureWindowsPath
+from uuid import uuid4
 
 from app.core.errors import AppError
 
@@ -13,7 +14,12 @@ class LocalObjectStorage:
     def put(self, key: str, content: bytes) -> None:
         target = self._resolve_key(key)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
+        temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
+        try:
+            temporary.write_bytes(content)
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def get(self, key: str) -> bytes:
         target = self._resolve_key(key)

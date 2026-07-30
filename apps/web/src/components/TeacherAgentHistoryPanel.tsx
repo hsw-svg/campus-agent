@@ -237,6 +237,7 @@ function HistoryItem({ item, isActive, onOpen, onDelete }: { item: AgentHistoryI
   const title = item.artifact?.title || item.conversation_title || '未命名教学任务'
   const time = formatHistoryTime(item.created_at)
   const status = statusLabel(item.status)
+  const isRunning = item.status === 'running' || item.status === 'pending'
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
 
@@ -251,16 +252,17 @@ function HistoryItem({ item, isActive, onOpen, onDelete }: { item: AgentHistoryI
   }, [menuOpen])
 
   return (
-    <div className={`relative w-full rounded-xl border px-2.5 py-2 text-left transition-colors ${isActive ? 'border-primary/30 bg-primary/5' : 'border-outline-variant/70 bg-white hover:border-primary/30 hover:bg-primary/5'}`}>
+    <div className={`relative w-full rounded-xl border px-2.5 py-2 text-left transition-colors ${isRunning ? 'animate-pulse-border border-secondary/50 bg-secondary/5' : isActive ? 'border-primary/30 bg-primary/5' : 'border-outline-variant/70 bg-white hover:border-primary/30 hover:bg-primary/5'}`}>
       <button type="button" onClick={onOpen} className="block w-full text-left">
         <div className="flex items-start gap-2">
-          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'completed' ? 'bg-primary' : item.status === 'running' ? 'animate-pulse bg-secondary' : 'bg-outline'}`} />
+          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'completed' ? 'bg-primary' : isRunning ? 'animate-pulse bg-secondary' : 'bg-outline'}`} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <p className="truncate text-[10px] font-extrabold text-on-surface">{title}</p>
               <span className="shrink-0 pr-5 text-[9px] font-semibold text-outline">{time}</span>
             </div>
-            <p className="mt-0.5 truncate text-[9px] font-bold text-primary">{status}{item.artifact ? ` · ${artifactLabel(item.artifact.type)}` : ' · 文本任务'}</p>
+            <p className={`mt-0.5 truncate text-[9px] font-bold ${isRunning ? 'text-secondary' : 'text-primary'}`}>{status}{item.artifact ? ` · ${artifactLabel(item.artifact.type)}` : ' · 文本任务'}</p>
+            {isRunning && <p className="mt-1 text-[9px] font-semibold text-secondary/80">任务执行中，请稍候...</p>}
             {item.summary && <p className="mt-1 line-clamp-2 text-[9px] leading-relaxed text-on-surface-variant">{item.summary}</p>}
           </div>
         </div>
