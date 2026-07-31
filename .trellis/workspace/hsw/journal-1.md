@@ -38,3 +38,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: 学生课程中心
+
+**Date**: 2026-07-31
+**Task**: 学生课程中心
+**Branch**: `master`
+
+### Summary
+
+新增真实课程卡片、课程详情、章节进度、证据驱动薄弱点与课程章节 AI 上下文；完成 Docker 迁移恢复和端到端验证。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3378d29` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
