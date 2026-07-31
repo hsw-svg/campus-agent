@@ -8,6 +8,8 @@ export interface Workspace {
 export interface CourseContext {
   courseId: string | null
   courseName: string
+  chapterId?: string | null
+  chapterName?: string
   workflowId: string
   workflowName: string
 }
@@ -16,8 +18,44 @@ export interface Course {
   id: string
   name: string
   description: string | null
+  teacher_name: string | null
+  starts_at: string | null
+  thumbnail_key: string | null
+  category: string | null
   created_at: string
   updated_at: string
+}
+
+export interface CourseSummary extends Course {
+  chapter_count: number
+  completed_chapter_count: number
+  progress_percent: number
+  started: boolean
+  last_studied_at: string | null
+}
+
+export interface CourseChapter {
+  id: string
+  title: string
+  summary: string | null
+  position: number
+  estimated_minutes: number | null
+  knowledge_points: string[]
+  completed: boolean
+  current: boolean
+}
+
+export interface CourseWeakPoint {
+  id: string
+  chapter_id: string | null
+  name: string
+  recommendation: string
+}
+
+export interface CourseDetail extends CourseSummary {
+  chapters: CourseChapter[]
+  current_chapter_id: string | null
+  weak_points: CourseWeakPoint[]
 }
 
 export interface CreatedWorkspace {
@@ -30,6 +68,7 @@ export interface Conversation {
   title: string
   agent_id: string | null
   course_id: string | null
+  chapter_id: string | null
   created_at: string
   updated_at: string
 }
@@ -201,8 +240,28 @@ export function listConversations(token: string): Promise<Conversation[]> {
   return request<Conversation[]>('/conversations', undefined, token)
 }
 
-export function listCourses(token: string): Promise<Course[]> {
-  return request<Course[]>('/courses', undefined, token)
+export function listCourses(token: string): Promise<CourseSummary[]> {
+  return request<CourseSummary[]>('/courses', undefined, token)
+}
+
+export function initializeDefaultCourses(token: string): Promise<CourseSummary[]> {
+  return request<CourseSummary[]>('/courses/defaults', { method: 'POST' }, token)
+}
+
+export function getCourseDetail(token: string, courseId: string): Promise<CourseDetail> {
+  return request<CourseDetail>(`/courses/${courseId}`, undefined, token)
+}
+
+export function startCourse(token: string, courseId: string): Promise<CourseDetail> {
+  return request<CourseDetail>(`/courses/${courseId}/start`, { method: 'POST' }, token)
+}
+
+export function startCourseChapter(token: string, courseId: string, chapterId: string): Promise<CourseDetail> {
+  return request<CourseDetail>(`/courses/${courseId}/chapters/${chapterId}/start`, { method: 'POST' }, token)
+}
+
+export function completeCourseChapter(token: string, courseId: string, chapterId: string): Promise<CourseDetail> {
+  return request<CourseDetail>(`/courses/${courseId}/chapters/${chapterId}/complete`, { method: 'POST' }, token)
 }
 
 export function createCourse(token: string, name: string, description?: string): Promise<Course> {
@@ -225,11 +284,11 @@ export function deleteCourse(token: string, courseId: string): Promise<void> {
   return request<void>(`/courses/${courseId}`, { method: 'DELETE' }, token)
 }
 
-export function createConversation(token: string, courseId?: string | null): Promise<Conversation> {
+export function createConversation(token: string, courseId?: string | null, chapterId?: string | null): Promise<Conversation> {
   return request<Conversation>('/conversations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agent_id: null, course_id: courseId ?? null }),
+    body: JSON.stringify({ agent_id: null, course_id: courseId ?? null, chapter_id: chapterId ?? null }),
   }, token)
 }
 

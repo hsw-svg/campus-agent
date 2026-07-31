@@ -299,6 +299,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     const requestSignature = [
       content,
       courseContext?.courseId ?? '',
+      courseContext?.chapterId ?? '',
       courseContext?.workflowId ?? '',
       requestedAgentId ?? '',
       ...requestAttachmentIds.slice().sort(),
@@ -314,7 +315,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     let conversationId = activeConversationId
     try {
       if (!conversationId) {
-        const created = await createConversation(token, courseContext?.courseId)
+        const created = await createConversation(token, courseContext?.courseId, courseContext?.chapterId)
         conversationId = created.id
         setConversations((current) => [created, ...current])
         setActiveConversationId(conversationId)
@@ -507,7 +508,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       } else {
         let conversationId = activeConversationId
         if (!conversationId) {
-          const created = await createConversation(token, courseContext?.courseId)
+          const created = await createConversation(token, courseContext?.courseId, courseContext?.chapterId)
           conversationId = created.id
           setConversations((current) => [created, ...current])
           setActiveConversationId(conversationId)
@@ -524,7 +525,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       setError(reason instanceof Error ? reason.message : '附件上传失败。')
       return null
     }
-  }, [token, activeConversationId, courseContext?.courseId])
+  }, [token, activeConversationId, courseContext?.courseId, courseContext?.chapterId])
 
   const removeConversation = useCallback(async (conversationId: string) => {
     if (!token) return

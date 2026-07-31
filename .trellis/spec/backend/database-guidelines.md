@@ -208,6 +208,58 @@ DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+psycopg://campus_agent:campus_ag
 
 (To be filled by the team)
 
+## Scenario: Recovering an Alembic revision from an abandoned branch
+
+### 1. Scope / Trigger
+
+Use this procedure only when the database points to a revision absent from the current repository and the user has explicitly confirmed that the originating branch is abandoned.
+
+### 2. Signatures
+
+- Read current marker: `SELECT version_num FROM alembic_version`.
+- Find common ancestor revision from Git migration history.
+- Forced marker update: `UPDATE alembic_version SET version_num = '<common_revision>' WHERE version_num = '<abandoned_revision>'`.
+- Resume current chain: `alembic upgrade head`.
+
+### 3. Contracts
+
+Before changing the marker, verify the exact missing revision in Git and inspect the database objects it created. Change exactly one expected version row. Rewind only to the common migration ancestor, then let the current repository apply every later migration normally. Abandoned nullable columns may remain as inert compatibility data; deleting them is a separate migration.
+
+### 4. Validation & Error Matrix
+
+- Missing revision is still supported or its branch status is unknown -> stop and reconcile migration branches; do not rewrite the marker.
+- Current `version_num` differs from the expected abandoned revision -> zero-row update; stop and re-diagnose.
+- Objects expected from the common ancestor are missing -> restore from backup or repair schema before upgrade.
+- `upgrade head` fails -> keep logs and do not stamp directly to head.
+- Upgrade succeeds -> assert `alembic current`, required tables, API startup, and a write/read smoke flow.
+
+### 5. Good/Base/Bad Cases
+
+- Good: inspect Git and schema, receive explicit abandonment decision, reset one marker to the common ancestor, and run all current migrations.
+- Base: two active migration heads exist; restore both and add a merge revision instead.
+- Bad: `stamp head` without applying current schema migrations.
+- Bad: drop the database volume merely to hide a revision mismatch.
+
+### 6. Tests Required
+
+- `alembic current` reports the repository head after recovery.
+- `alembic heads` reports the intended single head.
+- Required new tables/columns exist.
+- Compose API reaches application startup.
+- An API smoke test proves writes and reads work after the migration.
+
+### 7. Wrong vs Correct
+
+```sql
+-- Wrong: claims every migration ran while required tables may be absent.
+UPDATE alembic_version SET version_num = 'head_revision';
+
+-- Correct: move to the verified common ancestor, then run Alembic upgrades.
+UPDATE alembic_version
+SET version_num = '0011_course_attachment_scope'
+WHERE version_num = '0012_artifact_presentation';
+```
+
 ## Scenario: Course-scoped agent history aggregation
 
 ### 1. Scope / Trigger

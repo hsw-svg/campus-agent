@@ -19,6 +19,7 @@ from app.conversations.dependencies import (
     get_retriever,
 )
 from app.conversations.models import Conversation, Message
+from app.core.errors import AppError
 from app.repositories.conversations import ConversationRepository, MessageRepository
 from app.services.conversations import (
     create_conversation,
@@ -31,8 +32,9 @@ from app.attachments.repositories import Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
 from app.workspaces.models import AnonymousWorkspace
 from app.api.courses import get_owned_course
-from app.api.courses import get_course_repository
+from app.api.courses import get_course_repository, get_student_course_service
 from app.repositories.courses import CourseRepository
+from app.services.student_courses import StudentCourseService
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -44,6 +46,7 @@ class ConversationResponse(BaseModel):
     title: str
     agent_id: str | None
     course_id: UUID | None
+    chapter_id: UUID | None
     created_at: datetime
     updated_at: datetime
 
@@ -78,6 +81,7 @@ class ConversationArtifactResponse(BaseModel):
 class CreateConversationRequest(BaseModel):
     agent_id: str | None = None
     course_id: UUID | None = None
+    chapter_id: UUID | None = None
 
 
 class StreamMessageRequest(BaseModel):
@@ -123,10 +127,26 @@ def post_conversation(
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
     conversations: ConversationRepository = Depends(get_conversation_repository),
     courses: CourseRepository = Depends(get_course_repository),
+    student_courses: StudentCourseService = Depends(get_student_course_service),
 ) -> Conversation:
+    if payload.chapter_id is not None and payload.course_id is None:
+        raise AppError(
+            code="course_required_for_chapter",
+            message="A course is required when selecting a chapter.",
+            status_code=422,
+        )
     if payload.course_id is not None:
         get_owned_course(courses, workspace.id, payload.course_id)
-    return create_conversation(conversations, workspace.id, workspace.role, payload.agent_id, payload.course_id)
+    if payload.chapter_id is not None and payload.course_id is not None:
+        student_courses.get_owned_chapter(workspace.id, payload.course_id, payload.chapter_id)
+    return create_conversation(
+        conversations,
+        workspace.id,
+        workspace.role,
+        payload.agent_id,
+        payload.course_id,
+        payload.chapter_id,
+    )
 
 
 @router.get("", response_model=list[ConversationResponse])

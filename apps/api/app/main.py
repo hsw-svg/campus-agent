@@ -24,7 +24,13 @@ from app.agents.models import AgentRun  # noqa: F401
 from app.agents.intent_retrieval import SemanticIntentRetriever
 from app.artifacts.models import Artifact  # noqa: F401
 from app.workspaces.models import AnonymousWorkspace
-from app.courses.models import Course  # noqa: F401
+from app.courses.models import (  # noqa: F401
+    Course,
+    CourseChapter,
+    CourseChapterProgress,
+    StudentCourseProgress,
+    StudentCourseWeakPoint,
+)
 from app.campus_news.models import CampusNewsItem, CampusNewsSourceState  # noqa: F401
 
 

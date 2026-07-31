@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   GraduationCap,
   BookOpen,
@@ -26,24 +26,57 @@ import {
   ClipboardList,
   CheckCircle,
   Copy,
-  Newspaper
+  Newspaper,
+  LibraryBig,
+  CircleCheckBig
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { downloadBlob, exportArtifact, type Artifact } from '../api';
+import {
+  completeCourseChapter,
+  downloadBlob,
+  exportArtifact,
+  getCourseDetail,
+  initializeDefaultCourses,
+  startCourse,
+  startCourseChapter,
+  type Artifact,
+  type CourseDetail,
+  type CourseSummary,
+} from '../api';
 import { Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ConversationHistory from './ConversationHistory';
 import ResourcePicker from './ResourcePicker';
 import CampusNewsPanel from './CampusNewsPanel';
+import CourseCenterPanel from './CourseCenterPanel';
+import CourseDetailPanel from './CourseDetailPanel';
 
 interface StudentWorkspaceProps {
   token: string | null;
   onBackToRoles: () => void;
 }
 
-type StudentSection = 'learning' | 'campus';
+type StudentSection = 'learning' | 'courses' | 'course-detail' | 'campus';
 
 export default function StudentWorkspace({ token, onBackToRoles }: StudentWorkspaceProps) {
+  const [activeSection, setActiveSection] = useState<StudentSection>('learning');
+  const [courses, setCourses] = useState<CourseSummary[]>([]);
+  const [courseDetail, setCourseDetail] = useState<CourseDetail | null>(null);
+  const [learningCourse, setLearningCourse] = useState<CourseDetail | null>(null);
+  const [learningChapterId, setLearningChapterId] = useState<string | null>(null);
+  const [courseLoading, setCourseLoading] = useState(false);
+  const [courseError, setCourseError] = useState<string | null>(null);
+  const courseLoadAttemptedRef = useRef(false);
+  const learningChapter = learningCourse?.chapters.find((chapter) => chapter.id === learningChapterId) ?? null;
+  const courseContext = useMemo(() => learningCourse ? {
+    courseId: learningCourse.id,
+    courseName: learningCourse.name,
+    chapterId: learningChapter?.id ?? null,
+    chapterName: learningChapter?.title ?? '课程学习',
+    workflowId: 'student-course-learning',
+    workflowName: '课程学习',
+  } : undefined, [learningChapter?.id, learningChapter?.title, learningCourse]);
+
   const {
     chatMessages,
     isAiTyping,
@@ -67,12 +100,11 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
     runStatus,
     toolStatus,
     route,
-  } = useWorkspaceChat(token);
+  } = useWorkspaceChat(token, courseContext);
   const [inputVal, setInputVal] = useState('');
   const [copied, setCopied] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeSection, setActiveSection] = useState<StudentSection>('learning');
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -95,6 +127,86 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
     setInputVal('');
     void sendMessage(finalMsg);
   };
+
+  const refreshCourses = useCallback(async () => {
+    if (!token) return
+    courseLoadAttemptedRef.current = true
+    setCourseLoading(true)
+    setCourseError(null)
+    try {
+      setCourses(await initializeDefaultCourses(token))
+    } catch (reason) {
+      setCourseError(reason instanceof Error ? reason.message : '课程加载失败，请稍后重试。')
+    } finally {
+      setCourseLoading(false)
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (activeSection === 'courses' && courses.length === 0 && !courseLoadAttemptedRef.current) {
+      void refreshCourses()
+    }
+  }, [activeSection, courses.length, refreshCourses])
+
+  const showCourseCenter = () => {
+    setActiveSection('courses')
+    setCourseDetail(null)
+  }
+
+  const openCourseDetail = async (course: CourseSummary) => {
+    if (!token) return
+    setCourseLoading(true)
+    setCourseError(null)
+    try {
+      const detail = await getCourseDetail(token, course.id)
+      setCourseDetail(detail)
+      setActiveSection('course-detail')
+    } catch (reason) {
+      setCourseError(reason instanceof Error ? reason.message : '课程详情加载失败。')
+    } finally {
+      setCourseLoading(false)
+    }
+  }
+
+  const enterCourseLearning = async (course: CourseSummary | CourseDetail, chapterId?: string) => {
+    if (!token) return
+    setCourseLoading(true)
+    setCourseError(null)
+    try {
+      const detail = chapterId
+        ? await startCourseChapter(token, course.id, chapterId)
+        : await startCourse(token, course.id)
+      const nextChapterId = chapterId ?? detail.current_chapter_id ?? detail.chapters[0]?.id ?? null
+      clearChat()
+      setLearningCourse(detail)
+      setLearningChapterId(nextChapterId)
+      setCourseDetail(detail)
+      setCourses((current) => current.map((item) => item.id === detail.id ? detail : item))
+      setActiveSection('learning')
+    } catch (reason) {
+      setCourseError(reason instanceof Error ? reason.message : '无法开始课程学习。')
+    } finally {
+      setCourseLoading(false)
+    }
+  }
+
+  const finishCurrentChapter = async () => {
+    if (!token || !learningCourse || !learningChapterId || isAiTyping) return
+    setCourseLoading(true)
+    setCourseError(null)
+    try {
+      const detail = await completeCourseChapter(token, learningCourse.id, learningChapterId)
+      clearChat()
+      setLearningCourse(detail)
+      setLearningChapterId(detail.current_chapter_id)
+      setCourseDetail(detail)
+      setCourses((current) => current.map((item) => item.id === detail.id ? detail : item))
+    } catch (reason) {
+      setCourseError(reason instanceof Error ? reason.message : '章节进度保存失败。')
+    } finally {
+      setCourseLoading(false)
+    }
+  }
 
   const copyText = (txt: string) => {
     navigator.clipboard.writeText(txt);
@@ -147,6 +259,8 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
         <button 
           onClick={() => {
+            setLearningCourse(null);
+            setLearningChapterId(null);
             setActiveSection('learning');
             clearChat();
           }}
@@ -161,6 +275,11 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           
           <button 
             onClick={() => {
+              if (learningCourse) {
+                clearChat();
+                setLearningCourse(null);
+                setLearningChapterId(null);
+              }
               setActiveSection('learning');
             }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
@@ -171,6 +290,19 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           >
             <Compass className="w-4.5 h-4.5" />
             <span>学习中心</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={showCourseCenter}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
+              activeSection === 'courses' || activeSection === 'course-detail'
+                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
+                : 'text-on-surface-variant hover:bg-surface-container-high'
+            }`}
+          >
+            <LibraryBig className="w-4.5 h-4.5" />
+            <span>课程中心</span>
           </button>
 
           <button
@@ -201,7 +333,15 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
             <span>设置</span>
           </a>
 
-          <ConversationHistory conversations={conversations} activeConversationId={activeConversationId} onOpen={(id) => { setActiveSection('learning'); void openConversation(id); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-secondary" />
+          <ConversationHistory
+            conversations={conversations.filter((conversation) => learningCourse
+              ? conversation.course_id === learningCourse.id && conversation.chapter_id === learningChapterId
+              : conversation.course_id === null)}
+            activeConversationId={activeConversationId}
+            onOpen={(id) => { setActiveSection('learning'); void openConversation(id); }}
+            onDelete={(id) => { void removeConversation(id); }}
+            accentClass="text-secondary"
+          />
         </nav>
 
         {/* User Info */}
@@ -218,8 +358,9 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <main className={`flex-1 flex flex-col bg-background min-h-screen relative overflow-hidden transition-[margin-left] duration-300 ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-72'}`}>
+      <main className={`flex-1 flex flex-col bg-background min-h-screen pb-16 lg:pb-0 relative overflow-hidden transition-[margin-left] duration-300 ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-72'}`}>
         {activeSection === 'learning' && (error || exportError) && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error || exportError}</div>}
+        {activeSection === 'learning' && courseError && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{courseError}</div>}
         {activeSection === 'learning' && (toolStatus || route || runStatus === 'failed' || runStatus === 'needs_input') && (
           <div className="mx-10 mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-secondary/20 bg-secondary-container/10 px-4 py-2 text-xs text-on-surface-variant">
             {toolStatus && <span className="font-semibold text-secondary">{toolStatus}</span>}
@@ -262,11 +403,50 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         <div className="flex-1 flex overflow-hidden">
           
           <div className="flex-1 flex flex-col h-full overflow-hidden">
-            <section className={`flex-1 flex flex-col p-6 overflow-y-auto mx-auto w-full space-y-6 ${activeSection === 'campus' ? 'max-w-6xl' : 'max-w-4xl'}`}>
+            <section className={`flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto mx-auto w-full space-y-6 ${
+              activeSection === 'campus' || activeSection === 'courses' || activeSection === 'course-detail' ? 'max-w-7xl' : 'max-w-4xl'
+            }`}>
 
             {activeSection === 'campus' && (
               <div className="w-full py-4 sm:py-8">
                 <CampusNewsPanel />
+              </div>
+            )}
+
+            {activeSection === 'courses' && (
+              <CourseCenterPanel
+                courses={courses}
+                loading={courseLoading}
+                error={courseError}
+                onRetry={() => { void refreshCourses() }}
+                onOpen={(course) => { void openCourseDetail(course) }}
+                onStart={(course) => { void enterCourseLearning(course) }}
+              />
+            )}
+
+            {activeSection === 'course-detail' && courseDetail && (
+              <CourseDetailPanel
+                course={courseDetail}
+                loading={courseLoading}
+                onBack={showCourseCenter}
+                onStart={(chapterId) => { void enterCourseLearning(courseDetail, chapterId) }}
+              />
+            )}
+
+            {activeSection === 'learning' && learningCourse && learningChapter && (
+              <div className="flex flex-col gap-3 rounded-2xl border border-secondary/25 bg-secondary-container/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-secondary">当前课程 · {learningCourse.progress_percent}%</p>
+                  <p className="mt-1 truncate text-sm font-black text-on-surface">{learningCourse.name} · {learningChapter.title}</p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" onClick={() => { setCourseDetail(learningCourse); setActiveSection('course-detail') }} className="rounded-xl border border-secondary/25 px-3 py-2 text-[11px] font-black text-secondary hover:bg-secondary-container/20">
+                    查看课程详情
+                  </button>
+                  <button type="button" disabled={courseLoading || isAiTyping} onClick={() => { void finishCurrentChapter() }} className="inline-flex items-center gap-1.5 rounded-xl bg-secondary px-3 py-2 text-[11px] font-black text-on-secondary disabled:opacity-50">
+                    <CircleCheckBig className="h-4 w-4" />完成本节学习
+                  </button>
+                </div>
               </div>
             )}
 
@@ -279,9 +459,9 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <h2 className="font-display text-2xl font-bold text-on-surface">开启你的学术与学习智能陪伴</h2>
+                  <h2 className="font-display text-2xl font-bold text-on-surface">{learningCourse ? `开始学习「${learningChapter?.title ?? learningCourse.name}」` : '开启你的学术与学习智能陪伴'}</h2>
                   <p className="text-sm text-on-surface-variant font-medium animate-fade-in">
-                    输入你的学术难点、复习章节，或点击下方的智能引擎快捷入口，自动为你制定冲刺大纲！
+                    {learningCourse ? '围绕当前章节提问、上传资料或生成练习，完成后记得记录本节进度。' : '输入你的学术难点、复习章节，或点击下方的智能引擎快捷入口，自动为你制定冲刺大纲！'}
                   </p>
                 </div>
 
@@ -473,6 +653,18 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
         </div>
       </main>
+
+      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-3 rounded-2xl border border-outline-variant bg-surface-container-lowest/95 p-1.5 shadow-xl backdrop-blur lg:hidden" aria-label="学生端主导航">
+        <button type="button" onClick={() => { clearChat(); setLearningCourse(null); setLearningChapterId(null); setActiveSection('learning') }} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'learning' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
+          <Compass className="h-4 w-4" />学习
+        </button>
+        <button type="button" onClick={showCourseCenter} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'courses' || activeSection === 'course-detail' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
+          <LibraryBig className="h-4 w-4" />课程
+        </button>
+        <button type="button" onClick={() => setActiveSection('campus')} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'campus' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
+          <Newspaper className="h-4 w-4" />校园
+        </button>
+      </nav>
 
     </div>
   );
