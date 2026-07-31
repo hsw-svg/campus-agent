@@ -25,7 +25,8 @@ import {
   Sparkles,
   ClipboardList,
   CheckCircle,
-  Copy
+  Copy,
+  Newspaper
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { downloadBlob, exportArtifact, type Artifact } from '../api';
@@ -33,11 +34,14 @@ import { Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ConversationHistory from './ConversationHistory';
 import ResourcePicker from './ResourcePicker';
+import CampusNewsPanel from './CampusNewsPanel';
 
 interface StudentWorkspaceProps {
   token: string | null;
   onBackToRoles: () => void;
 }
+
+type StudentSection = 'learning' | 'campus';
 
 export default function StudentWorkspace({ token, onBackToRoles }: StudentWorkspaceProps) {
   const {
@@ -68,6 +72,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   const [copied, setCopied] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeSection, setActiveSection] = useState<StudentSection>('learning');
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -142,6 +147,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
         <button 
           onClick={() => {
+            setActiveSection('learning');
             clearChat();
           }}
           className="flex items-center justify-center gap-2 w-full py-3 mb-6 bg-secondary text-on-secondary rounded-xl font-semibold text-sm hover:opacity-95 transition-all active:scale-95 shadow-sm cursor-pointer"
@@ -154,15 +160,30 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           <div className="px-3 py-1 mb-1 text-[11px] text-outline font-bold tracking-wider">菜单</div>
           
           <button 
-            onClick={clearChat}
+            onClick={() => {
+              setActiveSection('learning');
+            }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              chatMessages.length === 0 
+              activeSection === 'learning'
                 ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary' 
                 : 'text-on-surface-variant hover:bg-surface-container-high'
             }`}
           >
             <Compass className="w-4.5 h-4.5" />
             <span>学习中心</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection('campus')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
+              activeSection === 'campus'
+                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
+                : 'text-on-surface-variant hover:bg-surface-container-high'
+            }`}
+          >
+            <Newspaper className="w-4.5 h-4.5" />
+            <span>校园中心</span>
           </button>
 
           <a className="flex items-center gap-3 px-3 py-2.5 text-on-surface-variant font-semibold text-sm rounded-lg hover:bg-surface-container-high transition-colors" href="#">
@@ -180,7 +201,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
             <span>设置</span>
           </a>
 
-          <ConversationHistory conversations={conversations} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-secondary" />
+          <ConversationHistory conversations={conversations} activeConversationId={activeConversationId} onOpen={(id) => { setActiveSection('learning'); void openConversation(id); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-secondary" />
         </nav>
 
         {/* User Info */}
@@ -198,8 +219,8 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
       {/* MAIN CONTENT AREA */}
       <main className={`flex-1 flex flex-col bg-background min-h-screen relative overflow-hidden transition-[margin-left] duration-300 ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-72'}`}>
-        {(error || exportError) && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error || exportError}</div>}
-        {(toolStatus || route || runStatus === 'failed' || runStatus === 'needs_input') && (
+        {activeSection === 'learning' && (error || exportError) && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error || exportError}</div>}
+        {activeSection === 'learning' && (toolStatus || route || runStatus === 'failed' || runStatus === 'needs_input') && (
           <div className="mx-10 mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-secondary/20 bg-secondary-container/10 px-4 py-2 text-xs text-on-surface-variant">
             {toolStatus && <span className="font-semibold text-secondary">{toolStatus}</span>}
             {route?.agentName && <span>当前智能体：{route.agentName}</span>}
@@ -241,14 +262,20 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         <div className="flex-1 flex overflow-hidden">
           
           <div className="flex-1 flex flex-col h-full overflow-hidden">
-            <section className="flex-1 flex flex-col p-6 overflow-y-auto max-w-4xl mx-auto w-full space-y-6">
-            
-            {chatMessages.length === 0 && (
-              <div className="flex-grow flex flex-col items-center justify-center text-center py-10 space-y-8 max-w-2xl mx-auto">
-                <div className="relative w-32 h-32">
+            <section className={`flex-1 flex flex-col p-6 overflow-y-auto mx-auto w-full space-y-6 ${activeSection === 'campus' ? 'max-w-6xl' : 'max-w-4xl'}`}>
+
+            {activeSection === 'campus' && (
+              <div className="w-full py-4 sm:py-8">
+                <CampusNewsPanel />
+              </div>
+            )}
+
+            {activeSection === 'learning' && chatMessages.length === 0 && (
+              <div className="flex-grow flex flex-col items-center text-center py-6 space-y-6 max-w-4xl mx-auto w-full">
+                <div className="relative w-20 h-20">
                   <div className="absolute inset-0 bg-secondary/5 rounded-full animate-pulse"></div>
-                  <div className="absolute inset-4 bg-secondary/10 rounded-full flex items-center justify-center">
-                    <BookOpen className="w-12 h-12 text-secondary" />
+                  <div className="absolute inset-3 bg-secondary/10 rounded-full flex items-center justify-center">
+                    <BookOpen className="w-8 h-8 text-secondary" />
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -258,10 +285,10 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full pt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
                   <button 
                     onClick={() => handleSendMessage('论文辅助：生成计算机大模型相关大纲')}
-                    className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
+                    className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-2xl flex items-center justify-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
                   >
                     <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
                       <FileText className="w-6 h-6" />
@@ -271,7 +298,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
                   <button 
                     onClick={() => handleSendMessage('知识问答：Python 列表与元组的深度区别')}
-                    className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
+                    className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-2xl flex items-center justify-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
                   >
                     <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
                       <HelpCircle className="w-6 h-6" />
@@ -281,7 +308,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
                   <button 
                     onClick={() => handleSendMessage('课程总结：自动生成 Python 复习备考冲刺计划')}
-                    className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
+                    className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-2xl flex items-center justify-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
                   >
                     <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
                       <ClipboardList className="w-6 h-6" />
@@ -292,7 +319,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
               </div>
             )}
 
-            {chatMessages.length > 0 && (
+            {activeSection === 'learning' && chatMessages.length > 0 && (
               <div className="space-y-6">
                 {chatMessages.map((msg, idx) => {
                   const isUser = msg.sender === 'user';
@@ -352,8 +379,8 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           </section>
 
           {/* Input Footer */}
-          <div className="px-6 pb-3 xl:hidden">{resourcePicker}</div>
-          <div className="mt-auto px-10 pb-8 shrink-0 bg-background pt-2 border-t border-outline-variant/10 z-10">
+          {activeSection === 'learning' && chatMessages.length > 0 && <div className="px-6 pb-3 xl:hidden">{resourcePicker}</div>}
+          {activeSection === 'learning' && <div className="mt-auto px-10 pb-8 shrink-0 bg-background pt-2 border-t border-outline-variant/10 z-10">
             <div className="max-w-4xl mx-auto space-y-3">
               <div className="flex gap-2 overflow-x-auto scrollbar-hide py-1">
                 <button 
@@ -412,11 +439,11 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                 </div>
               </div>
             </div>
-          </div>
+          </div>}
           </div>
 
           {/* Right sidebar */}
-          <aside className="w-80 h-full border-l border-outline-variant bg-surface-container-low flex flex-col p-4 gap-6 overflow-y-auto shrink-0 hidden xl:flex">
+          {activeSection === 'learning' && <aside className="w-80 h-full border-l border-outline-variant bg-surface-container-low flex flex-col p-4 gap-6 overflow-y-auto shrink-0 hidden xl:flex">
             {resourcePicker}
             <div className="space-y-3">
               <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider px-1">学习备考资料袋</h3>
@@ -442,7 +469,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                 <p className="text-[10px] text-outline">今天已学习 2/3 的难点。继续加油！</p>
               </div>
             </div>
-          </aside>
+          </aside>}
 
         </div>
       </main>

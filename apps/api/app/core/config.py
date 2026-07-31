@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     bing_search_api_key: str | None = None
     bing_search_endpoint: str = "https://api.bing.microsoft.com/v7.0/search"
 
+    campus_news_sources_json: str = ""
+    campus_news_refresh_seconds: int = 1800
+    campus_news_max_stale_seconds: int = 604800
+    campus_news_request_timeout_seconds: float = 6.0
+
     @property
     def chat_is_configured(self) -> bool:
         return all((self.chat_base_url.strip(), self.chat_api_key.strip(), self.chat_model.strip()))

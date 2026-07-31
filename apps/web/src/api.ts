@@ -108,6 +108,27 @@ export interface StreamEvent {
   data: Record<string, unknown>
 }
 
+export type CampusNewsCategory = 'news' | 'activity' | 'notice'
+
+export interface CampusNewsItem {
+  id: string
+  category: CampusNewsCategory
+  title: string
+  published_at: string
+  event_end_at: string | null
+  source: string
+  summary: string | null
+  url: string | null
+}
+
+export interface CampusNewsResponse {
+  mode: 'sample' | 'live'
+  status: 'fresh' | 'stale' | 'degraded'
+  refreshing: boolean
+  last_success_at: string | null
+  items: CampusNewsItem[]
+}
+
 export function sourceCitationsFromEvent(event: StreamEvent): SourceCitation[] {
   if (event.type !== 'artifact' || event.data.type !== 'sources' || !Array.isArray(event.data.sources)) {
     return []
@@ -166,6 +187,10 @@ export function createWorkspace(role: WorkspaceRole): Promise<CreatedWorkspace> 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ role }),
   })
+}
+
+export function listCampusNews(): Promise<CampusNewsResponse> {
+  return request<CampusNewsResponse>('/campus-news')
 }
 
 export function getCurrentWorkspace(token: string): Promise<Workspace> {
