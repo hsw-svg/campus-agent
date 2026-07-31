@@ -11,6 +11,7 @@ from app.attachments.models import Attachment, MaterialChunk
 from app.agents.models import AgentRun
 from app.artifacts.models import Artifact
 from app.campus_news.models import CampusNewsItem, CampusNewsSourceState
+from app.resumes.models import StudentResumeProfile
 
 
 config = context.config

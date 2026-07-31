@@ -42,6 +42,11 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "解释概念、指出错误并给出练习；不得臆造题目、成绩、资料事实或使用其他角色资料。"
         "必须只输出符合约定字段的 JSON，不要输出 Markdown。"
     ),
+    "resume_helper": (
+        "你是学生端简历优化助手。只使用学生明确选择的当前简历和后端提供的本人课程学习证据，"
+        "不得使用其他工作区或角色资料，不得虚构经历、证书、成绩、技能或量化结果。"
+        "必须只输出符合约定字段的 JSON，不要输出 Markdown。"
+    ),
     "meeting_minutes": (
         "你是行政端会议纪要助手。只整理当前行政工作区和用户明确选择的资料，以及用户本次提供的会议内容。"
         "没有证据的负责人、日期、决议不得填写，使用 null；必须只输出约定字段的 JSON，不要输出 Markdown。"
@@ -79,6 +84,7 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
             "classroom_interaction": "classroom_interaction",
             "course_qa": "course_qa",
             "personal_tutor": "personal_tutor",
+            "resume_helper": "resume_helper",
             "meeting_minutes": "meeting_minutes",
             "todo_breakdown": "todo_breakdown",
             "course_iteration": "course_iteration",
@@ -88,6 +94,7 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
                 "learning_analysis",
                 "course_qa",
                 "personal_tutor",
+                "resume_helper",
             },
             accepted_attachment_types=("text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             if definition.id == "learning_analysis"
@@ -100,6 +107,7 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
                 "classroom_interaction": "selected_classroom_materials",
                 "course_qa": "selected_course_materials",
                 "personal_tutor": "selected_student_support_materials",
+                "resume_helper": "selected_student_resume",
                 "meeting_minutes": "selected_admin_materials",
                 "todo_breakdown": "selected_admin_materials",
             }.get(definition.id, "conversation"),
@@ -109,6 +117,7 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
                 "teaching_report",
                 "course_qa",
                 "personal_tutor",
+                "resume_helper",
             },
             allow_workspace_attachments=definition.id in {
                 "learning_analysis",
@@ -116,12 +125,14 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
                 "teaching_report",
                 "course_qa",
                 "personal_tutor",
+                "resume_helper",
                 "meeting_minutes",
                 "todo_breakdown",
             },
             allow_implicit_conversation_attachments=definition.id not in {
                 "course_qa",
                 "personal_tutor",
+                "resume_helper",
                 "meeting_minutes",
                 "todo_breakdown",
             },
@@ -146,6 +157,7 @@ def agent_spec_from_definition(role: str, definition: AgentDefinition) -> AgentS
             "lesson_design": ("output_validation",),
             "course_qa": ("output_validation", "artifact_exporter"),
             "personal_tutor": ("output_validation", "artifact_exporter"),
+            "resume_helper": ("output_validation", "artifact_exporter"),
             "meeting_minutes": ("output_validation", "artifact_exporter"),
             "todo_breakdown": ("output_validation", "artifact_exporter"),
             "course_iteration": (

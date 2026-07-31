@@ -12,6 +12,7 @@ from app.agents.admin.meeting_minutes import MeetingMinutesExecutor
 from app.agents.admin.todo_breakdown import TodoBreakdownExecutor
 from app.agents.student.course_qa import CourseQAExecutor
 from app.agents.student.personal_tutor import PersonalTutorExecutor
+from app.agents.student.resume_helper import ResumeHelperExecutor
 from app.agents.specs import AgentSpec
 from app.agents.specs import get_agent_spec
 from app.artifacts.repositories import ArtifactRepository
@@ -54,6 +55,8 @@ class AgentExecutorRegistry:
             return CourseQAExecutor(self.chat_provider)
         if spec.executor_id == "personal_tutor":
             return PersonalTutorExecutor(self.chat_provider)
+        if spec.executor_id == "resume_helper":
+            return ResumeHelperExecutor(self.chat_provider)
         if spec.executor_id == "meeting_minutes":
             return MeetingMinutesExecutor(self.chat_provider)
         if spec.executor_id == "todo_breakdown":

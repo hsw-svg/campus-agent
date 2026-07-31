@@ -69,6 +69,39 @@ class AgentRunRepository:
             for run, conversation, artifact, result_message in rows.all()
         ]
 
+    def list_for_agent(
+        self, workspace_id: UUID, agent_id: str
+    ) -> list[AgentHistoryRecord]:
+        rows = self.session.execute(
+            select(AgentRun, Conversation, Artifact, Message)
+            .join(Conversation, Conversation.id == AgentRun.conversation_id)
+            .outerjoin(
+                Artifact,
+                (Artifact.id == AgentRun.artifact_id)
+                & (Artifact.workspace_id == workspace_id),
+            )
+            .outerjoin(
+                Message,
+                (Message.id == AgentRun.result_message_id)
+                & (Message.workspace_id == workspace_id),
+            )
+            .where(
+                AgentRun.workspace_id == workspace_id,
+                AgentRun.agent_id == agent_id,
+                Conversation.workspace_id == workspace_id,
+            )
+            .order_by(AgentRun.created_at.desc())
+        )
+        return [
+            AgentHistoryRecord(
+                run=run,
+                conversation=conversation,
+                artifact=artifact,
+                result_message=result_message,
+            )
+            for run, conversation, artifact, result_message in rows.all()
+        ]
+
     def update(self, run: AgentRun, **values) -> AgentRun:
         for key, value in values.items():
             setattr(run, key, value)

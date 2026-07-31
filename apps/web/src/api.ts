@@ -135,6 +135,95 @@ export interface AgentHistoryItem {
   updated_at: string
 }
 
+export type ResumeIssueSeverity = 'high' | 'medium' | 'low'
+
+export interface ResumeIssue {
+  section: string
+  severity: ResumeIssueSeverity
+  problem: string
+  evidence: string
+  suggestion: string
+}
+
+export interface ResumeSectionSuggestion {
+  section: string
+  suggestions: string[]
+  rewrite_examples: string[]
+}
+
+export interface ResumeCourseCapabilityMatch {
+  course_name: string
+  progress_evidence: string
+  capability: string
+  suggested_wording: string
+}
+
+export interface ResumeJobMatch {
+  matched_keywords: string[]
+  gap_keywords: string[]
+  guidance: string
+}
+
+export interface OptimizedResumeSection {
+  heading: string
+  markdown: string
+}
+
+export interface ResumeAnalysisReport {
+  overall_summary: string
+  issues: ResumeIssue[]
+  section_suggestions: ResumeSectionSuggestion[]
+  course_capability_matches: ResumeCourseCapabilityMatch[]
+  job_match: ResumeJobMatch
+  optimized_resume_sections: OptimizedResumeSection[]
+  evidence_notice: string
+}
+
+export interface ResumeCourseSnapshot {
+  course_id: string
+  name: string
+  category: string | null
+  progress_percent: number
+  completed_chapters: Array<{ title: string; knowledge_points: string[] }>
+  current_chapter: string | null
+  weak_points: Array<{ name: string; recommendation: string }>
+}
+
+export interface ResumeAnalysisInputSnapshot {
+  resume_attachment_id: string
+  resume_filename: string
+  target_role: string | null
+  job_description: string | null
+  selected_courses: ResumeCourseSnapshot[]
+}
+
+export interface ResumeAnalysisArtifactData {
+  schema_version: 'resume_analysis.v1'
+  input: ResumeAnalysisInputSnapshot
+  report: ResumeAnalysisReport
+}
+
+export interface ResumeAnalysisArtifact extends Omit<Artifact, 'data'> {
+  data: ResumeAnalysisArtifactData
+}
+
+export interface ResumeProfile {
+  current_resume: Attachment | null
+}
+
+export interface ResumeAnalysisHistoryItem {
+  run_id: string
+  conversation_id: string
+  status: string
+  error_message: string | null
+  target_role: string | null
+  resume_filename: string | null
+  summary: string | null
+  artifact: ResumeAnalysisArtifact | null
+  created_at: string
+  updated_at: string
+}
+
 export interface SourceCitation {
   attachment_id: string
   filename: string
@@ -316,6 +405,26 @@ export function deleteCourseAgentHistory(token: string, courseId: string, runId:
   return request<void>(`/courses/${courseId}/agent-history/${runId}`, { method: 'DELETE' }, token)
 }
 
+export function getResumeProfile(token: string): Promise<ResumeProfile> {
+  return request<ResumeProfile>('/resume-assistant/profile', undefined, token)
+}
+
+export function setCurrentResume(token: string, attachmentId: string): Promise<ResumeProfile> {
+  return request<ResumeProfile>('/resume-assistant/profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ attachment_id: attachmentId }),
+  }, token)
+}
+
+export function listResumeAnalyses(token: string): Promise<ResumeAnalysisHistoryItem[]> {
+  return request<ResumeAnalysisHistoryItem[]>('/resume-assistant/analyses', undefined, token)
+}
+
+export function deleteResumeAnalysis(token: string, runId: string): Promise<void> {
+  return request<void>(`/resume-assistant/analyses/${runId}`, { method: 'DELETE' }, token)
+}
+
 export function getArtifact(token: string, artifactId: string): Promise<Artifact> {
   return request<Artifact>(`/artifacts/${artifactId}`, undefined, token)
 }
@@ -409,12 +518,43 @@ export async function* streamMessage(options: {
     }),
     signal: options.signal,
   })
+  yield* streamEventsFromResponse(response, '无法开始流式回复。')
+}
 
+export async function* streamResumeAnalysis(options: {
+  token: string
+  attachmentId: string
+  targetRole: string
+  jobDescription: string
+  selectedCourseIds: string[]
+  signal: AbortSignal
+}): AsyncGenerator<StreamEvent> {
+  const response = await fetch('/api/resume-assistant/analyses/stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Workspace-Token': options.token,
+    },
+    body: JSON.stringify({
+      attachment_id: options.attachmentId,
+      target_role: options.targetRole.trim() || null,
+      job_description: options.jobDescription.trim() || null,
+      selected_course_ids: options.selectedCourseIds,
+    }),
+    signal: options.signal,
+  })
+  yield* streamEventsFromResponse(response, '无法开始简历分析。')
+}
+
+async function* streamEventsFromResponse(
+  response: Response,
+  fallbackMessage: string,
+): AsyncGenerator<StreamEvent> {
   if (!response.ok || !response.body) {
     const body = await response.json().catch(() => null) as { error?: { code?: string; message?: string; details?: Record<string, unknown> | null } } | null
     throw new ApiError(
       response.status,
-      body?.error?.message ?? '无法开始流式回复。',
+      body?.error?.message ?? fallbackMessage,
       body?.error?.code,
       body?.error?.details,
     )

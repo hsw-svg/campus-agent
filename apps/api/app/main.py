@@ -12,6 +12,7 @@ from app.api.agent_runs import router as agent_runs_router
 from app.api.artifacts import router as artifacts_router
 from app.api.courses import router as courses_router
 from app.api.campus_news import router as campus_news_router
+from app.api.resume_assistant import router as resume_assistant_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
@@ -32,6 +33,7 @@ from app.courses.models import (  # noqa: F401
     StudentCourseWeakPoint,
 )
 from app.campus_news.models import CampusNewsItem, CampusNewsSourceState  # noqa: F401
+from app.resumes.models import StudentResumeProfile  # noqa: F401
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -80,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(artifacts_router)
     app.include_router(courses_router)
     app.include_router(campus_news_router)
+    app.include_router(resume_assistant_router)
     return app
 
 

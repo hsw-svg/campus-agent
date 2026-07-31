@@ -1,0 +1,1 @@
+"""Student resume assistant domain."""

@@ -76,7 +76,7 @@ class ContextBuilder:
                 details={"missing_inputs": ["用户明确选择的附件"]},
             )
 
-        if agent_id == "learning_analysis":
+        if agent_id in {"learning_analysis", "resume_helper"}:
             chunks = self.attachments.list_chunks_for_attachments(
                 workspace_id, conversation.id, selected_ids, conversation.course_id
             )

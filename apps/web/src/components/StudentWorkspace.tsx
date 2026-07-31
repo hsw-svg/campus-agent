@@ -28,7 +28,8 @@ import {
   Copy,
   Newspaper,
   LibraryBig,
-  CircleCheckBig
+  CircleCheckBig,
+  FileUser
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -50,13 +51,14 @@ import ResourcePicker from './ResourcePicker';
 import CampusNewsPanel from './CampusNewsPanel';
 import CourseCenterPanel from './CourseCenterPanel';
 import CourseDetailPanel from './CourseDetailPanel';
+import ResumeAssistantPanel from './ResumeAssistantPanel';
 
 interface StudentWorkspaceProps {
   token: string | null;
   onBackToRoles: () => void;
 }
 
-type StudentSection = 'learning' | 'courses' | 'course-detail' | 'campus';
+type StudentSection = 'learning' | 'courses' | 'course-detail' | 'campus' | 'resume';
 
 export default function StudentWorkspace({ token, onBackToRoles }: StudentWorkspaceProps) {
   const [activeSection, setActiveSection] = useState<StudentSection>('learning');
@@ -318,6 +320,19 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
             <span>校园中心</span>
           </button>
 
+          <button
+            type="button"
+            onClick={() => setActiveSection('resume')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
+              activeSection === 'resume'
+                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
+                : 'text-on-surface-variant hover:bg-surface-container-high'
+            }`}
+          >
+            <FileUser className="w-4.5 h-4.5" />
+            <span>简历助手</span>
+          </button>
+
           <a className="flex items-center gap-3 px-3 py-2.5 text-on-surface-variant font-semibold text-sm rounded-lg hover:bg-surface-container-high transition-colors" href="#">
             <Award className="w-4.5 h-4.5" />
             <span>成绩与分析</span>
@@ -334,9 +349,9 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           </a>
 
           <ConversationHistory
-            conversations={conversations.filter((conversation) => learningCourse
+            conversations={conversations.filter((conversation) => conversation.agent_id !== 'resume_helper' && (learningCourse
               ? conversation.course_id === learningCourse.id && conversation.chapter_id === learningChapterId
-              : conversation.course_id === null)}
+              : conversation.course_id === null))}
             activeConversationId={activeConversationId}
             onOpen={(id) => { setActiveSection('learning'); void openConversation(id); }}
             onDelete={(id) => { void removeConversation(id); }}
@@ -403,9 +418,13 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         <div className="flex-1 flex overflow-hidden">
           
           <div className="flex-1 flex flex-col h-full overflow-hidden">
-            <section className={`flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto mx-auto w-full space-y-6 ${
-              activeSection === 'campus' || activeSection === 'courses' || activeSection === 'course-detail' ? 'max-w-7xl' : 'max-w-4xl'
+            <section className={`flex-1 flex flex-col overflow-y-auto mx-auto w-full ${
+              activeSection === 'resume'
+                ? 'max-w-none p-3 sm:p-4 xl:overflow-hidden xl:p-0'
+                : `space-y-6 p-4 sm:p-6 ${activeSection === 'campus' || activeSection === 'courses' || activeSection === 'course-detail' ? 'max-w-7xl' : 'max-w-4xl'}`
             }`}>
+
+            {activeSection === 'resume' && <ResumeAssistantPanel token={token} />}
 
             {activeSection === 'campus' && (
               <div className="w-full py-4 sm:py-8">
@@ -654,7 +673,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         </div>
       </main>
 
-      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-3 rounded-2xl border border-outline-variant bg-surface-container-lowest/95 p-1.5 shadow-xl backdrop-blur lg:hidden" aria-label="学生端主导航">
+      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-4 rounded-2xl border border-outline-variant bg-surface-container-lowest/95 p-1.5 shadow-xl backdrop-blur lg:hidden" aria-label="学生端主导航">
         <button type="button" onClick={() => { clearChat(); setLearningCourse(null); setLearningChapterId(null); setActiveSection('learning') }} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'learning' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
           <Compass className="h-4 w-4" />学习
         </button>
@@ -663,6 +682,9 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         </button>
         <button type="button" onClick={() => setActiveSection('campus')} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'campus' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
           <Newspaper className="h-4 w-4" />校园
+        </button>
+        <button type="button" onClick={() => setActiveSection('resume')} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'resume' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
+          <FileUser className="h-4 w-4" />简历
         </button>
       </nav>
 
