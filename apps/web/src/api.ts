@@ -261,6 +261,9 @@ export interface DeepTutorBook {
   id: string
   title: string
   description: string
+  status: string | null
+  chapterCount: number | null
+  pageCount: number | null
   raw: Record<string, unknown>
 }
 
@@ -273,6 +276,15 @@ export interface DeepTutorSpineItem {
 
 export interface DeepTutorPage {
   id: string
+  title: string
+  content: string
+  blocks: DeepTutorBlock[]
+  raw: Record<string, unknown>
+}
+
+export interface DeepTutorBlock {
+  id: string
+  type: string
   title: string
   content: string
   raw: Record<string, unknown>
@@ -301,6 +313,16 @@ function firstString(record: Record<string, unknown>, keys: string[], fallback: 
   return fallback
 }
 
+function firstNumber(record: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    if (typeof record[key] === 'number' && Number.isFinite(record[key])) return record[key]
+    if (typeof record[key] === 'string' && record[key].trim() && Number.isFinite(Number(record[key]))) {
+      return Number(record[key])
+    }
+  }
+  return null
+}
+
 function responseRecords(value: unknown, keys: string[]): Record<string, unknown>[] {
   if (Array.isArray(value)) return value.filter(isRecord)
   if (!isRecord(value)) return []
@@ -318,12 +340,41 @@ export function deepTutorBooksFromResponse(value: unknown): DeepTutorBook[] {
       id,
       title: firstString(raw, ['title', 'name'], '未命名交互教材'),
       description: firstString(raw, ['description', 'summary'], 'DeepTutor 交互式教材'),
+      status: firstString(raw, ['status', 'state'], '') || null,
+      chapterCount: firstNumber(raw, ['chapter_count', 'chapters_count', 'chaptersCount'])
+        ?? (Array.isArray(raw.chapters) ? raw.chapters.length : null),
+      pageCount: firstNumber(raw, ['page_count', 'pages_count', 'pagesCount'])
+        ?? (Array.isArray(raw.pages) ? raw.pages.length : null),
       raw,
     }] : []
   })
 }
 
 export function deepTutorSpineFromResponse(value: unknown): DeepTutorSpineItem[] {
+  if (isRecord(value) && isRecord(value.spine)) {
+    const chapters = Array.isArray(value.spine.chapters) ? value.spine.chapters.filter(isRecord) : []
+    const expandedPages = chapters.flatMap((chapter, chapterIndex) => {
+      const pageIds = Array.isArray(chapter.page_ids)
+        ? chapter.page_ids.filter((pageId): pageId is string => typeof pageId === 'string' && pageId.trim().length > 0)
+        : []
+      if (pageIds.length === 0) return [chapter]
+      const chapterTitle = firstString(chapter, ['title', 'name'], `第 ${chapterIndex + 1} 章`)
+      return pageIds.map((pageId, pageIndex) => ({
+        id: pageId,
+        title: `${chapterTitle} · 第 ${pageIndex + 1} 页`,
+        position: chapterIndex * 1000 + pageIndex,
+      }))
+    })
+    return expandedPages.flatMap((raw, index) => {
+      const id = firstString(raw, ['id', 'page_id', 'chapter_id'], '')
+      return id ? [{
+        id,
+        title: firstString(raw, ['title', 'name'], `第 ${index + 1} 节`),
+        position: typeof raw.position === 'number' ? raw.position : index,
+        raw,
+      }] : []
+    })
+  }
   return responseRecords(value, ['spine', 'items', 'pages', 'chapters', 'data']).flatMap((raw, index) => {
     const id = firstString(raw, ['id', 'page_id', 'chapter_id'], '')
     return id ? [{
@@ -335,16 +386,45 @@ export function deepTutorSpineFromResponse(value: unknown): DeepTutorSpineItem[]
   })
 }
 
+function deepTutorBlockRecords(raw: Record<string, unknown>): Record<string, unknown>[] {
+  const candidates = [raw.blocks, raw.content_blocks, raw.sections]
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate.filter(isRecord)
+  }
+  return []
+}
+
+export function deepTutorBlocksFromRecord(raw: Record<string, unknown>): DeepTutorBlock[] {
+  return deepTutorBlockRecords(raw).flatMap((block, index) => {
+    const payload = isRecord(block.payload) ? block.payload : block
+    const params = isRecord(block.params) ? block.params : block
+    const content = firstString(payload, ['content', 'markdown', 'body', 'text', 'description', 'html', 'code'], '')
+    return [{
+      id: firstString(block, ['id', 'block_id'], `block-${index + 1}`),
+      type: firstString(block, ['type', 'block_type', 'kind'], 'text').toLowerCase(),
+      title: firstString(block, ['title', 'name', 'heading'], firstString(params, ['title', 'heading', 'label'], '')),
+      content,
+      raw: block,
+    }]
+  })
+}
+
 export function deepTutorPageFromResponse(value: unknown): DeepTutorPage | null {
   if (!isRecord(value)) return null
-  const raw = isRecord(value.data) && !Array.isArray(value.data) ? value.data : value
+  const raw = isRecord(value.page)
+    ? value.page
+    : isRecord(value.data) && !Array.isArray(value.data)
+      ? value.data
+      : value
   const id = firstString(raw, ['id', 'page_id'], '')
   if (!id) return null
+  const blocks = deepTutorBlocksFromRecord(raw)
   const content = firstString(raw, ['content', 'markdown', 'body', 'text'], '本页暂无可显示内容。')
   return {
     id,
     title: firstString(raw, ['title', 'name'], '交互教材页面'),
     content,
+    blocks,
     raw,
   }
 }
