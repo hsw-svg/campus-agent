@@ -137,3 +137,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 完成 DeepTutor 集成
+
+**Date**: 2026-08-03
+**Task**: 完成 DeepTutor 集成
+**Branch**: `master`
+
+### Summary
+
+在 codex/deeptutor-integration 完成 DeepTutor 1.5.8 单容器集成：独立 venv、启动就绪检查、共享 LLM/embedding 配置、FastAPI HTTP/WebSocket 适配层、React 交互教材页面和持久化 Compose 卷；合并回 master。159 个 API 测试、前端 lint/build、Compose config 通过；Docker Hub 拉取受网络阻断。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `061a122` | (see git log) |
+| `b455aac` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
