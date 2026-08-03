@@ -48,3 +48,19 @@ def test_health_stays_readable_when_database_probe_fails() -> None:
         "status": "unhealthy",
         "detail": "Database connection failed.",
     }
+
+
+def test_health_includes_deeptutor_without_making_it_a_process_dependency() -> None:
+    app = create_app(Settings(deeptutor_enabled=True))
+    app.state.database_probe = lambda: None
+
+    class ReadyDeepTutor:
+        async def health_check(self) -> dict[str, str]:
+            return {"status": "healthy"}
+
+    app.state.deeptutor_client = ReadyDeepTutor()
+
+    response = TestClient(app).get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json()["components"]["deep_tutor"] == {"status": "healthy"}
