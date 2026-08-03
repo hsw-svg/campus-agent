@@ -54,13 +54,14 @@ import CourseCenterPanel from './CourseCenterPanel';
 import CourseDetailPanel from './CourseDetailPanel';
 import ResumeAssistantPanel from './ResumeAssistantPanel';
 import DeepTutorBookPanel from './DeepTutorBookPanel';
+import DeepTutorLearningSpacePanel from './DeepTutorLearningSpacePanel';
 
 interface StudentWorkspaceProps {
   token: string | null;
   onBackToRoles: () => void;
 }
 
-type StudentSection = 'learning' | 'courses' | 'course-detail' | 'campus' | 'resume' | 'deep-tutor';
+type StudentSection = 'learning' | 'courses' | 'course-detail' | 'campus' | 'resume' | 'learning-space' | 'deep-tutor';
 
 export default function StudentWorkspace({ token, onBackToRoles }: StudentWorkspaceProps) {
   const [activeSection, setActiveSection] = useState<StudentSection>('learning');
@@ -70,6 +71,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   const [learningChapterId, setLearningChapterId] = useState<string | null>(null);
   const [courseLoading, setCourseLoading] = useState(false);
   const [courseError, setCourseError] = useState<string | null>(null);
+  const [deepTutorBookId, setDeepTutorBookId] = useState('');
   const courseLoadAttemptedRef = useRef(false);
   const learningChapter = learningCourse?.chapters.find((chapter) => chapter.id === learningChapterId) ?? null;
   const courseContext = useMemo(() => learningCourse ? {
@@ -311,7 +313,20 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
           <button
             type="button"
-            onClick={() => setActiveSection('deep-tutor')}
+            onClick={() => setActiveSection('learning-space')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
+              activeSection === 'learning-space'
+                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
+                : 'text-on-surface-variant hover:bg-surface-container-high'
+            }`}
+          >
+            <Sparkles className="w-4.5 h-4.5" />
+            <span>学习空间</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setDeepTutorBookId(''); setActiveSection('deep-tutor') }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
               activeSection === 'deep-tutor'
                 ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
@@ -436,7 +451,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
             <section className={`flex-1 flex flex-col overflow-y-auto mx-auto w-full ${
               activeSection === 'resume'
                 ? 'max-w-none p-3 sm:p-4 xl:overflow-hidden xl:p-0'
-                : `space-y-6 p-4 sm:p-6 ${activeSection === 'campus' || activeSection === 'courses' || activeSection === 'course-detail' || activeSection === 'deep-tutor' ? 'max-w-7xl' : 'max-w-4xl'}`
+                : `space-y-6 p-4 sm:p-6 ${activeSection === 'campus' || activeSection === 'courses' || activeSection === 'course-detail' || activeSection === 'learning-space' || activeSection === 'deep-tutor' ? 'max-w-7xl' : 'max-w-4xl'}`
             }`}>
 
             {activeSection === 'resume' && <ResumeAssistantPanel token={token} />}
@@ -447,7 +462,17 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
               </div>
             )}
 
-            {activeSection === 'deep-tutor' && <DeepTutorBookPanel token={token} />}
+            {activeSection === 'learning-space' && (
+              <DeepTutorLearningSpacePanel
+                token={token}
+                onOpenBooks={(bookId) => {
+                  setDeepTutorBookId(bookId ?? '')
+                  setActiveSection('deep-tutor')
+                }}
+              />
+            )}
+
+            {activeSection === 'deep-tutor' && <DeepTutorBookPanel token={token} initialBookId={deepTutorBookId} />}
 
             {activeSection === 'courses' && (
               <CourseCenterPanel
@@ -690,14 +715,17 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         </div>
       </main>
 
-      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-5 rounded-2xl border border-outline-variant bg-surface-container-lowest/95 p-1.5 shadow-xl backdrop-blur lg:hidden" aria-label="学生端主导航">
+      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-6 rounded-2xl border border-outline-variant bg-surface-container-lowest/95 p-1.5 shadow-xl backdrop-blur lg:hidden" aria-label="学生端主导航">
         <button type="button" onClick={() => { clearChat(); setLearningCourse(null); setLearningChapterId(null); setActiveSection('learning') }} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'learning' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
           <Compass className="h-4 w-4" />学习
         </button>
         <button type="button" onClick={showCourseCenter} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'courses' || activeSection === 'course-detail' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
           <LibraryBig className="h-4 w-4" />课程
         </button>
-        <button type="button" onClick={() => setActiveSection('deep-tutor')} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'deep-tutor' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
+        <button type="button" onClick={() => setActiveSection('learning-space')} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'learning-space' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
+          <Sparkles className="h-4 w-4" />空间
+        </button>
+        <button type="button" onClick={() => { setDeepTutorBookId(''); setActiveSection('deep-tutor') }} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'deep-tutor' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
           <BookOpenCheck className="h-4 w-4" />教材
         </button>
         <button type="button" onClick={() => setActiveSection('campus')} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'campus' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>

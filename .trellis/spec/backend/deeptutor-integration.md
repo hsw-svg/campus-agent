@@ -27,6 +27,8 @@ The adapter lives in `app.integrations.deeptutor.client.DeepTutorClient`; routes
 - Startup maps `CHAT_BASE_URL`, `CHAT_API_KEY`, and `CHAT_MODEL` to `LLM_HOST`, `LLM_API_KEY`, and `LLM_MODEL`. Existing `EMBEDDING_MODEL` and `EMBEDDING_API_KEY` are reused, with an optional `DEEPTUTOR_EMBEDDING_MODEL` override and chat-key fallback; `EMBEDDING_HOST` must be a full embeddings endpoint and can be set with `DEEPTUTOR_EMBEDDING_HOST`.
 - `EMBEDDING_DIMENSION` can be set explicitly with `DEEPTUTOR_EMBEDDING_DIMENSION`; it must match the selected embedding model. Changing it requires rebuilding the DeepTutor knowledge base.
 - The React API client keeps payload normalization in `src/api.ts`; `DeepTutorBookPanel` owns only local book, page, and question UI state and does not duplicate `useWorkspaceChat` state.
+- The upstream book endpoints use nested envelopes: spine responses are `{ spine: { chapters: [...] } }`, page responses are `{ page: {...} }`, and generated block text is commonly under `block.payload`. `src/api.ts` must unwrap these envelopes and expand chapter `page_ids` before the reader consumes them.
+- Student-side reading progress, notes, and saved questions are demo-only browser state under `campus-agent:deeptutor-study:<workspace-token-suffix>`; they do not replace DeepTutor's server-side book data or introduce a second application chat state.
 
 ### 4. Validation & Error Matrix
 
@@ -43,8 +45,10 @@ The adapter lives in `app.integrations.deeptutor.client.DeepTutorClient`; routes
 
 - Good: the browser requests `/api/deeptutor/books` through port 8080, FastAPI calls `http://127.0.0.1:8001/api/v1/book/books`, and no client-visible URL contains port 8001.
 - Good: changing the embedding endpoint or dimension is done through environment variables and the knowledge base is rebuilt before the demo.
+- Good: a page reader consumes normalized `DeepTutorPage.blocks` and can render a `payload.markdown` block without knowing the upstream envelope.
 - Base: DeepTutor is unavailable while the existing workspace remains usable; `/api/health` is readable and marks the integration as degraded.
 - Bad: adding a browser fetch to `http://localhost:8001`, publishing `8001:8001`, or importing DeepTutor Python modules into `apps/api`.
+- Bad: reading `response.page`, `response.spine.chapters`, or `block.payload` directly in multiple React components; that duplicates the upstream contract and breaks when the adapter shape changes.
 - Bad: copying `.env` into a Docker build layer or placing API keys in a Dockerfile/source file.
 
 ### 6. Tests Required
