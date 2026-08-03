@@ -299,7 +299,19 @@ export interface DeepTutorKnowledgeBase {
 export interface DeepTutorChatEvent {
   type: string
   text: string
+  sessionId: string | null
   raw: Record<string, unknown>
+}
+
+export interface DeepTutorPageChatMessage {
+  type: 'start_turn'
+  content: string
+  session_id: string | null
+  capability: 'chat'
+  tools: string[]
+  knowledge_bases: string[]
+  language: 'zh'
+  book_references: Array<{ book_id: string; page_ids: string[] }>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -328,13 +340,14 @@ function responseRecords(value: unknown, keys: string[]): Record<string, unknown
   if (!isRecord(value)) return []
   for (const key of keys) {
     if (Array.isArray(value[key])) return value[key].filter(isRecord)
+    if (isRecord(value[key])) return [value[key]]
   }
   if (isRecord(value.data)) return responseRecords(value.data, keys)
   return []
 }
 
 export function deepTutorBooksFromResponse(value: unknown): DeepTutorBook[] {
-  return responseRecords(value, ['books', 'items', 'data']).flatMap((raw) => {
+  return responseRecords(value, ['books', 'book', 'items', 'data']).flatMap((raw) => {
     const id = firstString(raw, ['id', 'book_id'], '')
     return id ? [{
       id,
@@ -451,12 +464,39 @@ function nestedText(value: unknown, depth = 0): string {
 }
 
 export function parseDeepTutorChatEvent(value: unknown): DeepTutorChatEvent {
-  if (typeof value === 'string') return { type: 'stream', text: value, raw: {} }
-  if (!isRecord(value)) return { type: 'stream', text: '', raw: {} }
+  if (typeof value === 'string') return { type: 'content', text: value, sessionId: null, raw: {} }
+  if (!isRecord(value)) return { type: 'content', text: '', sessionId: null, raw: {} }
+  const type = firstString(value, ['type', 'event', 'kind'], 'content')
+  const metadata = isRecord(value.metadata) ? value.metadata : {}
+  const callId = firstString(metadata, ['call_id'], '')
+  const callKind = firstString(metadata, ['call_kind'], '')
+  const isAnswerContent = type === 'content'
+    && (!callId || ['llm_final_response', 'agent_loop_round'].includes(callKind))
   return {
-    type: firstString(value, ['type', 'event', 'kind'], 'stream'),
-    text: nestedText(value),
+    type,
+    text: isAnswerContent || type === 'error' ? nestedText(value) : '',
+    sessionId: firstString(metadata, ['session_id'], firstString(value, ['session_id'], '')) || null,
     raw: value,
+  }
+}
+
+export function buildDeepTutorPageChatMessage(
+  message: string,
+  bookId: string,
+  pageId: string,
+  sessionId: string | null,
+  knowledgeBase: string,
+): DeepTutorPageChatMessage {
+  const knowledgeBases = knowledgeBase ? [knowledgeBase] : []
+  return {
+    type: 'start_turn',
+    content: message,
+    session_id: sessionId,
+    capability: 'chat',
+    tools: knowledgeBases.length > 0 ? ['rag'] : [],
+    knowledge_bases: knowledgeBases,
+    language: 'zh',
+    book_references: [{ book_id: bookId, page_ids: [pageId] }],
   }
 }
 

@@ -22,6 +22,7 @@ import {
   Target,
 } from 'lucide-react'
 import {
+  buildDeepTutorPageChatMessage,
   createDeepTutorBook,
   deepTutorBooksFromResponse,
   deepTutorKnowledgeBasesFromResponse,
@@ -53,8 +54,8 @@ interface TutorMessage {
   content: string
 }
 
-function newSessionId(): string {
-  return `campus-agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
+function studentReadableBooks(value: unknown): DeepTutorBook[] {
+  return deepTutorBooksFromResponse(value).filter((book) => book.status !== 'draft' || (book.pageCount ?? 0) > 0)
 }
 
 function blockTone(type: string): { label: string; className: string; Icon: typeof Lightbulb } {
@@ -104,7 +105,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
   const [error, setError] = useState<string | null>(null)
   const [chatError, setChatError] = useState<string | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
-  const sessionIdRef = useRef(newSessionId())
+  const sessionIdRef = useRef<string | null>(null)
   const requestIdRef = useRef(0)
   const studyState = useDeepTutorStudyState(token)
   const studyStateRef = useRef(studyState.state)
@@ -154,7 +155,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
       if (!active) return
       const [booksResult, knowledgeResult] = results
       if (booksResult.status === 'fulfilled') {
-        const nextBooks = deepTutorBooksFromResponse(booksResult.value)
+        const nextBooks = studentReadableBooks(booksResult.value)
         setBooks(nextBooks)
         setSelectedBookId((current) => {
           if (initialBookId && nextBooks.some((book) => book.id === initialBookId)) return initialBookId
@@ -184,6 +185,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
     setSelectedPageId('')
     setPage(null)
     setMessages([])
+    sessionIdRef.current = null
     closeSocket()
     void getDeepTutorSpine(token, selectedBookId)
       .then((value) => {
@@ -213,6 +215,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
     setPageLoading(true)
     setChatError(null)
     setMessages([])
+    sessionIdRef.current = null
     closeSocket()
     void getDeepTutorPage(token, selectedBookId, selectedPageId)
       .then((value) => {
@@ -243,14 +246,15 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
     setCreating(true)
     setError(null)
     try {
-      await createDeepTutorBook(token, {
+      const created = await createDeepTutorBook(token, {
         user_intent: topic.trim(),
         language: 'zh',
         knowledge_bases: selectedKnowledgeBase ? [selectedKnowledgeBase] : [],
       })
-      const refreshed = deepTutorBooksFromResponse(await listDeepTutorBooks(token))
+      const createdBookId = deepTutorBooksFromResponse(created)[0]?.id ?? ''
+      const refreshed = studentReadableBooks(await listDeepTutorBooks(token))
       setBooks(refreshed)
-      setSelectedBookId((current) => current || refreshed[0]?.id || '')
+      setSelectedBookId(createdBookId || refreshed[0]?.id || '')
       setTopic('')
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : '交互教材创建失败。')
@@ -267,7 +271,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
   }
 
   const handleQuestion = () => {
-    if (!question.trim() || chatting || !selectedBookId) return
+    if (!question.trim() || chatting || !selectedBookId || !selectedPageId) return
     closeSocket()
     const currentQuestion = question.trim()
     const messageId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -284,15 +288,13 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
     const socket = new WebSocket(getDeepTutorChatWebSocketUrl())
     socketRef.current = socket
     socket.onopen = () => {
-      socket.send(JSON.stringify({
-        language: 'zh',
-        message: currentQuestion,
-        session_id: sessionIdRef.current,
-        kb_name: selectedKnowledgeBase || null,
-        enable_rag: true,
-        book_id: selectedBookId,
-        page_id: selectedPageId || null,
-      }))
+      socket.send(JSON.stringify(buildDeepTutorPageChatMessage(
+        currentQuestion,
+        selectedBookId,
+        selectedPageId,
+        sessionIdRef.current,
+        selectedKnowledgeBase,
+      )))
     }
     socket.onmessage = (event) => {
       let value: unknown = event.data
@@ -302,6 +304,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
         // DeepTutor may emit plain text during a stream.
       }
       const parsed: DeepTutorChatEvent = parseDeepTutorChatEvent(value)
+      if (parsed.sessionId) sessionIdRef.current = parsed.sessionId
       if (parsed.type === 'error') {
         setChatError(parsed.text || 'DeepTutor 问答失败。')
         setChatting(false)
@@ -316,7 +319,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
           return next
         })
       }
-      if (['result', 'done', 'complete'].includes(parsed.type)) setChatting(false)
+      if (parsed.type === 'done') setChatting(false)
     }
     socket.onerror = () => {
       if (socketRef.current !== socket) return

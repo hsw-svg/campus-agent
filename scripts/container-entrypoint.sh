@@ -1,4 +1,5 @@
 #!/bin/sh
+# This script must keep Unix LF line endings because it runs inside Linux.
 
 set -eu
 
@@ -77,6 +78,9 @@ if [ "$ready" -ne 1 ]; then
     echo "[entrypoint] DeepTutor did not become ready after ${attempts}s" >&2
     exit 1
 fi
+
+echo "[entrypoint] synchronizing shared model configuration with DeepTutor"
+/opt/campus-venv/bin/python -m app.integrations.deeptutor.catalog_sync
 
 echo "[entrypoint] DeepTutor is ready; applying database migrations"
 alembic upgrade head
