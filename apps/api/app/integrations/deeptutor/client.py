@@ -28,7 +28,7 @@ class DeepTutorClient:
 
     book_prefix = "/api/v1/book"
     knowledge_prefix = "/api/v1/knowledge"
-    chat_path = "/api/v1/chat"
+    chat_path = "/api/v1/ws"
 
     def __init__(
         self,
@@ -138,8 +138,53 @@ class DeepTutorClient:
         *,
         compile_page: bool = False,
     ) -> Any:
-        path = f"{self.book_prefix}/compile-page" if compile_page else f"{self.book_prefix}/books"
-        return await self._request("POST", path, payload=payload)
+        if compile_page:
+            return await self._request(
+                "POST",
+                f"{self.book_prefix}/compile-page",
+                payload=payload,
+            )
+
+        created = await self._request(
+            "POST",
+            f"{self.book_prefix}/books",
+            payload=payload,
+        )
+        book = created.get("book") if isinstance(created, Mapping) else None
+        book_id = book.get("id") if isinstance(book, Mapping) else None
+        if not isinstance(book_id, str) or not book_id:
+            raise DeepTutorError(
+                "deeptutor_invalid_response",
+                "DeepTutor did not return a book identifier.",
+                details={"path": f"{self.book_prefix}/books"},
+            )
+
+        proposal_result = await self._request(
+            "POST",
+            f"{self.book_prefix}/books/confirm-proposal",
+            payload={"book_id": book_id},
+        )
+        spine = proposal_result.get("spine") if isinstance(proposal_result, Mapping) else None
+        if not isinstance(spine, Mapping):
+            raise DeepTutorError(
+                "deeptutor_invalid_response",
+                "DeepTutor did not return a book spine.",
+                details={"path": f"{self.book_prefix}/books/confirm-proposal"},
+            )
+
+        pages_result = await self._request(
+            "POST",
+            f"{self.book_prefix}/books/confirm-spine",
+            payload={"book_id": book_id, "auto_compile": True},
+        )
+        return {
+            "book": proposal_result.get("book", book),
+            "proposal": created.get("proposal"),
+            "spine": spine,
+            "pages": pages_result.get("pages", [])
+            if isinstance(pages_result, Mapping)
+            else [],
+        }
 
     async def list_knowledge_bases(self) -> Any:
         return await self._request("GET", f"{self.knowledge_prefix}/list")
