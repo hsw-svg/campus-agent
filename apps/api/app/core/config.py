@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     embedding_model: str = ""
     embedding_dimensions: int = 1024
 
+    deeptutor_enabled: bool = False
+    deeptutor_base_url: str = "http://127.0.0.1:8001"
+    deeptutor_http_timeout_seconds: float = 20.0
+    deeptutor_health_timeout_seconds: float = 2.0
+
     bing_search_api_key: str | None = None
     bing_search_endpoint: str = "https://api.bing.microsoft.com/v7.0/search"
 

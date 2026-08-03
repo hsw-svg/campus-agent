@@ -12,12 +12,14 @@ from app.api.agent_runs import router as agent_runs_router
 from app.api.artifacts import router as artifacts_router
 from app.api.courses import router as courses_router
 from app.api.campus_news import router as campus_news_router
+from app.api.deeptutor import router as deeptutor_router
 from app.api.resume_assistant import router as resume_assistant_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
 from app.db.session import create_database_engine, create_session_factory, make_database_probe
 from app.integrations.embedding.providers import OpenAICompatibleEmbeddingProvider
+from app.integrations.deeptutor import DeepTutorClient
 from app.integrations.llm.providers import OpenAICompatibleChatProvider
 from app.integrations.storage.local import LocalObjectStorage
 from app.attachments.models import Attachment, MaterialChunk  # noqa: F401
@@ -55,6 +57,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.embedding_api_key,
         settings.embedding_model,
     )
+    app.state.deeptutor_client = DeepTutorClient(
+        settings.deeptutor_base_url,
+        enabled=settings.deeptutor_enabled,
+        timeout_seconds=settings.deeptutor_http_timeout_seconds,
+        health_timeout_seconds=settings.deeptutor_health_timeout_seconds,
+    )
     app.state.intent_candidate_retriever = SemanticIntentRetriever(
         app.state.embedding_provider
     )
@@ -82,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(artifacts_router)
     app.include_router(courses_router)
     app.include_router(campus_news_router)
+    app.include_router(deeptutor_router)
     app.include_router(resume_assistant_router)
     return app
 

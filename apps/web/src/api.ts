@@ -257,6 +257,129 @@ export interface CampusNewsResponse {
   items: CampusNewsItem[]
 }
 
+export interface DeepTutorBook {
+  id: string
+  title: string
+  description: string
+  raw: Record<string, unknown>
+}
+
+export interface DeepTutorSpineItem {
+  id: string
+  title: string
+  position: number
+  raw: Record<string, unknown>
+}
+
+export interface DeepTutorPage {
+  id: string
+  title: string
+  content: string
+  raw: Record<string, unknown>
+}
+
+export interface DeepTutorKnowledgeBase {
+  name: string
+  description: string
+  raw: Record<string, unknown>
+}
+
+export interface DeepTutorChatEvent {
+  type: string
+  text: string
+  raw: Record<string, unknown>
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function firstString(record: Record<string, unknown>, keys: string[], fallback: string): string {
+  for (const key of keys) {
+    if (typeof record[key] === 'string' && record[key].trim()) return record[key].trim()
+  }
+  return fallback
+}
+
+function responseRecords(value: unknown, keys: string[]): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.filter(isRecord)
+  if (!isRecord(value)) return []
+  for (const key of keys) {
+    if (Array.isArray(value[key])) return value[key].filter(isRecord)
+  }
+  if (isRecord(value.data)) return responseRecords(value.data, keys)
+  return []
+}
+
+export function deepTutorBooksFromResponse(value: unknown): DeepTutorBook[] {
+  return responseRecords(value, ['books', 'items', 'data']).flatMap((raw) => {
+    const id = firstString(raw, ['id', 'book_id'], '')
+    return id ? [{
+      id,
+      title: firstString(raw, ['title', 'name'], '未命名交互教材'),
+      description: firstString(raw, ['description', 'summary'], 'DeepTutor 交互式教材'),
+      raw,
+    }] : []
+  })
+}
+
+export function deepTutorSpineFromResponse(value: unknown): DeepTutorSpineItem[] {
+  return responseRecords(value, ['spine', 'items', 'pages', 'chapters', 'data']).flatMap((raw, index) => {
+    const id = firstString(raw, ['id', 'page_id', 'chapter_id'], '')
+    return id ? [{
+      id,
+      title: firstString(raw, ['title', 'name'], `第 ${index + 1} 节`),
+      position: typeof raw.position === 'number' ? raw.position : index,
+      raw,
+    }] : []
+  })
+}
+
+export function deepTutorPageFromResponse(value: unknown): DeepTutorPage | null {
+  if (!isRecord(value)) return null
+  const raw = isRecord(value.data) && !Array.isArray(value.data) ? value.data : value
+  const id = firstString(raw, ['id', 'page_id'], '')
+  if (!id) return null
+  const content = firstString(raw, ['content', 'markdown', 'body', 'text'], '本页暂无可显示内容。')
+  return {
+    id,
+    title: firstString(raw, ['title', 'name'], '交互教材页面'),
+    content,
+    raw,
+  }
+}
+
+export function deepTutorKnowledgeBasesFromResponse(value: unknown): DeepTutorKnowledgeBase[] {
+  return responseRecords(value, ['knowledge_bases', 'knowledgeBases', 'items', 'data']).flatMap((raw) => {
+    const name = firstString(raw, ['name', 'kb_name', 'id'], '')
+    return name ? [{
+      name,
+      description: firstString(raw, ['description', 'summary'], '可用于 DeepTutor 检索的知识库'),
+      raw,
+    }] : []
+  })
+}
+
+function nestedText(value: unknown, depth = 0): string {
+  if (typeof value === 'string') return value
+  if (!isRecord(value) || depth > 2) return ''
+  for (const key of ['text', 'content', 'delta', 'answer', 'message', 'result']) {
+    const text = nestedText(value[key], depth + 1)
+    if (text) return text
+  }
+  return ''
+}
+
+export function parseDeepTutorChatEvent(value: unknown): DeepTutorChatEvent {
+  if (typeof value === 'string') return { type: 'stream', text: value, raw: {} }
+  if (!isRecord(value)) return { type: 'stream', text: '', raw: {} }
+  return {
+    type: firstString(value, ['type', 'event', 'kind'], 'stream'),
+    text: nestedText(value),
+    raw: value,
+  }
+}
+
 export function sourceCitationsFromEvent(event: StreamEvent): SourceCitation[] {
   if (event.type !== 'artifact' || event.data.type !== 'sources' || !Array.isArray(event.data.sources)) {
     return []
@@ -371,6 +494,42 @@ export function updateCourse(token: string, courseId: string, name: string, desc
 
 export function deleteCourse(token: string, courseId: string): Promise<void> {
   return request<void>(`/courses/${courseId}`, { method: 'DELETE' }, token)
+}
+
+export function listDeepTutorBooks(token: string): Promise<unknown> {
+  return request<unknown>('/deeptutor/books', undefined, token)
+}
+
+export function getDeepTutorSpine(token: string, bookId: string): Promise<unknown> {
+  return request<unknown>(`/deeptutor/books/${encodeURIComponent(bookId)}/spine`, undefined, token)
+}
+
+export function getDeepTutorPage(token: string, bookId: string, pageId: string): Promise<unknown> {
+  return request<unknown>(
+    `/deeptutor/books/${encodeURIComponent(bookId)}/pages/${encodeURIComponent(pageId)}`,
+    undefined,
+    token,
+  )
+}
+
+export function listDeepTutorKnowledgeBases(token: string): Promise<unknown> {
+  return request<unknown>('/deeptutor/knowledge-bases', undefined, token)
+}
+
+export function createDeepTutorBook(
+  token: string,
+  payload: Record<string, unknown>,
+): Promise<unknown> {
+  return request<unknown>('/deeptutor/books', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }, token)
+}
+
+export function getDeepTutorChatWebSocketUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/api/deeptutor/chat`
 }
 
 export function createConversation(token: string, courseId?: string | null, chapterId?: string | null): Promise<Conversation> {

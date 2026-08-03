@@ -16,20 +16,37 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
-  api:
+  app:
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
+      args:
+        DEEPTUTOR_VERSION: ${DEEPTUTOR_VERSION:-1.5.8}
     environment:
       DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+psycopg://campus_agent:campus_agent@db:5432/campus_agent}
       LOCAL_STORAGE_ROOT: ${LOCAL_STORAGE_ROOT:-/data/storage}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
       CHAT_BASE_URL: ${CHAT_BASE_URL:-}
       CHAT_API_KEY: ${CHAT_API_KEY:-}
       CHAT_MODEL: ${CHAT_MODEL:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      DEEPTUTOR_ENABLED: ${DEEPTUTOR_ENABLED:-true}
+      DEEPTUTOR_BASE_URL: ${DEEPTUTOR_BASE_URL:-http://127.0.0.1:8001}
+      DEEPTUTOR_HOME: /app/runtime/deeptutor-data
+      DEEPTUTOR_EMBEDDING_HOST: ${DEEPTUTOR_EMBEDDING_HOST:-}
+      DEEPTUTOR_EMBEDDING_MODEL: ${DEEPTUTOR_EMBEDDING_MODEL:-}
+      DEEPTUTOR_EMBEDDING_DIMENSION: ${DEEPTUTOR_EMBEDDING_DIMENSION:-}
+      LLM_BINDING: ${LLM_BINDING:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_HOST: ${LLM_HOST:-}
+      LLM_API_VERSION: ${LLM_API_VERSION:-}
+      EMBEDDING_BINDING: ${EMBEDDING_BINDING:-}
+      EMBEDDING_HOST: ${EMBEDDING_HOST:-}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-}
       CAMPUS_NEWS_SOURCES_JSON: ${CAMPUS_NEWS_SOURCES_JSON:-}
       CAMPUS_NEWS_REFRESH_SECONDS: ${CAMPUS_NEWS_REFRESH_SECONDS:-1800}
       CAMPUS_NEWS_MAX_STALE_SECONDS: ${CAMPUS_NEWS_MAX_STALE_SECONDS:-604800}
@@ -38,19 +55,11 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "8080:80"
     volumes:
       - ./storage:/data/storage
-      - ./apps/api/app:/app/app:ro
-
-  web:
-    build:
-      context: .
-      dockerfile: infra/docker/web.Dockerfile
-    depends_on:
-      - api
-    ports:
-      - "8080:80"
+      - deeptutor_data:/app/runtime/deeptutor-data
 
 volumes:
   postgres_data:
+  deeptutor_data:
