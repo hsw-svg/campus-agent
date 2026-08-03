@@ -22,6 +22,13 @@ from app.integrations.llm.providers import ChatProvider
 from app.integrations.search.bing import BingSearchProvider, SearchResult
 from app.skills.slide_deck_json import SlideDeckJsonSkill
 from app.skills.slide_deck_markdown import SlideDeckMarkdownSkill
+from app.skills.pptx_templates.catalog import (
+    DEFAULT_TEMPLATE_ID,
+    find_explicit_template_id,
+    is_known_template_id,
+    prompt_template_catalog,
+    template_metadata,
+)
 
 SLIDE_DECK_KEYWORDS: tuple[str, ...] = (
     "课件",
@@ -38,6 +45,7 @@ _SLIDE_DECK_SYSTEM = (
     "严格输出符合下面 JSON schema 的对象（不能输出任何 Markdown 或解释）：\n"
     "{\n"
     '  "topic": str, "audience": str, "objective": str, "duration_minutes": int,\n'
+    '  "template_id": "ai_tech|business_plan",\n'
     '  "context_signals": {"learning_analysis": str, "weak_points": [str],'
     ' "classroom_summary": str, "grading": str, "job_skill_focus": [str],'
     ' "industry_updates": [{"title": str, "url": str, "snippet": str}]},\n'
@@ -49,6 +57,8 @@ _SLIDE_DECK_SYSTEM = (
     ' "autoplay": bool, "loop": bool, "muted": bool, "start_ms": int, "end_ms": int}]},\n'
     '  "sources": [{"title": str, "url": str, "snippet": str}]\n'
     "}\n"
+    "template_id 只能从上下文提供的 template_catalog 中选择；"
+    "如果 forced_template_id 非空，必须原样返回该值；"
     "layout 仅可取 title/bullets/two_column/callout/summary；"
     "当知识点更适合动态演示、情境播放、过程讲解时，可在 media 中增加 0~2 个素材建议，"
     "优先使用可直接打开的公开视频链接、动图或示意图，并说明其插入位置；"
@@ -86,6 +96,9 @@ class CourseIterationExecutor:
         topic = _infer_topic(request.content)
         course_signals = _collect_course_signals(request.context)
         previous_deck = self._load_previous_deck(request)
+        explicit_template_id = find_explicit_template_id(request.content)
+        previous_template_id = _previous_template_id(previous_deck)
+        forced_template_id = explicit_template_id or previous_template_id
 
         warnings: list[str] = []
         industry_result, job_result = await self._run_bing_searches(topic)
@@ -101,6 +114,8 @@ class CourseIterationExecutor:
             "industry_updates": [_search_item_to_dict(item) for item in industry_result.items],
             "job_skill_hits": [_search_item_to_dict(item) for item in job_result.items],
             "previous_deck": previous_deck,
+            "template_catalog": prompt_template_catalog(),
+            "forced_template_id": forced_template_id,
         }
         base_messages: list[dict[str, str]] = [
             {"role": "system", "content": _SLIDE_DECK_SYSTEM},
@@ -140,6 +155,20 @@ class CourseIterationExecutor:
                 )
             )
             data = self._json_skill.run(_extract_json(raw))
+
+        if explicit_template_id:
+            selected_template_id = explicit_template_id
+            selection_source = "explicit"
+        elif previous_template_id:
+            selected_template_id = previous_template_id
+            selection_source = "previous"
+        elif is_known_template_id(data.get("template_id")):
+            selected_template_id = str(data["template_id"])
+            selection_source = "llm"
+        else:
+            selected_template_id = DEFAULT_TEMPLATE_ID
+            selection_source = "fallback"
+        data.update(template_metadata(selected_template_id, selection_source))
 
         # Enrich the sanitised structure with anything the model did not carry over.
         signals = data.setdefault("context_signals", {})
@@ -270,6 +299,16 @@ def _summarise_artifact(artifact: ContextArtifact) -> str:
 
 def _search_item_to_dict(item) -> dict[str, str]:
     return {"title": item.title, "url": item.url, "snippet": item.snippet}
+
+
+def _previous_template_id(previous_deck: dict[str, Any] | None) -> str | None:
+    if not previous_deck:
+        return None
+    previous_data = previous_deck.get("data")
+    if not isinstance(previous_data, dict):
+        return None
+    template_id = previous_data.get("template_id")
+    return str(template_id) if is_known_template_id(template_id) else None
 
 
 async def _collect_stream(iterator) -> str:

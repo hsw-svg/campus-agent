@@ -68,6 +68,7 @@ def _request(content: str, *, selected_artifacts=()) -> AgentRequest:
 def _valid_payload(topic: str = "Python 切片与元组", extras: dict | None = None) -> str:
     data = {
         "topic": topic,
+        "template_id": "ai_tech",
         "audience": "大二",
         "objective": "掌握切片",
         "duration_minutes": 45,
@@ -153,6 +154,8 @@ async def test_slide_deck_happy_path_with_bing_signals() -> None:
     assert not result.warnings
     # response_format was requested as json_object
     assert chat.calls[0]["response_format"] == {"type": "json_object"}
+    assert result.artifact.data["template_id"] == "ai_tech"
+    assert result.artifact.data["template_selection_source"] == "llm"
 
 
 @pytest.mark.asyncio
@@ -187,6 +190,53 @@ async def test_slide_deck_injects_previous_deck_into_prompt() -> None:
     prompt_text = chat.calls[0]["messages"][-1]["content"]
     assert "旧课件主题" in prompt_text
     assert result.artifact is not None
+
+
+@pytest.mark.asyncio
+async def test_explicit_template_name_overrides_model_choice() -> None:
+    chat = _FakeChatProvider([_valid_payload(extras={"template_id": "ai_tech"})])
+    bing = _StubBing(False, SearchResult(False, ()), SearchResult(False, ()))
+    executor = CourseIterationExecutor(chat, bing, artifact_repository_factory=lambda: None)
+
+    result = await executor.execute(_request("使用商业计划书模板生成 Python 课件"))
+
+    assert result.artifact is not None
+    assert result.artifact.data["template_id"] == "business_plan"
+    assert result.artifact.data["template_name"] == "商业计划书"
+    assert result.artifact.data["template_selection_source"] == "explicit"
+    prompt_text = chat.calls[0]["messages"][-1]["content"]
+    assert '"forced_template_id": "business_plan"' in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_follow_up_keeps_previous_template_without_explicit_switch() -> None:
+    class _PrevArtifact:
+        title = "上一版"
+        data = {"topic": "上一版", "template_id": "business_plan", "slides": []}
+
+    chat = _FakeChatProvider([_valid_payload(extras={"template_id": "ai_tech"})])
+    bing = _StubBing(False, SearchResult(False, ()), SearchResult(False, ()))
+    repo = _StubRepo(previous=_PrevArtifact())
+    executor = CourseIterationExecutor(chat, bing, artifact_repository_factory=lambda: repo)
+
+    result = await executor.execute(_request("把课件压缩到 6 页"))
+
+    assert result.artifact is not None
+    assert result.artifact.data["template_id"] == "business_plan"
+    assert result.artifact.data["template_selection_source"] == "previous"
+
+
+@pytest.mark.asyncio
+async def test_invalid_model_template_falls_back_to_ai_tech() -> None:
+    chat = _FakeChatProvider([_valid_payload(extras={"template_id": "unknown"})])
+    bing = _StubBing(False, SearchResult(False, ()), SearchResult(False, ()))
+    executor = CourseIterationExecutor(chat, bing, artifact_repository_factory=lambda: None)
+
+    result = await executor.execute(_request("生成一份课程课件"))
+
+    assert result.artifact is not None
+    assert result.artifact.data["template_id"] == "ai_tech"
+    assert result.artifact.data["template_selection_source"] == "fallback"
 
 
 @pytest.mark.asyncio

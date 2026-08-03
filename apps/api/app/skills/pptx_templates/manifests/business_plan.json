@@ -1,0 +1,74 @@
+{
+  "id": "business_plan",
+  "display_name": "商业计划书",
+  "description": "商务蓝配色，适合商业、创新创业、项目方案和经营管理课程。",
+  "file_name": "商业计划书.pptx",
+  "license_scope": "development_only",
+  "aliases": ["商业计划书", "商务蓝", "商业模板"],
+  "frames": [
+    {
+      "id": "cover",
+      "source_slide": 1,
+      "layouts": ["title"],
+      "max_items": 0,
+      "targets": [
+        {"shape_id": 15, "field": "title", "max_chars": 30},
+        {"shape_id": 3, "field": "subtitle", "max_chars": 32},
+        {"shape_id": 2, "field": "eyebrow", "max_chars": 12},
+        {"shape_id": 14, "field": "english_label", "max_chars": 36},
+        {"shape_id": 5, "action": "delete"}
+      ],
+      "keep_shape_ids": []
+    },
+    {
+      "id": "four_cards",
+      "source_slide": 19,
+      "layouts": ["bullets", "callout"],
+      "max_items": 4,
+      "targets": [
+        {"shape_id": 104, "field": "title", "max_chars": 28},
+        {"shape_id": 107, "action": "delete"},
+        {"shape_id": 2, "field": "item_1", "max_chars": 72},
+        {"shape_id": 3, "field": "item_2", "max_chars": 72},
+        {"shape_id": 6, "field": "item_3", "max_chars": 72},
+        {"shape_id": 7, "field": "item_4", "max_chars": 72},
+        {"shape_id": 8, "action": "delete"}
+      ],
+      "keep_shape_ids": [73, 74, 75, 76]
+    },
+    {
+      "id": "quadrant",
+      "source_slide": 17,
+      "layouts": ["bullets", "two_column"],
+      "max_items": 4,
+      "targets": [
+        {"shape_id": 104, "field": "title", "max_chars": 28},
+        {"shape_id": 107, "action": "delete"},
+        {"shape_id": 60, "field": "column_1_title", "max_chars": 12},
+        {"shape_id": 61, "field": "column_2_title", "max_chars": 12},
+        {"shape_id": 69, "field": "item_1_title", "max_chars": 12},
+        {"shape_id": 2, "field": "item_1_body", "max_chars": 48},
+        {"shape_id": 75, "field": "item_2_title", "max_chars": 12},
+        {"shape_id": 3, "field": "item_2_body", "max_chars": 48},
+        {"shape_id": 82, "field": "item_3_title", "max_chars": 12},
+        {"shape_id": 4, "field": "item_3_body", "max_chars": 48},
+        {"shape_id": 88, "field": "item_4_title", "max_chars": 12},
+        {"shape_id": 5, "field": "item_4_body", "max_chars": 48}
+      ],
+      "keep_shape_ids": []
+    },
+    {
+      "id": "closing",
+      "source_slide": 20,
+      "layouts": ["summary"],
+      "max_items": 4,
+      "targets": [
+        {"shape_id": 4, "field": "title", "max_chars": 16},
+        {"shape_id": 15, "field": "subtitle", "max_chars": 34},
+        {"shape_id": 6, "field": "body", "max_chars": 48},
+        {"shape_id": 5, "action": "delete"}
+      ],
+      "keep_shape_ids": []
+    }
+  ]
+}

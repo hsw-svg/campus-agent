@@ -1,0 +1,102 @@
+{
+  "id": "ai_tech",
+  "display_name": "AI科技",
+  "description": "科技蓝配色，适合人工智能、计算机、工程技术和理工科课程。",
+  "file_name": "AI科技.pptx",
+  "license_scope": "development_only",
+  "aliases": ["AI科技", "ai科技", "科技蓝"],
+  "frames": [
+    {
+      "id": "cover",
+      "source_slide": 1,
+      "layouts": ["title"],
+      "max_items": 0,
+      "targets": [
+        {"shape_id": 18, "field": "title", "max_chars": 34},
+        {"shape_id": 23, "field": "eyebrow", "max_chars": 36},
+        {"shape_id": 26, "field": "subtitle", "max_chars": 72},
+        {"shape_id": 25, "action": "delete"}
+      ],
+      "keep_shape_ids": []
+    },
+    {
+      "id": "six_grid",
+      "source_slide": 6,
+      "layouts": ["bullets"],
+      "max_items": 6,
+      "targets": [
+        {"shape_id": 14, "field": "title", "max_chars": 28},
+        {"shape_id": 27, "field": "subtitle", "max_chars": 100},
+        {"shape_id": 5, "field": "item_1_title", "max_chars": 12},
+        {"shape_id": 3, "field": "item_1_body", "max_chars": 44},
+        {"shape_id": 9, "field": "item_2_title", "max_chars": 12},
+        {"shape_id": 7, "field": "item_2_body", "max_chars": 44},
+        {"shape_id": 13, "field": "item_3_title", "max_chars": 12},
+        {"shape_id": 11, "field": "item_3_body", "max_chars": 44},
+        {"shape_id": 18, "field": "item_4_title", "max_chars": 12},
+        {"shape_id": 16, "field": "item_4_body", "max_chars": 44},
+        {"shape_id": 22, "field": "item_5_title", "max_chars": 12},
+        {"shape_id": 20, "field": "item_5_body", "max_chars": 44},
+        {"shape_id": 26, "field": "item_6_title", "max_chars": 12},
+        {"shape_id": 24, "field": "item_6_body", "max_chars": 44}
+      ],
+      "keep_shape_ids": []
+    },
+    {
+      "id": "five_steps",
+      "source_slide": 23,
+      "layouts": ["bullets"],
+      "max_items": 5,
+      "targets": [
+        {"shape_id": 14, "field": "title", "max_chars": 28},
+        {"shape_id": 18, "field": "subtitle", "max_chars": 30},
+        {"shape_id": 19, "field": "eyebrow", "max_chars": 30},
+        {"shape_id": 4, "field": "item_1", "max_chars": 42},
+        {"shape_id": 7, "field": "item_2", "max_chars": 42},
+        {"shape_id": 10, "field": "item_3", "max_chars": 42},
+        {"shape_id": 13, "field": "item_4", "max_chars": 42},
+        {"shape_id": 17, "field": "item_5", "max_chars": 42}
+      ],
+      "keep_shape_ids": [3, 6, 9, 12, 16]
+    },
+    {
+      "id": "two_column",
+      "source_slide": 18,
+      "layouts": ["two_column"],
+      "max_items": 4,
+      "targets": [
+        {"shape_id": 14, "field": "title", "max_chars": 28},
+        {"shape_id": 8, "field": "subtitle", "max_chars": 30},
+        {"shape_id": 3, "field": "column_1_title", "max_chars": 14},
+        {"shape_id": 4, "field": "column_1_body", "max_chars": 150},
+        {"shape_id": 6, "field": "column_2_title", "max_chars": 14},
+        {"shape_id": 7, "field": "column_2_body", "max_chars": 150}
+      ],
+      "keep_shape_ids": [2, 5]
+    },
+    {
+      "id": "callout",
+      "source_slide": 14,
+      "layouts": ["callout"],
+      "max_items": 1,
+      "targets": [
+        {"shape_id": 14, "field": "title", "max_chars": 28},
+        {"shape_id": 31, "field": "body", "max_chars": 96}
+      ],
+      "keep_shape_ids": []
+    },
+    {
+      "id": "closing",
+      "source_slide": 31,
+      "layouts": ["summary"],
+      "max_items": 4,
+      "targets": [
+        {"shape_id": 2, "field": "eyebrow", "max_chars": 36},
+        {"shape_id": 4, "field": "title", "max_chars": 30},
+        {"shape_id": 5, "field": "body", "max_chars": 100},
+        {"shape_id": 3, "action": "delete"}
+      ],
+      "keep_shape_ids": []
+    }
+  ]
+}

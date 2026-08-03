@@ -92,6 +92,7 @@ def _normalise(payload: dict[str, Any]) -> dict[str, Any]:
         "audience": str(payload.get("audience") or "").strip(),
         "objective": str(payload.get("objective") or "").strip(),
         "duration_minutes": _coerce_int(payload.get("duration_minutes")),
+        "template_id": str(payload.get("template_id") or "").strip(),
         "context_signals": context_signals,
         "slides": slides,
         "sources": sources,

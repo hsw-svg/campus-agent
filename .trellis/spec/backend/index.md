@@ -24,6 +24,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Campus News](./campus-news.md) | Official-source ingestion, persistent cache, degradation API, and student-home presentation contract | Active |
 | [Student Course Center](./student-course-center.md) | Default course catalog, chapters, progress, evidence-backed weak points, and student learning context | Active |
 | [Student Resume Assistant](./student-resume-assistant.md) | Current resume selection, course evidence snapshots, structured analysis Artifacts, and history isolation | Active |
+| [Slide Deck Templates](./slide-deck-templates.md) | Controlled LLM template selection, source-slide cloning, manifest-driven text filling, and PPTX export compatibility | Active |
 
 ---
 

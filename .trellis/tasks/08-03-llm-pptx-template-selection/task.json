@@ -1,7 +1,7 @@
 {
-  "id": "slide-deck-generation",
-  "name": "slide-deck-generation",
-  "title": "智能PPT生成与预览",
+  "id": "llm-pptx-template-selection",
+  "name": "llm-pptx-template-selection",
+  "title": "按课程内容匹配 PPT 模板并填充生成",
   "description": "",
   "status": "in_progress",
   "dev_type": null,
@@ -10,7 +10,7 @@
   "priority": "P2",
   "creator": "hsw",
   "assignee": "hsw",
-  "createdAt": "2026-07-26",
+  "createdAt": "2026-08-03",
   "completedAt": null,
   "branch": null,
   "base_branch": "master",
@@ -18,10 +18,8 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [
-    "08-03-llm-pptx-template-selection"
-  ],
-  "parent": null,
+  "children": [],
+  "parent": "07-26-slide-deck-generation",
   "relatedFiles": [],
   "notes": "",
   "meta": {}

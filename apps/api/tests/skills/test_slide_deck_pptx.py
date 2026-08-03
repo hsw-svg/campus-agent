@@ -3,7 +3,20 @@
 import io
 import zipfile
 
+import pytest
+from lxml import etree
+from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+from app.skills.slide_deck_json import SlideDeckJsonSkill
 from app.skills.slide_deck_pptx import SlideDeckPptxSkill
+from app.skills.pptx_templates.catalog import (
+    find_explicit_template_id,
+    get_template,
+    template_catalog,
+    validate_template_manifest,
+)
+from app.skills.pptx_templates.renderer import plan_template_slides
 
 
 SAMPLE_DECK = {
@@ -85,8 +98,9 @@ SAMPLE_DECK = {
 }
 
 
-def test_slide_deck_pptx_is_a_valid_zip_with_expected_slide_count() -> None:
-    exported = SlideDeckPptxSkill().run(SAMPLE_DECK)
+@pytest.mark.parametrize("template_id", ["ai_tech", "business_plan"])
+def test_slide_deck_pptx_is_a_valid_template_deck(template_id: str) -> None:
+    exported = SlideDeckPptxSkill().run({**SAMPLE_DECK, "template_id": template_id})
 
     assert exported.extension == "pptx"
     assert exported.media_type.endswith("presentationml.presentation")
@@ -99,5 +113,106 @@ def test_slide_deck_pptx_is_a_valid_zip_with_expected_slide_count() -> None:
             for name in archive.namelist()
             if name.startswith("ppt/slides/slide") and name.endswith(".xml")
         ]
-    # Cover slide + 5 declared slides = 6 slides total.
-    assert len(slide_files) == 6
+        assert all(not _empty_placeholder_ids(archive.read(name)) for name in slide_files)
+    # The declared title slide is the cover; the exporter must not duplicate it.
+    assert len(slide_files) == len(SAMPLE_DECK["slides"])
+
+    presentation = Presentation(io.BytesIO(exported.content))
+    assert len(presentation.slides) == len(SAMPLE_DECK["slides"])
+    assert round(presentation.slide_width / 914400, 2) == 13.33
+    assert round(presentation.slide_height / 914400, 2) == 7.5
+    text = _presentation_text(presentation)
+    assert "Python 切片与元组" in text
+    assert "第一PPT" not in text
+    assert "物联网产品" not in text
+    assert "AI basic knowledge training" not in text
+    assert "www.1ppt.com" not in text
+
+
+def test_slide_deck_without_title_gets_one_synthesised_cover() -> None:
+    data = {**SAMPLE_DECK, "slides": SAMPLE_DECK["slides"][1:]}
+
+    exported = SlideDeckPptxSkill().run(data)
+    presentation = Presentation(io.BytesIO(exported.content))
+
+    assert len(presentation.slides) == len(data["slides"]) + 1
+    assert "Python 切片与元组" in _presentation_text(presentation)
+
+
+def test_unknown_template_id_falls_back_to_ai_tech() -> None:
+    exported = SlideDeckPptxSkill().run({**SAMPLE_DECK, "template_id": "../../other"})
+    presentation = Presentation(io.BytesIO(exported.content))
+
+    assert presentation.slide_layouts[0].name == "Title Slide"
+
+
+def test_slide_deck_json_preserves_optional_template_id() -> None:
+    result = SlideDeckJsonSkill().run({**SAMPLE_DECK, "template_id": "business_plan"})
+
+    assert result["template_id"] == "business_plan"
+
+
+def test_template_catalog_and_manifests_are_valid() -> None:
+    specs = template_catalog()
+
+    assert [spec.id for spec in specs] == ["ai_tech", "business_plan"]
+    assert all(spec.license_scope == "development_only" for spec in specs)
+    assert find_explicit_template_id("请使用商业计划书模板生成课件") == "business_plan"
+    assert find_explicit_template_id("使用科技蓝模板") == "ai_tech"
+    for spec in specs:
+        validate_template_manifest(spec)
+
+
+def test_frame_planner_avoids_adjacent_repetition_when_an_alternative_fits() -> None:
+    data = {
+        **SAMPLE_DECK,
+        "slides": [
+            SAMPLE_DECK["slides"][0],
+            *[
+                {
+                    **SAMPLE_DECK["slides"][1],
+                    "index": index,
+                    "title": f"要点 {index}",
+                }
+                for index in range(2, 7)
+            ],
+        ],
+    }
+
+    planned = plan_template_slides(get_template("ai_tech"), data)
+    content_frame_ids = [item.frame.id for item in planned[1:]]
+
+    assert all(
+        left != right for left, right in zip(content_frame_ids, content_frame_ids[1:])
+    )
+
+
+def _presentation_text(presentation) -> str:
+    def iter_shapes(shapes):
+        for shape in shapes:
+            yield shape
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                yield from iter_shapes(shape.shapes)
+
+    return "\n".join(
+        shape.text
+        for slide in presentation.slides
+        for shape in iter_shapes(slide.shapes)
+        if getattr(shape, "has_text_frame", False) and shape.text.strip()
+    )
+
+
+def _empty_placeholder_ids(slide_xml: bytes) -> list[str]:
+    root = etree.fromstring(slide_xml)
+    namespaces = {
+        "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+    }
+    placeholders = root.xpath(
+        ".//p:sp[p:nvSpPr/p:nvPr/p:ph and not(.//a:t[normalize-space()])]",
+        namespaces=namespaces,
+    )
+    return [
+        str(shape.xpath("string(p:nvSpPr/p:cNvPr/@id)", namespaces=namespaces))
+        for shape in placeholders
+    ]
