@@ -50,6 +50,7 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 - 优先使用现有 React 19、TypeScript、Vite、Tailwind CSS、lucide-react 和 Motion 依赖，不引入功能重复的框架或组件库。
 - 组件使用 `.tsx`，共享 API/SSE 契约集中在 `src/api.ts`，状态逻辑优先复用 `src/hooks/useWorkspaceChat.ts`。
 - 前端本地开发端口为 `3000`；Compose 中由 Nginx 暴露为 `8080`。
+- 前端 UI 任务开始前必须阅读根目录 `DESIGN.md`；它是 AI 设计约束，不是运行时依赖。借鉴其中的层级、间距、卡片、交互状态和响应式规则，但保留“智汇校园”的品牌色、中文校园语境和现有功能边界，不直接复制其他品牌名称或 Logo。
 
 ## 本地运行与验证
 
