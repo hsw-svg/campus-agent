@@ -5,17 +5,18 @@ set -eu
 
 DEEPPID=""
 APIPID=""
+FRONTENDPID=""
 NGINXPID=""
 
 stop_children() {
     exit_code="${1:-0}"
     trap - EXIT INT TERM
-    for pid in "$DEEPPID" "$APIPID" "$NGINXPID"; do
+    for pid in "$DEEPPID" "$APIPID" "$FRONTENDPID" "$NGINXPID"; do
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null || true
         fi
     done
-    for pid in "$DEEPPID" "$APIPID" "$NGINXPID"; do
+    for pid in "$DEEPPID" "$APIPID" "$FRONTENDPID" "$NGINXPID"; do
         if [ -n "$pid" ]; then
             wait "$pid" 2>/dev/null || true
         fi
@@ -86,7 +87,11 @@ echo "[entrypoint] DeepTutor is ready; applying database migrations"
 alembic upgrade head
 
 echo "[entrypoint] starting Campus Agent API on 127.0.0.1:8000"
-uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+if [ "${CAMPUS_DEV_MODE:-false}" = "true" ]; then
+    uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir /app/app &
+else
+    uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+fi
 APIPID=$!
 
 api_ready=0
@@ -109,6 +114,34 @@ if [ "$api_ready" -ne 1 ]; then
     exit 1
 fi
 
+if [ "${CAMPUS_DEV_MODE:-false}" = "true" ]; then
+    echo "[entrypoint] starting Vite development server on 127.0.0.1:3000"
+    cd /web
+    npm run dev -- --host 127.0.0.1 --port 3000 &
+    FRONTENDPID=$!
+    cd /app
+
+    frontend_ready=0
+    attempt=1
+    while [ "$attempt" -le "$attempts" ]; do
+        if ! kill -0 "$FRONTENDPID" 2>/dev/null; then
+            echo "[entrypoint] Vite exited before becoming ready" >&2
+            exit 1
+        fi
+        if curl -fsS --max-time 2 http://127.0.0.1:3000/ >/dev/null 2>&1; then
+            frontend_ready=1
+            break
+        fi
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+
+    if [ "$frontend_ready" -ne 1 ]; then
+        echo "[entrypoint] Vite did not become ready after ${attempts}s" >&2
+        exit 1
+    fi
+fi
+
 echo "[entrypoint] starting Nginx on port 80"
 nginx -g 'daemon off;' &
 NGINXPID=$!
@@ -122,5 +155,9 @@ while :; do
             exit 1
         fi
     done
+    if [ -n "$FRONTENDPID" ] && ! kill -0 "$FRONTENDPID" 2>/dev/null; then
+        echo "[entrypoint] critical service exited: frontend" >&2
+        exit 1
+    fi
     sleep 1
 done

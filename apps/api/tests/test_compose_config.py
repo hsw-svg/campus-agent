@@ -28,3 +28,30 @@ def test_entrypoint_syncs_the_model_catalog_after_deeptutor_is_ready() -> None:
     catalog_sync = "python -m app.integrations.deeptutor.catalog_sync"
     api_start = "uvicorn app.main:app"
     assert entrypoint.index(health_probe) < entrypoint.index(catalog_sync) < entrypoint.index(api_start)
+
+
+def test_development_compose_mounts_sources_and_enables_reload() -> None:
+    compose = (REPOSITORY_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    development = (REPOSITORY_ROOT / "docker-compose.dev.yml").read_text(encoding="utf-8")
+    dockerfile = (REPOSITORY_ROOT / "infra" / "docker" / "api.Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    entrypoint = (REPOSITORY_ROOT / "scripts" / "container-entrypoint.sh").read_text(
+        encoding="utf-8"
+    )
+    nginx = (REPOSITORY_ROOT / "infra" / "docker" / "nginx.dev.conf").read_text(
+        encoding="utf-8"
+    )
+
+    assert "target: production" in compose
+    assert "target: development" in development
+    assert "./apps/api/app:/app/app:ro" in development
+    assert "./apps/web/src:/web/src:ro" in development
+    assert "./apps/web/index.html:/web/index.html:ro" in development
+    assert "./apps/web/vite.config.ts:/web/vite.config.ts:ro" in development
+    assert "./infra/docker/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro" in development
+    assert "FROM runtime AS development" in dockerfile
+    assert "FROM runtime AS production" in dockerfile
+    assert "--reload --reload-dir /app/app" in entrypoint
+    assert "npm run dev" in entrypoint
+    assert "proxy_pass http://127.0.0.1:3000" in nginx

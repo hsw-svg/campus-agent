@@ -553,7 +553,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             <GraduationCap className="w-6 h-6" />
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="font-display text-lg font-extrabold text-primary leading-tight">校园智能助手</h1>
+            <h1 className="font-display text-lg font-extrabold text-primary leading-tight">智汇校园</h1>
             <p className="text-xs text-on-surface-variant font-medium">教师工作台</p>
           </div>
           <button type="button" aria-label="折叠侧边栏" onClick={() => setSidebarCollapsed(true)} className="rounded-lg p-1.5 text-outline transition-all duration-200 hover:bg-surface-container hover:text-primary">
@@ -1042,7 +1042,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                               : 'bg-surface-container-lowest text-on-surface rounded-tl-none'
                           }`}>
                             <div className="text-xs opacity-70 mb-1 flex items-center justify-between">
-                              <span>{isUser ? '用户（您）' : '校园智能助手'}</span>
+                              <span>{isUser ? '用户（您）' : '智汇校园'}</span>
                               <span>{msg.timestamp}</span>
                             </div>
 
@@ -1171,7 +1171,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                           <Brain className="w-4 h-4" />
                         </div>
                         <div className="bg-surface-container-lowest border border-outline-variant/60 rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
-                          <span className="animate-pulse">校园智能助手正在梳理教学思路</span>
+                          <span className="animate-pulse">智汇校园正在梳理教学思路</span>
                           <span className="flex gap-0.5">
                             <span className="w-1 h-1 bg-primary rounded-full animate-bounce"></span>
                             <span className="w-1 h-1 bg-primary rounded-full animate-bounce [animation-delay:0.2s]"></span>

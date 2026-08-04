@@ -255,7 +255,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
             <BookOpen className="w-6 h-6" />
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="font-display text-lg font-extrabold text-secondary leading-tight">校园智能助手</h1>
+            <h1 className="font-display text-lg font-extrabold text-secondary leading-tight">智汇校园</h1>
             <p className="text-xs text-on-surface-variant font-medium">学生工作台</p>
           </div>
           <button type="button" aria-label="折叠侧边栏" onClick={() => setSidebarCollapsed(true)} className="rounded-lg p-1.5 text-outline transition-all duration-200 hover:bg-surface-container hover:text-secondary">

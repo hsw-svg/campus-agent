@@ -17,7 +17,7 @@ export default function RoleSelector({ onSelectRole, isLoading = false, notice }
           <div className="w-10 h-10 bg-primary flex items-center justify-center rounded-lg shadow-sm">
             <GraduationCap className="w-6 h-6 text-on-primary" />
           </div>
-          <span className="font-display text-2xl font-bold text-primary tracking-tight">校园智能助手</span>
+          <span className="font-display text-2xl font-bold text-primary tracking-tight">智汇校园</span>
         </div>
         <div className="hidden md:flex gap-4 items-center">
           <span className="text-sm text-on-surface-variant font-medium">院校级智能协作平台</span>
@@ -163,7 +163,7 @@ export default function RoleSelector({ onSelectRole, isLoading = false, notice }
             </div>
           </div>
           <div className="text-xs text-on-surface-variant flex flex-wrap items-center gap-3">
-            <span>© 2024 校园智能助手</span>
+            <span>© 2024 智汇校园</span>
             <span className="hidden md:inline font-light">基于大语言模型的学术辅助系统</span>
             <a className="hover:text-primary hover:underline underline-offset-4 font-semibold" href="#">隐私协议</a>
           </div>

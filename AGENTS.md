@@ -57,6 +57,12 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 # 完整栈
 docker compose up -d --build
 
+# 容器化开发模式：首次或依赖变化时构建一次
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+# 容器化开发模式：仅修改 apps/api/app 或 apps/web/src 时无需重建
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
 # API
 cd apps/api
 ..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -71,6 +77,25 @@ npm.cmd run dev
 - 前端验证：执行 `npm.cmd run lint` 和 `npm.cmd run build`；仓库当前未配置独立前端测试脚本。
 - 新功能和缺陷修复优先补充可执行回归；配置、脚本和文档变更至少运行直接相关的验证。
 - 涉及迁移时执行 `alembic upgrade head`，并确认集成环境中的 pgvector 可用。
+
+## 容器化开发规范
+
+- `docker-compose.yml` 是生产/演示模式：`app` 使用 `production` 镜像目标，React 以静态文件由 Nginx 托管。
+- `docker-compose.dev.yml` 是本地容器开发覆盖配置，必须通过 `docker compose -f docker-compose.yml -f docker-compose.dev.yml ...` 使用，不得把开发 target 写回生产 Compose。
+- 开发模式仍保持单一 `app` 容器：DeepTutor 监听容器内 `127.0.0.1:8001`，FastAPI 监听容器内 `127.0.0.1:8000`，Vite 监听容器内 `127.0.0.1:3000`，Nginx 对外只暴露项目端口 `8080`。
+- 开发模式的仓库相对路径挂载必须保持以下边界：
+  - `./apps/api/app:/app/app:ro`
+  - `./apps/api/alembic:/app/alembic:ro`
+  - `./apps/api/alembic.ini:/app/alembic.ini:ro`
+  - `./apps/web/src:/web/src:ro`
+  - `./apps/web/index.html:/web/index.html:ro`
+  - `./apps/web/vite.config.ts:/web/vite.config.ts:ro`
+  - `./infra/docker/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro`
+- 开发入口脚本按 DeepTutor → FastAPI → Vite → Nginx 顺序启动；DeepTutor、FastAPI、Vite 或 Nginx 任一关键进程退出时，入口脚本必须终止容器并转发停止信号。
+- `CAMPUS_DEV_MODE=true` 时 FastAPI 使用 Uvicorn `--reload --reload-dir /app/app`，前端使用 Vite HMR；仅修改上述源码路径不需要重新构建或重启容器。
+- 修改 `package.json`、npm 依赖、Dockerfile、Python 依赖或镜像运行时后，必须重新执行开发模式的 `up -d --build`；不要把主机 Windows `node_modules` 挂载进 Linux 容器。
+- 开发模式验证至少执行 `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`、后端 Compose 配置测试、`npm.cmd run lint`、`npm.cmd run build`，并确认 `docker compose ... ps` 中 `app` 为 `healthy`。
+- 不得为开发热更新发布 `8001` 或让浏览器直接访问 DeepTutor；浏览器请求仍必须经过 Nginx → FastAPI → `127.0.0.1:8001`。
 
 ## 版本控制与安全
 

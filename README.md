@@ -30,6 +30,15 @@ docker compose down
 
 Compose production mode runs one `app` container containing the React static build, Nginx, the FastAPI backend, and DeepTutor. The browser uses `http://localhost:8080`; FastAPI reaches DeepTutor at `127.0.0.1:8001` inside the container, and port 8001 is not published. `GET /api/health` reports database, model, and (when enabled) DeepTutor component status. `start.cmd` remains the lightweight two-process local React/API development launcher.
 
+For containerized development, build the development target once and mount the frontend and backend source trees with relative paths:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+Invoke-RestMethod http://localhost:8080/api/health
+```
+
+After the initial build, edits under `apps/web/src` (plus `index.html` and `vite.config.ts`) are applied by Vite HMR, while edits under `apps/api/app` trigger Uvicorn reload; code-only changes do not require rebuilding or restarting the container. Nginx remains the only browser-facing service on port `8080`, while DeepTutor stays private on `127.0.0.1:8001`. Rebuild the development image after dependency, Dockerfile, or package manifest changes. Stop this mode with `docker compose -f docker-compose.yml -f docker-compose.dev.yml down`.
+
 ### DeepTutor 演示部署
 
 DeepTutor is pinned to `1.5.8` and installed in `/opt/deeptutor-venv`, separate from the API environment. Its books, knowledge bases, and sessions are stored under `/app/runtime/deeptutor-data` and persisted by the `deeptutor_data` Compose volume. The entrypoint waits for the DeepTutor book health endpoint before starting FastAPI, then serves the React build through Nginx.

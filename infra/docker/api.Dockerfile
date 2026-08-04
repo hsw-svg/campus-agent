@@ -1,12 +1,15 @@
-FROM node:24-alpine AS frontend-build
+FROM node:24-bookworm-slim AS frontend-deps
 
 WORKDIR /web
 COPY apps/web/package.json ./package.json
 RUN npm install
 COPY apps/web ./
+
+FROM frontend-deps AS frontend-build
+
 RUN npm run build
 
-FROM python:3.13-slim
+FROM python:3.13-slim AS runtime
 
 ARG DEEPTUTOR_VERSION=1.5.8
 
@@ -53,7 +56,6 @@ COPY apps/api/alembic ./alembic
 COPY apps/api/alembic.ini ./alembic.ini
 COPY infra/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY scripts/container-entrypoint.sh /usr/local/bin/container-entrypoint.sh
-COPY --from=frontend-build /web/dist /usr/share/nginx/html
 
 RUN chmod +x /usr/local/bin/container-entrypoint.sh \
     && mkdir -p /app/runtime/deeptutor-data /data/storage
@@ -65,3 +67,14 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
     && curl -fsS http://127.0.0.1:8001/api/v1/book/health >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/container-entrypoint.sh"]
+
+FROM runtime AS development
+
+COPY --from=frontend-deps /usr/local /usr/local
+COPY --from=frontend-deps /web /web
+
+ENV CAMPUS_DEV_MODE=true
+
+FROM runtime AS production
+
+COPY --from=frontend-build /web/dist /usr/share/nginx/html
