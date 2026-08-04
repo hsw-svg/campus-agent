@@ -60,6 +60,12 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+/* The composer keeps a stable container border instead of changing when typing starts. */
+.chat-input:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

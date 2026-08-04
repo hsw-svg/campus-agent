@@ -351,7 +351,7 @@ function statusLabel(status: string): string {
 function artifactLabel(type: string): string {
   switch (type) {
     case 'learning_analysis': return '学情分析报告'
-    case 'classroom_activity_package': return '课堂活动包'
+    case 'classroom_activity_package': return '课堂互动'
     case 'classroom_observation': return '课堂观察'
     case 'classroom_summary': return '课后总结'
     case 'lesson_design': return '教案与题目'

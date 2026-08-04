@@ -1,5 +1,7 @@
 import type { WorkspaceRole } from './types'
 
+export const TEACHER_STANDALONE_AGENT_WORKFLOW_ID = 'teacher-standalone-agent'
+
 export interface Workspace {
   id: string
   role: WorkspaceRole

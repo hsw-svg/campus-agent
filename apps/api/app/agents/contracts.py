@@ -66,6 +66,7 @@ class AgentRequest:
     selected_artifact_ids: tuple[UUID, ...] = ()
     course_id: str | None = None
     workflow_id: str | None = None
+    allow_empty_materials: bool = False
     parent_run_id: UUID | None = None
     input_refs: tuple[str, ...] = ()
     context: AgentContext = field(default_factory=AgentContext)

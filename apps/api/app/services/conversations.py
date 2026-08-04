@@ -9,6 +9,7 @@ from app.agents.specs import AgentSpec, get_agent_spec
 from app.agents.models import AgentRun
 from app.agents.repositories import AgentRunRepository
 from app.agents.router import AgentRouter, RouteDecision
+from app.agents.workflows import allows_empty_teacher_materials
 from app.artifacts.repositories import ArtifactRepository
 from app.attachments.repositories import AttachmentRepository, Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
@@ -156,6 +157,13 @@ async def stream_assistant_reply(
             status_code=400,
         )
 
+    allow_empty_materials = allows_empty_teacher_materials(
+        role=role,
+        agent_id=resolved_agent or "generic_chat",
+        workflow_id=workflow_id,
+        conversation_course_id=conversation.course_id,
+    )
+
     user_message = existing_user_message or messages.add(
         workspace_id=workspace_id,
         conversation_id=conversation.id,
@@ -300,6 +308,7 @@ async def stream_assistant_reply(
                 content=user_content,
                 selected_attachment_ids=selected_attachment_ids,
                 selected_artifact_ids=selected_artifact_ids or (),
+                workflow_id=workflow_id,
             )
             if run is not None and agent_runs is not None:
                 agent_runs.update(
@@ -327,6 +336,7 @@ async def stream_assistant_reply(
                 selected_artifact_ids=tuple(selected_artifact_ids or ()),
                 course_id=course_id,
                 workflow_id=workflow_id,
+                allow_empty_materials=allow_empty_materials,
                 parent_run_id=parent_run_id,
                 input_refs=tuple(input_refs or ()),
                 context=context,

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from app.agents.contracts import AgentContext, ContextArtifact, ContextSource
 from app.agents.specs import AgentSpec, get_agent_spec
+from app.agents.workflows import allows_empty_teacher_materials
 from app.artifacts.repositories import ArtifactRepository
 from app.attachments.models import Attachment
 from app.attachments.repositories import AttachmentRepository, Retriever
@@ -44,6 +45,7 @@ class ContextBuilder:
         content: str,
         selected_attachment_ids: Sequence[UUID] | None = None,
         selected_artifact_ids: Sequence[UUID] = (),
+        workflow_id: str | None = None,
     ) -> tuple[AgentContext, tuple[UUID, ...]]:
         spec = get_agent_spec(role, agent_id) or AgentSpec(
             id=agent_id,
@@ -68,7 +70,13 @@ class ContextBuilder:
             # course notes and slides remain available to the other agents.
             selected = [attachment for attachment in selected if _is_learning_table(attachment)]
         selected_ids = tuple(attachment.id for attachment in selected)
-        if spec.context_policy.requires_explicit_attachments and not selected:
+        allows_empty_materials = allows_empty_teacher_materials(
+            role=role,
+            agent_id=agent_id,
+            workflow_id=workflow_id,
+            conversation_course_id=conversation.course_id,
+        )
+        if spec.context_policy.requires_explicit_attachments and not selected and not allows_empty_materials:
             raise AppError(
                 code="agent_input_incomplete",
                 message="请选择目标智能体需要的资料。",

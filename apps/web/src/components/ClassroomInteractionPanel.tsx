@@ -59,7 +59,7 @@ export default function ClassroomInteractionPanel({
   )
   const workflowSteps = [
     { id: 'learning', label: '学情研判', detail: '识别班级薄弱点', done: hasLearningAnalysis },
-    { id: 'activity', label: '课堂活动包', detail: '设计本节课互动', done: hasActivityPackage },
+    { id: 'activity', label: '课堂互动', detail: '设计本节课互动', done: hasActivityPackage },
     { id: 'observation', label: '课堂观察', detail: '记录课堂反馈', done: hasObservation },
     { id: 'summary', label: '课后总结', detail: '沉淀教学调整', done: artifacts.some((artifact) => artifact.type === 'classroom_summary') },
   ]
@@ -90,7 +90,6 @@ export default function ClassroomInteractionPanel({
           <div className="min-w-0">
             <p className="text-[10px] font-extrabold uppercase tracking-wider text-primary">当前课程</p>
             <h3 className="mt-0.5 truncate text-sm font-black text-on-surface">{courseContext.courseName}</h3>
-            <p className="mt-0.5 text-[10px] font-semibold text-on-surface-variant">{courseContext.workflowName}</p>
           </div>
         </div>
         <div className="mt-3 space-y-1.5">
@@ -229,7 +228,7 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 function artifactTypeLabel(type: string): string {
   switch (type) {
     case 'classroom_activity_package':
-      return '课堂活动包'
+      return '课堂互动'
     case 'classroom_observation':
       return '课堂观察'
     case 'classroom_summary':

@@ -21,6 +21,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
 | [Attachment Upload](./attachment-upload.md) | Course/workspace upload API, validation, isolation, and frontend concurrency contract | Active |
 | [Agent Intent Routing](./agent-intent-routing.md) | Semantic candidate retrieval, Intent LLM selection, and non-blocking fallback contract | Active |
+| [Teacher Standalone Agents](./teacher-standalone-agents.md) | Trusted no-course workflow guard, empty-material exceptions, and metadata compatibility | Active |
 | [Campus News](./campus-news.md) | Official-source ingestion, persistent cache, degradation API, and student-home presentation contract | Active |
 | [Student Course Center](./student-course-center.md) | Default course catalog, chapters, progress, evidence-backed weak points, and student learning context | Active |
 | [Student Resume Assistant](./student-resume-assistant.md) | Current resume selection, course evidence snapshots, structured analysis Artifacts, and history isolation | Active |

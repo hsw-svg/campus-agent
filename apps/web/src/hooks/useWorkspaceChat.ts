@@ -39,6 +39,29 @@ export interface RouteState {
   runId: string | null
 }
 
+export interface PreparedTaskRequest {
+  content: string
+  agentId: string
+  files: File[]
+  courseContext: CourseContext
+  onStarted?: () => void
+}
+
+interface RunMessageOptions {
+  rawContent: string
+  requestedAgentId: string | null
+  initialConversationId: string | null
+  initialAttachmentIds: string[]
+  artifactIds: string[]
+  requestCourseContext?: CourseContext
+  createCourseId?: string | null
+  createChapterId?: string | null
+  parentRunId?: string | null
+  stagedFiles?: File[]
+  rollbackCreatedConversationOnFailure?: boolean
+  onStarted?: () => void
+}
+
 function displayTime(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.valueOf())
@@ -291,37 +314,71 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     })
   }, [attachments, courseContext?.courseId, courseContext?.workflowId])
 
-  const sendMessage = useCallback(async (rawContent: string, requestedAgentId: string | null = null) => {
+  const runMessage = useCallback(async ({
+    rawContent,
+    requestedAgentId,
+    initialConversationId,
+    initialAttachmentIds,
+    artifactIds,
+    requestCourseContext,
+    createCourseId,
+    createChapterId,
+    parentRunId,
+    stagedFiles = [],
+    rollbackCreatedConversationOnFailure = false,
+    onStarted,
+  }: RunMessageOptions): Promise<boolean> => {
     const content = rawContent.trim()
-    const requestAttachmentIds = courseContext?.courseId
-      ? attachments.map((attachment) => attachment.id)
-      : selectedAttachmentIds
+    let requestAttachmentIds = [...initialAttachmentIds]
     const requestSignature = [
       content,
-      courseContext?.courseId ?? '',
-      courseContext?.chapterId ?? '',
-      courseContext?.workflowId ?? '',
+      requestCourseContext?.courseId ?? '',
+      requestCourseContext?.chapterId ?? '',
+      requestCourseContext?.workflowId ?? '',
       requestedAgentId ?? '',
       ...requestAttachmentIds.slice().sort(),
-      ...selectedArtifactIds.slice().sort(),
+      ...artifactIds.slice().sort(),
+      ...stagedFiles.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
     ].join('|')
-    if (!token || !content || isAiTyping || activeRequestSignatureRef.current === requestSignature) return
+    if (!token || !content || isAiTyping || activeRequestSignatureRef.current === requestSignature) return false
     activeRequestSignatureRef.current = requestSignature
     lastPromptRef.current = content
     setError(null)
     setRunStatus('running')
     setToolStatus('正在连接智能体')
     setCitations([])
-    let conversationId = activeConversationId
+    let conversationId = initialConversationId
+    let createdConversationId: string | null = null
+    let executionStarted = false
     try {
       if (!conversationId) {
-        const created = await createConversation(token, courseContext?.courseId, courseContext?.chapterId)
+        const created = await createConversation(token, createCourseId, createChapterId)
         conversationId = created.id
+        createdConversationId = created.id
         setConversations((current) => [created, ...current])
         setActiveConversationId(conversationId)
         setConversationAttachments([])
         setArtifacts([])
       }
+
+      if (stagedFiles.length > 0) {
+        setToolStatus(`正在上传资料（0/${stagedFiles.length}）`)
+        const uploaded: Attachment[] = []
+        for (const [index, file] of stagedFiles.entries()) {
+          const attachment = await uploadAttachment(token, conversationId, file, 'conversation')
+          if (attachment.status === 'failed') {
+            throw new Error(attachment.status_message || `“${file.name}”上传后解析失败。`)
+          }
+          uploaded.push(attachment)
+          setToolStatus(`正在上传资料（${index + 1}/${stagedFiles.length}）`)
+        }
+        requestAttachmentIds = uploaded.map((attachment) => attachment.id)
+        setConversationAttachments(uploaded)
+        setSelectedAttachmentIds(requestAttachmentIds)
+      }
+
+      executionStarted = true
+      onStarted?.()
 
       const userMessage: Message = {
         id: `draft-user-${Date.now()}`,
@@ -348,12 +405,12 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         content,
         agentId: requestedAgentId,
         selectedAttachmentIds: requestAttachmentIds,
-        selectedArtifactIds,
-        courseContext,
-        parentRunId: route?.runId ?? null,
+        selectedArtifactIds: artifactIds,
+        courseContext: requestCourseContext,
+        parentRunId,
         inputRefs: [
           ...requestAttachmentIds.map((id) => `attachment:${id}`),
-          ...selectedArtifactIds.map((id) => `artifact:${id}`),
+          ...artifactIds.map((id) => `artifact:${id}`),
         ],
         signal: controller.signal,
       })) {
@@ -376,7 +433,19 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         setChatMessages(history.map(toUiMessage))
         await refreshConversations()
       }
+      return true
     } catch (reason) {
+      if (!executionStarted && rollbackCreatedConversationOnFailure && createdConversationId) {
+        try {
+          await deleteConversation(token, createdConversationId)
+        } catch {
+          await refreshConversations()
+        }
+        setConversations((current) => current.filter((item) => item.id !== createdConversationId))
+        setActiveConversationId(null)
+        setConversationAttachments([])
+        setSelectedAttachmentIds([])
+      }
       if (reason instanceof DOMException && reason.name === 'AbortError') {
         setRunStatus('stopped')
         setToolStatus('已停止，已保留当前内容')
@@ -385,6 +454,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         setRunStatus(needsInput ? 'needs_input' : 'failed')
         setError(reason instanceof Error ? reason.message : '生成回复时出错。')
       }
+      return false
     } finally {
       setIsAiTyping(false)
       abortRef.current = null
@@ -463,7 +533,39 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
         }
       }
     }
-  }, [activeConversationId, attachments, courseContext, isAiTyping, refreshAgentHistory, refreshConversations, refreshResources, refreshWorkspaceAttachments, route?.runId, selectedArtifactIds, selectedAttachmentIds, token])
+  }, [isAiTyping, refreshAgentHistory, refreshConversations, refreshResources, refreshWorkspaceAttachments, token])
+
+  const sendMessage = useCallback(async (rawContent: string, requestedAgentId: string | null = null) => {
+    const requestAttachmentIds = courseContext?.courseId
+      ? attachments.map((attachment) => attachment.id)
+      : selectedAttachmentIds
+    return runMessage({
+      rawContent,
+      requestedAgentId,
+      initialConversationId: activeConversationId,
+      initialAttachmentIds: requestAttachmentIds,
+      artifactIds: selectedArtifactIds,
+      requestCourseContext: courseContext,
+      createCourseId: courseContext?.courseId,
+      createChapterId: courseContext?.chapterId,
+      parentRunId: route?.runId ?? null,
+    })
+  }, [activeConversationId, attachments, courseContext, route?.runId, runMessage, selectedArtifactIds, selectedAttachmentIds])
+
+  const startPreparedTask = useCallback(async (request: PreparedTaskRequest) => runMessage({
+    rawContent: request.content,
+    requestedAgentId: request.agentId,
+    initialConversationId: null,
+    initialAttachmentIds: [],
+    artifactIds: [],
+    requestCourseContext: request.courseContext,
+    createCourseId: null,
+    createChapterId: null,
+    parentRunId: null,
+    stagedFiles: request.files,
+    rollbackCreatedConversationOnFailure: true,
+    onStarted: request.onStarted,
+  }), [runMessage])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {
@@ -569,6 +671,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     setIsAiTyping,
     clearChat,
     sendMessage,
+    startPreparedTask,
     retryLastMessage,
     stopStreaming,
     uploadFile,

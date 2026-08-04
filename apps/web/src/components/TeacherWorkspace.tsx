@@ -2,13 +2,11 @@ import { useState, useEffect, useMemo, useRef, type FormEvent } from 'react';
 import { 
   GraduationCap,
   MessageSquarePlus,
-  History,
   FolderOpen,
   MoreVertical,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
-  Search, 
   Activity, 
   Bell, 
   UserRoundCheck, 
@@ -32,17 +30,19 @@ import {
   Brain, 
   HelpCircle,
   Copy,
+  X,
   ChevronRight,
   ChevronDown
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { createCourse, deleteCourse, exportArtifact, listCourses, updateCourse, type AgentHistoryItem, type Artifact, type Attachment, type Course, type CourseContext } from '../api';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+import { TEACHER_STANDALONE_AGENT_WORKFLOW_ID, createCourse, deleteCourse, exportArtifact, listCourses, updateCourse, type AgentHistoryItem, type Artifact, type Attachment, type Course, type CourseContext } from '../api';
 import { Role, Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import ConversationHistory from './ConversationHistory';
 import TeacherAgentHistoryPanel from './TeacherAgentHistoryPanel';
 import Markdown from './Markdown';
 import SlideDeckPreview from './SlideDeckPreview';
+import TeacherAgentPreparationPanel, { TEACHER_AGENT_DEFINITIONS, type StandaloneTeacherAgentId } from './TeacherAgentPreparationPanel';
 
 interface TeacherWorkspaceProps {
   token: string | null;
@@ -55,6 +55,7 @@ function isLearningTable(attachment: Attachment): boolean {
 }
 
 export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorkspaceProps) {
+  const shouldReduceMotion = useReducedMotion();
   // States: 'welcome' | 'analyzing' | 'report'
   const [stage, setStage] = useState<'welcome' | 'analyzing' | 'report'>('welcome');
   const [analysisProgress, setAnalysisProgress] = useState(0);
@@ -72,6 +73,11 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const [editingCourseName, setEditingCourseName] = useState('');
   const [showDeleteCourseDialog, setShowDeleteCourseDialog] = useState(false);
   const [isSavingCourse, setIsSavingCourse] = useState(false);
+  const [pendingConversationId, setPendingConversationId] = useState<string | null>(null);
+  const [showTaskCourseMenu, setShowTaskCourseMenu] = useState(false);
+  const [preparingAgentId, setPreparingAgentId] = useState<StandaloneTeacherAgentId | null>(null);
+  const [activeStandaloneAgentId, setActiveStandaloneAgentId] = useState<StandaloneTeacherAgentId | null>(null);
+  const [preparationDirty, setPreparationDirty] = useState(false);
 
   // Interactive Quiz State
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
@@ -82,6 +88,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const [inputVal, setInputVal] = useState('');
   const [analysisActionNotice, setAnalysisActionNotice] = useState<string | null>(null);
   const activeCourse = courses.find((course) => course.id === activeCourseId) ?? null;
+  const standaloneAgentDefinition = TEACHER_AGENT_DEFINITIONS.find((item) => item.id === activeStandaloneAgentId) ?? null;
+  const preparingAgentDefinition = TEACHER_AGENT_DEFINITIONS.find((item) => item.id === preparingAgentId) ?? null;
 
   // Auto-clear notice after 3 seconds
   useEffect(() => {
@@ -92,13 +100,15 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const courseContext: CourseContext = {
     courseId: activeCourse?.id ?? null,
     courseName: activeCourse?.name ?? '任务',
-    workflowId: activeCourse ? 'learning-analysis-to-activity' : 'standalone-task',
-    workflowName: activeCourse ? '学情分析 → 课堂活动包' : '不关联课程',
+    workflowId: activeCourse ? 'learning-analysis-to-activity' : activeStandaloneAgentId ? TEACHER_STANDALONE_AGENT_WORKFLOW_ID : 'standalone-task',
+    workflowName: activeCourse ? '学情分析 → 课堂互动' : standaloneAgentDefinition ? `${standaloneAgentDefinition.name} · 独立任务` : '不关联课程',
   };
   const {
     chatMessages,
     isAiTyping,
+    runStatus,
     sendMessage,
+    startPreparedTask,
     clearChat,
     uploadFile,
     error,
@@ -115,6 +125,11 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     toggleArtifact,
     stopStreaming,
   } = useWorkspaceChat(token, courseContext);
+  const activeConversation = activeConversationId
+    ? conversations.find((conversation) => conversation.id === activeConversationId) ?? null
+    : null;
+  const taskCourseId = activeConversation ? activeConversation.course_id : activeCourseId;
+  const taskCourse = courses.find((course) => course.id === taskCourseId) ?? null;
   const visibleCourseAttachments = useMemo(
     () => attachments.filter((attachment) => attachment.course_id === activeCourseId || attachment.course_id === null),
     [activeCourseId, attachments],
@@ -134,6 +149,14 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   }, [activeCourseId]);
 
   useEffect(() => {
+    if (!pendingConversationId) return;
+    const target = conversations.find((conversation) => conversation.id === pendingConversationId);
+    if (!target || target.course_id !== activeCourseId) return;
+    setPendingConversationId(null);
+    void openConversation(pendingConversationId);
+  }, [activeCourseId, conversations, openConversation, pendingConversationId]);
+
+  useEffect(() => {
     if (!token) return;
     void listCourses(token).then((items) => {
       setCourses(items);
@@ -142,7 +165,70 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     }).catch(() => setAnalysisActionNotice('无法读取课程列表，请稍后重试。'));
   }, [token]);
 
+  const handleOpenConversation = (conversationId: string) => {
+    if (preparationDirty && !window.confirm('打开历史任务将清空当前未提交的准备内容，是否继续？')) return;
+    const target = conversations.find((conversation) => conversation.id === conversationId);
+    if (!target) return;
+    setPreparingAgentId(null);
+    setPreparationDirty(false);
+    setActiveStandaloneAgentId(target.course_id === null && TEACHER_AGENT_DEFINITIONS.some((item) => item.id === target.agent_id)
+      ? target.agent_id as StandaloneTeacherAgentId
+      : null);
+    setActiveTab('workbench');
+    setActiveCourseId(target.course_id);
+    setExpandedCourseId(target.course_id);
+    setPendingConversationId(conversationId);
+  };
+
+  const handleNewTaskCourseChange = (nextCourseId: string | null) => {
+    if (activeConversationId) return;
+    setActiveStandaloneAgentId(null);
+    setActiveCourseId(nextCourseId);
+    setExpandedCourseId(nextCourseId);
+  };
+
+  const openStandaloneAgent = (agentId: StandaloneTeacherAgentId) => {
+    if (preparationDirty && preparingAgentId !== agentId && !window.confirm('切换智能体将清空当前未提交的准备内容，是否继续？')) return;
+    setPreparingAgentId(agentId);
+    setActiveStandaloneAgentId(null);
+    setPreparationDirty(false);
+    setActiveCourseId(null);
+    setActiveTab('workbench');
+    setStage('welcome');
+    clearChat();
+  };
+
+  const closeStandaloneAgent = () => {
+    if (preparationDirty && !window.confirm('退出准备页将清空当前未提交的内容，是否继续？')) return;
+    setPreparingAgentId(null);
+    setActiveStandaloneAgentId(null);
+    setPreparationDirty(false);
+    clearChat();
+  };
+
+  const handlePreparedTaskSubmit = async (payload: { content: string; files: File[] }) => {
+    if (!preparingAgentId) return;
+    const definition = TEACHER_AGENT_DEFINITIONS.find((item) => item.id === preparingAgentId);
+    await startPreparedTask({
+      content: payload.content,
+      agentId: preparingAgentId,
+      files: payload.files,
+      courseContext: {
+        courseId: null,
+        courseName: definition?.name ?? '教师 Agent',
+        workflowId: TEACHER_STANDALONE_AGENT_WORKFLOW_ID,
+        workflowName: `${definition?.name ?? '教师 Agent'} · 独立任务`,
+      },
+      onStarted: () => {
+        setActiveStandaloneAgentId(preparingAgentId);
+        setPreparingAgentId(null);
+        setPreparationDirty(false);
+      },
+    });
+  };
+
   const openCreateCourseDialog = () => {
+    if (preparationDirty && !window.confirm('新建课程将清空当前未提交的准备内容，是否继续？')) return;
     setNewCourseName('');
     setNewCourseDescription('');
     setShowCreateCourseDialog(true);
@@ -154,6 +240,9 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     try {
       const course = await createCourse(token, newCourseName.trim(), newCourseDescription.trim() || undefined);
       setCourses((current) => [course, ...current]);
+      setPreparingAgentId(null);
+      setActiveStandaloneAgentId(null);
+      setPreparationDirty(false);
       setActiveCourseId(course.id);
       setExpandedCourseId(course.id);
       setShowCreateCourseDialog(false);
@@ -548,8 +637,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       <aside className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-white/70 bg-surface-container-low/90 px-3 py-4 shadow-[8px_0_30px_rgba(25,28,26,0.04)] backdrop-blur-xl transition-transform duration-300 ${sidebarCollapsed ? '-translate-x-full' : '-translate-x-full lg:translate-x-0'}`}>
 
         {/* Header Identity */}
-        <div className="flex items-center gap-3 px-2 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-white shadow-sm">
+        <div className="flex items-center gap-3 px-2 mb-7">
+          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-[0_8px_20px_rgba(79,70,229,0.2)]">
             <GraduationCap className="w-6 h-6" />
           </div>
           <div className="flex-1 min-w-0">
@@ -564,30 +653,41 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         {/* Action Button */}
         <button 
           onClick={() => {
+            if (preparationDirty && !window.confirm('新建普通任务将清空当前未提交的准备内容，是否继续？')) return;
+            setPreparingAgentId(null);
+            setActiveStandaloneAgentId(null);
+            setPreparationDirty(false);
             setStage('welcome');
             clearChat();
           }}
-          className="flex items-center justify-center gap-2 w-full py-3 mb-6 bg-primary text-on-primary rounded-xl font-semibold text-sm hover:opacity-95 transition-all active:scale-95 shadow-sm cursor-pointer"
+          className="flex min-h-11 items-center justify-center gap-2 w-full py-2.5 mb-6 bg-primary text-on-primary rounded-lg font-semibold text-sm hover:opacity-95 transition-all active:scale-95 shadow-sm cursor-pointer"
         >
           <MessageSquarePlus className="w-4.5 h-4.5" />
           新建任务
         </button>
 
-        {/* Navigation Links */}
-        <nav className="flex-1 space-y-1 overflow-y-auto">
-          <div className="px-3 py-1 mb-1 text-[11px] text-outline font-bold tracking-wider">导航</div>
+        {/* Teacher Agent Links */}
+        <nav className="flex-1 space-y-0.5 overflow-y-auto">
+          <div className="px-3 py-1 mb-1 text-[11px] text-outline font-bold tracking-wider">教师 Agent</div>
 
-          <button
-            onClick={() => startAnalysis()}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              stage === 'report' 
-                ? 'text-primary bg-primary-container/10 border-r-4 border-primary' 
-                : 'text-on-surface-variant hover:bg-surface-container-high'
-            }`}
-          >
-            <History className="w-4.5 h-4.5" />
-            <span>最近会话</span>
-          </button>
+          {TEACHER_AGENT_DEFINITIONS.map((definition) => {
+            const Icon = definition.icon;
+            const selected = preparingAgentId === definition.id || activeStandaloneAgentId === definition.id;
+            return (
+              <button
+                key={definition.id}
+                type="button"
+                onClick={() => openStandaloneAgent(definition.id)}
+                aria-current={selected ? 'page' : undefined}
+                className={`group flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left outline-none transition-all duration-200 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-primary/25 ${selected ? 'bg-primary/10 text-primary shadow-xs' : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'}`}
+              >
+                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors ${selected ? 'bg-primary text-on-primary' : 'bg-surface-container text-outline group-hover:text-primary'}`}>
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <span className="min-w-0 truncate text-sm font-bold">{definition.name}</span>
+              </button>
+            );
+          })}
 
           <div className="mt-5 border-t border-outline-variant pt-4">
             <div className="flex items-center justify-between px-3 py-1">
@@ -600,14 +700,14 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                 const courseTasks = conversations.filter((conversation) => conversation.course_id === course.id);
                 return (
                   <div key={course.id}>
-                    <button type="button" onClick={() => { setActiveCourseId(course.id); setExpandedCourseId(isExpanded ? null : course.id); clearChat(); }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold ${activeCourseId === course.id ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`} aria-expanded={isExpanded}>
+                    <button type="button" onClick={() => { if (preparationDirty && !window.confirm('切换课程将清空当前未提交的准备内容，是否继续？')) return; setPreparingAgentId(null); setActiveStandaloneAgentId(null); setPreparationDirty(false); setActiveCourseId(course.id); setExpandedCourseId(isExpanded ? null : course.id); clearChat(); }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold ${activeCourseId === course.id ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`} aria-expanded={isExpanded}>
                       {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
                       <BookOpen className="h-3.5 w-3.5 shrink-0" />
                       <span className="min-w-0 flex-1 truncate">{course.name}</span>
                       <span className="text-[10px] font-medium text-outline">{courseTasks.length}</span>
                     </button>
                     {isExpanded && (
-                      <ConversationHistory conversations={courseTasks} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" compact />
+                      <ConversationHistory conversations={courseTasks} activeConversationId={activeConversationId} onOpen={handleOpenConversation} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" compact />
                     )}
                   </div>
                 );
@@ -615,7 +715,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
             </div>
           </div>
 
-          <ConversationHistory conversations={conversations.filter((conversation) => conversation.course_id === null)} activeConversationId={activeConversationId} onOpen={(id) => { void openConversation(id); }} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" heading="任务" />
+          <ConversationHistory conversations={conversations.filter((conversation) => conversation.course_id === null)} activeConversationId={activeConversationId} onOpen={handleOpenConversation} onDelete={(id) => { void removeConversation(id); }} accentClass="text-primary" heading="任务" />
         </nav>
 
         {/* User Info Section */}
@@ -630,12 +730,12 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       </aside>
 
       {/* 2. MAIN WORKSPACE CONTENT */}
-      <main className={`relative flex min-h-screen flex-1 flex-col overflow-hidden bg-background transition-[margin-left] duration-300 ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-72'}`}>
+      <main className={`relative isolate flex min-h-screen flex-1 flex-col overflow-hidden bg-background transition-[margin-left] duration-300 ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-72'}`}>
         {error && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error}</div>}
         
         {/* Top App Bar */}
-        <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between border-b border-white/70 bg-surface/80 px-10 shadow-[0_1px_20px_rgba(25,28,26,0.04)] backdrop-blur-xl">
-          <div className="flex items-center gap-6">
+        <header aria-hidden={Boolean(preparingAgentId)} inert={preparingAgentId ? true : undefined} className="sticky top-0 z-40 flex h-14 sm:h-16 shrink-0 items-center justify-between border-b border-white/70 bg-surface/80 px-4 sm:px-6 lg:px-10 shadow-[0_1px_20px_rgba(25,28,26,0.04)] backdrop-blur-xl">
+          <div className="flex min-w-0 items-center gap-4 sm:gap-6">
             {sidebarCollapsed && (
               <button
                 type="button"
@@ -646,50 +746,68 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                 <PanelLeftOpen className="w-5 h-5" />
               </button>
             )}
-            <div className="hidden sm:flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[10px] font-bold text-primary">
-              <BookOpen className="h-3.5 w-3.5" />
-              <span>{courseContext.courseName}</span>
-              <span className="text-primary/60">·</span>
-              <span>{courseContext.workflowName}</span>
-            </div>
-            
-            <nav className="hidden md:flex gap-6">
-              <button 
+            <nav aria-label="教师工作台页面" className="hidden items-center gap-2 md:flex">
+              <button
+                type="button"
+                aria-current={activeTab === 'workbench' ? 'page' : undefined}
                 onClick={() => setActiveTab('workbench')}
-                className={`text-sm font-bold pb-1 cursor-pointer transition-colors ${
-                  activeTab === 'workbench' ? 'text-primary border-b-2 border-primary' : 'text-on-surface-variant hover:text-primary'
+                className={`relative min-h-9 cursor-pointer rounded-lg border px-3.5 text-xs font-bold transition-[color,border-color,background-color,transform] duration-200 active:scale-[0.97] motion-reduce:transition-none ${
+                  activeTab === 'workbench' ? 'border-transparent text-primary' : 'border-outline-variant/70 bg-surface/45 text-on-surface-variant hover:border-primary/25 hover:bg-primary/5 hover:text-primary'
                 }`}
               >
-                工作台
+                {activeTab === 'workbench' && (
+                  <motion.span
+                    layoutId="teacher-top-nav-active"
+                    className="absolute inset-0 rounded-lg border border-primary/20 bg-primary/10 shadow-[0_4px_12px_rgba(79,70,229,0.08)]"
+                    transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', bounce: 0, duration: 0.32 }}
+                  />
+                )}
+                <span className="relative z-10">工作台</span>
               </button>
-              <button 
+              <button
+                type="button"
+                aria-current={activeTab === 'resources' ? 'page' : undefined}
                 onClick={() => setActiveTab('resources')}
-                className={`text-sm font-bold pb-1 cursor-pointer transition-colors ${
-                  activeTab === 'resources' ? 'text-primary border-b-2 border-primary' : 'text-on-surface-variant hover:text-primary'
+                className={`relative min-h-9 cursor-pointer rounded-lg border px-3.5 text-xs font-bold transition-[color,border-color,background-color,transform] duration-200 active:scale-[0.97] motion-reduce:transition-none ${
+                  activeTab === 'resources' ? 'border-transparent text-primary' : 'border-outline-variant/70 bg-surface/45 text-on-surface-variant hover:border-primary/25 hover:bg-primary/5 hover:text-primary'
                 }`}
               >
-                资料
+                {activeTab === 'resources' && (
+                  <motion.span
+                    layoutId="teacher-top-nav-active"
+                    className="absolute inset-0 rounded-lg border border-primary/20 bg-primary/10 shadow-[0_4px_12px_rgba(79,70,229,0.08)]"
+                    transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', bounce: 0, duration: 0.32 }}
+                  />
+                )}
+                <span className="relative z-10">资料</span>
               </button>
-              <button 
+              <button
+                type="button"
+                aria-current={activeTab === 'analytics' ? 'page' : undefined}
                 onClick={openCourseManagement}
-                className={`text-sm font-bold pb-1 cursor-pointer transition-colors ${
-                  activeTab === 'analytics' ? 'text-primary border-b-2 border-primary' : 'text-on-surface-variant hover:text-primary'
+                className={`relative min-h-9 cursor-pointer rounded-lg border px-3.5 text-xs font-bold transition-[color,border-color,background-color,transform] duration-200 active:scale-[0.97] motion-reduce:transition-none ${
+                  activeTab === 'analytics' ? 'border-transparent text-primary' : 'border-outline-variant/70 bg-surface/45 text-on-surface-variant hover:border-primary/25 hover:bg-primary/5 hover:text-primary'
                 }`}
               >
-                课程管理
+                {activeTab === 'analytics' && (
+                  <motion.span
+                    layoutId="teacher-top-nav-active"
+                    className="absolute inset-0 rounded-lg border border-primary/20 bg-primary/10 shadow-[0_4px_12px_rgba(79,70,229,0.08)]"
+                    transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', bounce: 0, duration: 0.32 }}
+                  />
+                )}
+                <span className="relative z-10">课程管理</span>
               </button>
             </nav>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="relative hidden lg:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
-              <input 
-                className="w-64 rounded-full border border-outline-variant bg-surface-container-low/80 py-1.5 pl-10 pr-4 text-xs outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                placeholder="搜索数据指标……" 
-                type="text"
-              />
-            </div>
+          <div className="pointer-events-none absolute left-1/2 hidden w-48 -translate-x-1/2 items-center justify-center text-center lg:flex xl:w-64" aria-label={`当前课程：${taskCourse?.name ?? '未关联课程'}`}>
+            <p className="w-full truncate text-center text-sm font-extrabold leading-tight text-on-surface xl:text-base" title={taskCourse?.name ?? '未关联课程'}>
+              {taskCourse?.name ?? '未关联课程'}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-4">
             <div className="flex items-center gap-2">
               <button type="button" aria-label="查看任务状态" className="p-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer rounded-full hover:bg-surface-container">
                 <Activity className="w-4.5 h-4.5" />
@@ -702,7 +820,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
               
               <button 
                 onClick={onBackToRoles}
-                className="flex items-center gap-1 px-4 py-2 bg-primary-container text-on-primary-container rounded-full font-semibold text-xs hover:bg-opacity-95 transition-all active:scale-95 cursor-pointer"
+                className="flex items-center gap-1 px-3 sm:px-4 py-2 bg-primary-container text-on-primary-container rounded-lg font-semibold text-xs hover:bg-opacity-95 transition-all active:scale-95 cursor-pointer"
               >
                 <UserRoundCheck className="w-3.5 h-3.5" />
                  切换角色
@@ -711,7 +829,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                 type="button"
                 onClick={() => { setShowInteractionPanel(true); setSidebarCollapsed(true); }}
                 aria-label="打开智能体历史聚合面板"
-                className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-3 py-2 text-xs font-bold text-primary hover:bg-surface-container"
+                className="inline-flex items-center gap-1 rounded-lg border border-outline-variant px-3 py-2 text-xs font-bold text-primary hover:bg-surface-container"
               >
                 <FolderClosed className="w-3.5 h-3.5" />智能体历史
               </button>
@@ -720,38 +838,39 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
         </header>
 
         {/* Tab content controller */}
-        <div className="flex-1 flex overflow-hidden">
+        <div aria-hidden={Boolean(preparingAgentId)} inert={preparingAgentId ? true : undefined} className="flex-1 flex overflow-hidden">
           
           {activeTab === 'workbench' ? (
             <div className="flex-1 flex flex-col h-full overflow-hidden">
               {/* Left Column: Interactive Chat & Analysis View */}
-              <section ref={chatScrollRef} className="flex-1 flex flex-col p-6 overflow-y-auto max-w-4xl mx-auto w-full space-y-6">
-                {analysisActionNotice && <p role="alert" className="rounded-xl border border-tertiary/30 bg-tertiary-container/15 px-4 py-3 text-xs font-bold leading-relaxed text-tertiary">{analysisActionNotice}</p>}
+              <section ref={chatScrollRef} className="flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto max-w-5xl mx-auto w-full space-y-5 sm:space-y-6">
+                  <>
+                    {analysisActionNotice && <p role="alert" className="rounded-xl border border-tertiary/30 bg-tertiary-container/15 px-4 py-3 text-xs font-bold leading-relaxed text-tertiary">{analysisActionNotice}</p>}
                 
                 {/* 2A. WELCOME / INITIAL STATE (Screen 2) */}
                 {stage === 'welcome' && chatMessages.length === 0 && (
-                  <div className="flex-grow flex flex-col items-center justify-center text-center py-10 space-y-8 max-w-2xl mx-auto">
-                    <div className="relative w-32 h-32">
+                  <div className="flex-grow flex flex-col items-center justify-center text-center py-4 sm:py-5 space-y-4 sm:space-y-5 max-w-3xl mx-auto">
+                    <div className="relative w-20 h-20 sm:w-24 sm:h-24">
                       <div className="absolute inset-0 bg-primary/5 rounded-full animate-pulse"></div>
-                      <div className="absolute inset-4 bg-primary/10 rounded-full flex items-center justify-center">
-                        <UploadCloud className="w-12 h-12 text-primary" />
+                      <div className="absolute inset-2.5 sm:inset-3 bg-primary/10 rounded-full flex items-center justify-center">
+                        <UploadCloud className="w-8 h-8 sm:w-10 sm:h-10 text-primary" />
                       </div>
                     </div>
-                    <div className="space-y-3">
-                      <h2 className="font-display text-2xl font-bold text-on-surface">准备开始您的教学辅助任务</h2>
-                      <p className="text-sm text-on-surface-variant font-medium">
+                    <div className="space-y-2">
+                      <h2 className="font-display text-lg sm:text-xl font-bold text-on-surface">准备开始您的教学辅助任务</h2>
+                      <p className="max-w-2xl text-xs sm:text-sm leading-5 text-on-surface-variant font-medium">
                         上传一份匿名学情表，先看看班级整体情况。您可以根据分析结果直接进行教学设计。
                       </p>
                     </div>
 
                     {/* Quick Start Buttons */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full pt-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 w-full pt-0 sm:pt-2">
                       <button 
                         onClick={() => startAnalysis('匿名学情表.xlsx')}
-                        className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
+                        className="bg-surface-container-lowest border border-outline-variant/60 p-3 sm:p-4 rounded-xl flex flex-col items-center gap-2 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
                       >
-                        <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
-                          <Activity className="w-6 h-6" />
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
+                          <Activity className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <span className="font-bold text-sm text-on-surface">分析学情</span>
                       </button>
@@ -760,10 +879,10 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         onClick={() => {
                           handleSendMessage('根据本节课目标生成 Python 练习');
                         }}
-                        className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
+                        className="bg-surface-container-lowest border border-outline-variant/60 p-3 sm:p-4 rounded-xl flex flex-col items-center gap-2 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
                       >
-                        <div className="w-12 h-12 rounded-full bg-tertiary-container/20 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
-                          <Brain className="w-6 h-6" />
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-tertiary-container/20 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
+                          <Brain className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <span className="font-bold text-sm text-on-surface">生成课堂练习</span>
                       </button>
@@ -772,10 +891,10 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         onClick={() => {
                           handleSendMessage('帮我设计一个破冰环节');
                         }}
-                        className="bg-surface-container-lowest border border-outline-variant/60 p-6 rounded-2xl flex flex-col items-center gap-3 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
+                        className="bg-surface-container-lowest border border-outline-variant/60 p-3 sm:p-4 rounded-xl flex flex-col items-center gap-2 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
                       >
-                        <div className="w-12 h-12 rounded-full bg-primary-container/20 text-primary flex items-center justify-center group-hover:scale-105 transition-transform">
-                          <BookOpen className="w-6 h-6" />
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary-container/20 text-primary flex items-center justify-center group-hover:scale-105 transition-transform">
+                          <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <span className="font-bold text-sm text-on-surface">设计课堂互动</span>
                       </button>
@@ -1227,12 +1346,12 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                     </div>
                   </div>
                 )}
+                  </>
               </section>
 
               {/* 2F. STATIONARY CHAT INPUT FOOTER AREA */}
-              <div className="mt-auto px-10 pb-8 shrink-0 bg-background pt-2 z-10 border-t border-outline-variant/10">
+              {!preparingAgentId && <div className="mt-auto px-4 sm:px-6 lg:px-10 pb-4 sm:pb-8 shrink-0 bg-background pt-2 z-10 border-t border-outline-variant/10">
                 <div className="max-w-4xl mx-auto space-y-3">
-                  
                   {/* Suggestion tags list */}
                   <div className="flex gap-2 mb-2 overflow-x-auto scrollbar-hide py-1">
                     <button 
@@ -1256,7 +1375,52 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                   </div>
 
                   {/* Primary text entry form */}
-                  <div className="bg-surface-container-lowest rounded-2xl shadow-xs border-2 border-outline-variant focus-within:border-primary transition-all p-3">
+                  <div className="bg-surface-container-lowest rounded-xl shadow-xs border border-outline-variant p-2.5 sm:p-3">
+                    {!activeConversationId && (
+                      <div
+                        className="relative mb-1 w-fit"
+                        onBlur={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setShowTaskCourseMenu(false);
+                        }}
+                      >
+                        <button
+                          type="button"
+                          aria-label="调整新任务课程归属"
+                          aria-haspopup="menu"
+                          aria-expanded={showTaskCourseMenu}
+                          onClick={() => setShowTaskCourseMenu((current) => !current)}
+                          className="inline-flex max-w-[min(70vw,260px)] items-center gap-1.5 rounded-lg bg-surface-container-low px-2.5 py-1.5 text-[11px] font-bold text-on-surface-variant transition-colors hover:bg-surface-container-high focus:outline-none focus:ring-2 focus:ring-primary/15"
+                        >
+                          <span className="shrink-0 text-outline">课程</span>
+                          <span className="truncate text-on-surface">{taskCourse?.name ?? '不关联课程'}</span>
+                          <ChevronUp className={`h-3.5 w-3.5 shrink-0 transition-transform ${showTaskCourseMenu ? '' : 'rotate-180'}`} />
+                        </button>
+
+                        {showTaskCourseMenu && (
+                          <div role="menu" aria-label="新任务课程归属" className="absolute bottom-full left-0 z-50 mb-2 max-h-56 min-w-56 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest p-1.5 shadow-2xl">
+                            {[{ id: '', name: '不关联课程' }, ...courses].map((course) => {
+                              const selected = (taskCourseId ?? '') === course.id;
+                              return (
+                                <button
+                                  key={course.id || 'unassigned'}
+                                  type="button"
+                                  role="menuitemradio"
+                                  aria-checked={selected}
+                                  onClick={() => {
+                                    handleNewTaskCourseChange(course.id || null);
+                                    setShowTaskCourseMenu(false);
+                                  }}
+                                  className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-xs font-semibold transition-colors ${selected ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container-low'}`}
+                                >
+                                  <span className="truncate">{course.name}</span>
+                                  {selected && <Check className="h-3.5 w-3.5 shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <textarea 
                       ref={textareaRef}
                       value={inputVal}
@@ -1267,7 +1431,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                           handleSendMessage();
                         }
                       }}
-                      className="w-full bg-transparent border-none outline-none focus:outline-hidden text-sm p-1 resize-none font-sans leading-relaxed text-on-surface scrollbar-hide min-h-[44px]" 
+                      className="chat-input w-full bg-transparent border-none outline-none focus:outline-none focus-visible:outline-none focus-visible:outline-offset-0 text-sm p-1 resize-none font-sans leading-relaxed text-on-surface scrollbar-hide min-h-[44px]"
                       placeholder="输入您的教学任务..." 
                       rows={2}
                     />
@@ -1291,7 +1455,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                       
                       <button 
                         onClick={() => isAiTyping ? stopStreaming() : handleSendMessage()}
-                        className="bg-primary text-on-primary px-5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-primary-container shadow-sm"
+                        className="bg-primary text-on-primary px-4 sm:px-5 py-2 rounded-lg font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-primary/90 shadow-sm"
                       >
                         <span>{isAiTyping ? '停止生成' : '发送任务'}</span>
                         {isAiTyping ? <span className="h-3 w-3 rounded-sm bg-on-primary" /> : <Send className="w-3.5 h-3.5" />}
@@ -1299,7 +1463,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                     </div>
                   </div>
                 </div>
-              </div>
+              </div>}
             </div>
           ) : null}
 
@@ -1431,6 +1595,42 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
           </AnimatePresence>
 
         </div>
+
+        <AnimatePresence>
+          {preparingAgentId && (
+            <motion.div
+              key="teacher-agent-preparation-overlay"
+              role="region"
+              aria-label={`${preparingAgentDefinition?.name ?? '教师智能体'}准备页`}
+              initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.995 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.995 }}
+              transition={shouldReduceMotion ? { duration: 0.12 } : { type: 'spring', bounce: 0, duration: 0.34 }}
+              className="absolute inset-0 z-[70] overflow-y-auto bg-background/[0.86] backdrop-blur-[24px] backdrop-saturate-150"
+            >
+              <button
+                type="button"
+                disabled={runStatus === 'running'}
+                onClick={closeStandaloneAgent}
+                aria-label={`关闭${preparingAgentDefinition?.name ?? '教师智能体'}准备页`}
+                className="fixed right-4 top-4 z-[80] flex h-10 w-10 items-center justify-center rounded-xl bg-surface/75 text-on-surface-variant shadow-[0_8px_24px_rgba(25,28,26,0.08)] outline-none backdrop-blur-xl transition hover:bg-surface hover:text-on-surface active:scale-95 focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-50 sm:right-6 sm:top-6"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+              <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+                <div className="absolute -right-28 -top-28 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
+                <div className="absolute -bottom-36 left-1/4 h-96 w-96 rounded-full bg-secondary/8 blur-3xl" />
+              </div>
+              <TeacherAgentPreparationPanel
+                key={preparingAgentId}
+                agentId={preparingAgentId}
+                isSubmitting={runStatus === 'running'}
+                onDirtyChange={setPreparationDirty}
+                onSubmit={handlePreparedTaskSubmit}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
       <AnimatePresence>
@@ -1624,7 +1824,7 @@ function describeStatus(status: string): string {
 function artifactLabelForModal(type: string): string {
   switch (type) {
     case 'learning_analysis': return '学情分析报告'
-    case 'classroom_activity_package': return '课堂活动包'
+    case 'classroom_activity_package': return '课堂互动'
     case 'classroom_observation': return '课堂观察'
     case 'classroom_summary': return '课后总结'
     case 'lesson_design': return '教案与题目'

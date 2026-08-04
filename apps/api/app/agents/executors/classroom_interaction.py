@@ -99,7 +99,7 @@ class ClassroomInteractionExecutor:
         if missing_inputs:
             raise AppError(
                 code="classroom_activity_input_incomplete",
-                message="生成课堂活动包前请补充必要输入。",
+                message="生成课堂互动前请补充必要输入。",
                 status_code=422,
                 details={"missing_inputs": missing_inputs},
             )
@@ -211,6 +211,10 @@ def _missing_activity_inputs(request: AgentRequest) -> list[str]:
     has_learning_summary = any(
         artifact.type == "learning_analysis" for artifact in request.context.selected_artifacts
     )
-    if not request.context.attachment_text.strip() and not has_learning_summary:
+    if (
+        not request.context.attachment_text.strip()
+        and not has_learning_summary
+        and not request.allow_empty_materials
+    ):
         missing.append("课程资料")
     return missing
