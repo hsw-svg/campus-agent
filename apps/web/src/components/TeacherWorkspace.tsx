@@ -1671,7 +1671,7 @@ function HistoryDetailModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-on-surface/35 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-on-surface/45 p-4 backdrop-blur-xl backdrop-saturate-150 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="history-detail-title"
@@ -1682,10 +1682,10 @@ function HistoryDetailModal({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 12, scale: 0.98 }}
         transition={{ type: 'spring', bounce: 0, duration: 0.28 }}
-        className="relative flex max-h-[88vh] w-full max-w-5xl flex-col rounded-3xl bg-surface shadow-2xl"
+        className="relative flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-outline-variant/80 bg-surface-container-lowest shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-outline-variant/60 px-6 py-4">
+        <header className="flex items-start justify-between gap-4 border-b border-outline-variant/80 bg-surface-container-low px-6 py-4">
           <div className="min-w-0">
             <p className="text-[10px] font-extrabold uppercase tracking-wider text-primary">智能体历史记录</p>
             <h3 id="history-detail-title" className="mt-1 truncate text-base font-black text-on-surface">{title}</h3>
@@ -1701,13 +1701,14 @@ function HistoryDetailModal({
             type="button"
             onClick={onClose}
             aria-label="关闭历史详情"
-            className="shrink-0 rounded-xl px-2 py-1 text-xs font-bold text-outline hover:bg-surface-container"
+            title="关闭历史详情"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-outline-variant bg-surface-container text-on-surface shadow-sm transition hover:bg-surface-container-high hover:text-on-surface active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           >
-            关闭
+            <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+        <div className="flex-1 space-y-4 overflow-y-auto bg-surface-container-lowest px-6 py-4 [scrollbar-gutter:stable]">
           {item.summary && (
             <section className="rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-4">
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-outline">回复摘要</p>
@@ -1758,7 +1759,7 @@ function HistoryDetailModal({
                 </div>
               </div>
               {artifact.type === 'learning_analysis' ? (
-                <div className="mt-3 overflow-hidden rounded-xl bg-surface">
+                <div className="mt-3 overflow-hidden rounded-xl bg-surface-container-low">
                   <LearningAnalysisReport
                     artifact={artifact}
                     onCopy={onCopy}
@@ -1766,7 +1767,7 @@ function HistoryDetailModal({
                   />
                 </div>
               ) : artifact.type === 'slide_deck' ? (
-                <div className="mt-3 overflow-hidden rounded-xl bg-surface">
+                <div className="mt-3 overflow-hidden rounded-xl bg-surface-container-low">
                   <SlideDeckPreview
                     artifact={artifact}
                     onExport={(format) => { void onExport(artifact, format); }}
@@ -1774,7 +1775,7 @@ function HistoryDetailModal({
                   />
                 </div>
               ) : artifact.content ? (
-                <div className="mt-3 max-h-[46vh] overflow-auto rounded-xl bg-surface p-3">
+                <div className="mt-3 max-h-[46vh] overflow-auto rounded-xl bg-surface-container-low p-3">
                   <Markdown content={artifact.content} className="text-xs leading-relaxed text-on-surface" />
                 </div>
               ) : null}
