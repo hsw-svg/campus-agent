@@ -237,3 +237,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: 教师独立 Agent 与历史栏修复
+
+**Date**: 2026-08-05
+**Task**: 教师独立 Agent 与历史栏修复
+**Branch**: `master`
+
+### Summary
+
+修复教师独立 Agent 历史与新建任务状态、课程迭代成果持久化和流取消收口；兼容旧文本历史，并提交教师历史栏单实例响应式布局规范。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5a4101e` | (see git log) |
+| `97554dc` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
