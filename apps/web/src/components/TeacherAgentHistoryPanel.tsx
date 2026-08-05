@@ -196,7 +196,7 @@ export default function TeacherAgentHistoryPanel({
 
       <AnimatePresence initial={false} mode="wait">
         {selectedGroup.id === 'classroom_interaction' && (
-          <motion.section key="classroom-workflow" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ type: 'spring', bounce: 0, duration: 0.32 }} className="overflow-hidden rounded-2xl border border-white/80 bg-white/75 p-1 shadow-xs backdrop-blur-xl">
+          <motion.section key="classroom-workflow" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="rounded-2xl border border-white/80 bg-white/75 p-1 shadow-xs backdrop-blur-xl">
             <div className="flex items-center gap-2 px-3 pt-2 text-[10px] font-extrabold text-on-surface-variant">
               <Activity className="h-3.5 w-3.5 text-primary" />当前课堂工作流
             </div>

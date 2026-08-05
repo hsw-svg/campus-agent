@@ -83,7 +83,7 @@ export default function ClassroomInteractionPanel({
   const submitSummary = () => onPrompt('生成课后总结')
 
   return (
-    <div className="flex min-h-full w-full flex-col gap-4 overflow-y-auto bg-surface-container-low p-4">
+    <div className={`flex w-full flex-col gap-4 bg-surface-container-low p-4 ${embedded ? '' : 'min-h-full overflow-y-auto'}`}>
       {!embedded && <section className="rounded-2xl border border-primary/20 bg-white p-3 shadow-xs">
         <div className="flex items-start gap-2.5">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><GraduationCap className="h-4 w-4" /></div>
