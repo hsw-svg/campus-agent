@@ -271,3 +271,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 课程切换驱动教师端快捷任务
+
+**Date**: 2026-08-05
+**Task**: 课程切换驱动教师端快捷任务
+**Branch**: `master`
+
+### Summary
+
+为教师端快捷任务增加课程上下文派生文案；切换课程后统一更新欢迎区、学情报告操作区和输入区入口；补充前端状态规范，完成 lint/build 验证并提交。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `62dcb2b` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
