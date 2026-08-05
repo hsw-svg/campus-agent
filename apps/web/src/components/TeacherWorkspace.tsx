@@ -80,6 +80,43 @@ function standaloneAgentIdForConversation(conversation: Conversation): Standalon
   return null;
 }
 
+type TeacherQuickActionId = 'practice' | 'interaction' | 'diagnosis';
+
+interface TeacherQuickAction {
+  id: TeacherQuickActionId;
+  emoji: string;
+  label: string;
+  prompt: string;
+}
+
+type TeacherQuickActions = Record<TeacherQuickActionId, TeacherQuickAction>;
+
+function buildTeacherQuickActions(courseName: string | null): TeacherQuickActions {
+  const normalizedCourseName = courseName?.trim() || null;
+  const courseReference = normalizedCourseName ? `课程《${normalizedCourseName}》` : null;
+
+  return {
+    practice: {
+      id: 'practice',
+      emoji: '⚡',
+      label: courseReference ? `为《${normalizedCourseName}》生成课堂练习` : '根据本节课目标生成课堂练习',
+      prompt: courseReference ? `请根据${courseReference}的本节课教学目标生成一组课堂练习。` : '根据本节课目标生成课堂练习',
+    },
+    interaction: {
+      id: 'interaction',
+      emoji: '💡',
+      label: courseReference ? `为《${normalizedCourseName}》设计课堂互动` : '帮我设计一个破冰环节',
+      prompt: courseReference ? `请结合${courseReference}的教学内容设计一个破冰或课堂互动环节。` : '帮我设计一个破冰环节',
+    },
+    diagnosis: {
+      id: 'diagnosis',
+      emoji: '📝',
+      label: courseReference ? `分析《${normalizedCourseName}》的测验薄弱点` : '总结最近一次测验的薄弱知识点',
+      prompt: courseReference ? `请结合${courseReference}最近一次测验，总结班级薄弱知识点并给出补救建议。` : '总结最近一次测验的薄弱知识点',
+    },
+  };
+}
+
 export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorkspaceProps) {
   const shouldReduceMotion = useReducedMotion();
   // States: 'welcome' | 'analyzing' | 'report'
@@ -116,6 +153,10 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const [inputVal, setInputVal] = useState('');
   const [analysisActionNotice, setAnalysisActionNotice] = useState<string | null>(null);
   const activeCourse = courses.find((course) => course.id === activeCourseId) ?? null;
+  const quickActions = useMemo(
+    () => buildTeacherQuickActions(activeCourse?.name ?? null),
+    [activeCourse?.name],
+  );
   const standaloneAgentDefinition = TEACHER_AGENT_DEFINITIONS.find((item) => item.id === activeStandaloneAgentId) ?? null;
   const preparingAgentDefinition = TEACHER_AGENT_DEFINITIONS.find((item) => item.id === preparingAgentId) ?? null;
 
@@ -1037,26 +1078,28 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
                       <button 
                         onClick={() => {
-                          handleSendMessage('根据本节课目标生成 Python 练习');
+                          handleSendMessage(quickActions.practice.prompt);
                         }}
+                        title={quickActions.practice.label}
                         className="bg-surface-container-lowest border border-outline-variant/60 p-3 sm:p-4 rounded-xl flex flex-col items-center gap-2 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
                       >
                         <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-tertiary-container/20 text-tertiary flex items-center justify-center group-hover:scale-105 transition-transform">
                           <Brain className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
-                        <span className="font-bold text-sm text-on-surface">生成课堂练习</span>
+                        <span className="font-bold text-sm text-on-surface">{quickActions.practice.label}</span>
                       </button>
 
                       <button 
                         onClick={() => {
-                          handleSendMessage('帮我设计一个破冰环节');
+                          handleSendMessage(quickActions.interaction.prompt);
                         }}
+                        title={quickActions.interaction.label}
                         className="bg-surface-container-lowest border border-outline-variant/60 p-3 sm:p-4 rounded-xl flex flex-col items-center gap-2 hover:border-primary hover:shadow-md transition-all group cursor-pointer"
                       >
                         <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary-container/20 text-primary flex items-center justify-center group-hover:scale-105 transition-transform">
                           <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
-                        <span className="font-bold text-sm text-on-surface">设计课堂互动</span>
+                        <span className="font-bold text-sm text-on-surface">{quickActions.interaction.label}</span>
                       </button>
                     </div>
                   </div>
@@ -1294,11 +1337,12 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                           {copiedIndex === 999 ? '已复制 Markdown' : '导出 Markdown'}
                         </button>
                         <button 
-                          onClick={() => handleSendMessage('根据本节课目标生成 Python 练习')}
+                          onClick={() => handleSendMessage(quickActions.practice.prompt)}
+                          title={quickActions.practice.label}
                           className="flex items-center gap-1.5 px-4 py-2 bg-primary text-on-primary font-semibold text-xs rounded-xl hover:bg-primary-container transition-all active:scale-[0.98] cursor-pointer"
                         >
                           <Sparkles className="w-3.5 h-3.5" />
-                          继续生成课堂练习
+                          {quickActions.practice.label}
                         </button>
                       </div>
                     </div>
@@ -1524,24 +1568,17 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                 <div className="max-w-4xl mx-auto space-y-3">
                   {/* Suggestion tags list */}
                   <div className="flex gap-2 mb-2 overflow-x-auto scrollbar-hide py-1">
-                    <button 
-                      onClick={() => handleSendMessage('根据本节课目标生成 Python 练习')}
-                      className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
-                    >
-                      ⚡ 根据本节课目标生成 Python 练习
-                    </button>
-                    <button 
-                      onClick={() => handleSendMessage('帮我设计一个破冰环节')}
-                      className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
-                    >
-                      💡 帮我设计一个破冰环节
-                    </button>
-                    <button 
-                      onClick={() => handleSendMessage('总结上周测试的薄弱知识点')}
-                      className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
-                    >
-                      📝 总结上周测试的薄弱知识点
-                    </button>
+                    {Object.values(quickActions).map((action) => (
+                      <button
+                        key={action.id}
+                        type="button"
+                        title={`${action.emoji} ${action.label}`}
+                        onClick={() => handleSendMessage(action.prompt)}
+                        className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
+                      >
+                        {action.emoji} {action.label}
+                      </button>
+                    ))}
                   </div>
 
                   {/* Primary text entry form */}

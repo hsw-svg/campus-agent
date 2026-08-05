@@ -65,6 +65,28 @@ const requestSignature = [
 
 ---
 
+### 课程上下文驱动的快捷入口
+
+与当前课程相关的快捷任务文案和提示词属于派生 UI 状态，应从 `activeCourse` 或 `courseContext` 通过一个纯函数
+集中生成，再由欢迎区、报告操作区和输入区等多个入口共同消费。不要在各个 JSX 区域分别保存相同的静态 prompt，
+也不要为首屏文案单独增加一次课程推荐请求。
+
+```tsx
+const quickActions = useMemo(
+  () => buildTeacherQuickActions(activeCourse?.name ?? null),
+  [activeCourse?.name],
+)
+
+<button onClick={() => handleSendMessage(quickActions.practice.prompt)}>
+  {quickActions.practice.label}
+</button>
+```
+
+课程为空或课程列表尚未加载时，派生函数必须返回不带具体学科假设的通用回退；发送动作仍应走同一个
+`useWorkspaceChat.sendMessage`，以保留当前课程归属和资料隔离语义。
+
+---
+
 ## Server State
 
 <!-- How server data is cached and synchronized -->
