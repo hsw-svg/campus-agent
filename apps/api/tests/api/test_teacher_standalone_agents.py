@@ -1,9 +1,13 @@
+import asyncio
 import json
 from collections.abc import AsyncIterator, Sequence
+from uuid import UUID
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.agents.workflows import TEACHER_STANDALONE_AGENT_WORKFLOW_ID
+from app.agents.models import AgentRun
 from tests.api.conftest import make_workspace
 
 
@@ -36,6 +40,15 @@ class FakeChatProvider:
     async def stream_reply(self, messages: Sequence[dict[str, str]]) -> AsyncIterator[str]:
         self.calls.append(list(messages))
         yield self.response
+
+
+class CancelledChatProvider:
+    is_configured = True
+
+    async def stream_reply(self, messages: Sequence[dict[str, str]]) -> AsyncIterator[str]:
+        if False:  # pragma: no cover - keeps this method an async generator
+            yield ""
+        raise asyncio.CancelledError
 
 
 ACTIVITY_JSON = json.dumps(
@@ -113,6 +126,25 @@ def test_standalone_course_iteration_runs_without_materials(client: TestClient) 
 
     assert any(name == "done" for name, _ in events)
     assert not any(name == "error" for name, _ in events)
+    artifact_event = next(data for name, data in events if name == "artifact")
+    assert artifact_event["type"] == "course_iteration"
+    stored_artifacts = client.get(
+        f"/api/conversations/{conversation['id']}/artifacts", headers=auth(token)
+    ).json()
+    assert len(stored_artifacts) == 1
+    assert stored_artifacts[0]["type"] == "course_iteration"
+    assert stored_artifacts[0]["content"] == provider.response
+    session = client.app.state.session_factory()
+    try:
+        run = session.scalar(
+            select(AgentRun).where(AgentRun.conversation_id == UUID(conversation["id"]))
+        )
+        assert run is not None
+        assert run.status == "completed"
+        assert run.artifact_status == "completed"
+        assert str(run.artifact_id) == stored_artifacts[0]["id"]
+    finally:
+        session.close()
     assert provider.calls
 
 
@@ -133,6 +165,31 @@ def test_standalone_learning_analysis_still_requires_table(client: TestClient) -
     error = next(data for name, data in events if name == "error")
     assert error["code"] == "agent_input_incomplete"
     assert provider.calls == []
+
+
+def test_cancelled_standalone_stream_marks_run_failed(client: TestClient) -> None:
+    token = make_workspace(client, "teacher")
+    conversation = client.post("/api/conversations", json={}, headers=auth(token)).json()
+    client.app.state.chat_provider = CancelledChatProvider()
+
+    stream(
+        client,
+        conversation["id"],
+        token,
+        agent_id="classroom_interaction",
+        content="生成课堂互动活动包：教学主题是函数极限，教学目标：理解极限的直观含义，总时长 45 分钟",
+    )
+
+    session = client.app.state.session_factory()
+    try:
+        run = session.scalar(
+            select(AgentRun).where(AgentRun.conversation_id == UUID(conversation["id"]))
+        )
+        assert run is not None
+        assert run.status == "failed"
+        assert run.error_code == "stream_cancelled"
+    finally:
+        session.close()
 
 def test_course_conversation_cannot_use_standalone_empty_material_exception(client: TestClient) -> None:
     token = make_workspace(client, "teacher")

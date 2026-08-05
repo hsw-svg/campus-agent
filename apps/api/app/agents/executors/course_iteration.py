@@ -86,7 +86,25 @@ class CourseIterationExecutor:
     async def execute(self, request: AgentRequest) -> AgentResult:
         if not _should_generate_slide_deck(request.content):
             fallback = GenericChatExecutor(self.chat_provider)
-            return await fallback.execute(request)
+            result = await fallback.execute(request)
+            topic = _infer_topic(request.content)
+            data = {
+                "topic": topic,
+                "mode": "course_iteration",
+            }
+            return AgentResult(
+                text=result.text,
+                structured_data=data,
+                citations=result.citations,
+                artifact=AgentArtifact(
+                    type="course_iteration",
+                    title=topic,
+                    content=result.text,
+                    data=data,
+                    format="markdown",
+                ),
+                warnings=result.warnings,
+            )
         return await self._generate_slide_deck(request)
 
     async def _generate_slide_deck(self, request: AgentRequest) -> AgentResult:

@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator, Sequence
+import asyncio
 from uuid import UUID
 
 from app.agents.registry import is_agent_available_for_role
@@ -469,7 +470,28 @@ async def stream_assistant_reply(
             },
         )
 
-    return generator()
+    async def guarded_generator() -> AsyncIterator[str]:
+        try:
+            async for event in generator():
+                yield event
+        except asyncio.CancelledError:
+            # A browser navigation, HMR replacement, or explicit stop can
+            # cancel the request at any point in the stream.  A normal
+            # ``except Exception`` does not catch cancellation in Python
+            # 3.11+, so keep the run from remaining permanently ``running``.
+            if run is not None and agent_runs is not None:
+                try:
+                    agent_runs.update(
+                        run,
+                        status="failed",
+                        error_code="stream_cancelled",
+                        error_message="流式连接已中断，请重新执行任务。",
+                    )
+                except Exception:  # noqa: BLE001 - preserve cancellation
+                    pass
+            raise
+
+    return guarded_generator()
 
 
 def _agent_name(role: str, agent_id: str | None) -> str | None:

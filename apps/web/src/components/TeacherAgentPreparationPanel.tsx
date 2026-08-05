@@ -62,7 +62,6 @@ export default function TeacherAgentPreparationPanel({
   onSubmit,
 }: TeacherAgentPreparationPanelProps) {
   const definition = TEACHER_AGENT_DEFINITIONS.find((item) => item.id === agentId) ?? TEACHER_AGENT_DEFINITIONS[0]
-  const Icon = definition.icon
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [topic, setTopic] = useState('')
   const [objective, setObjective] = useState('')
@@ -126,16 +125,10 @@ export default function TeacherAgentPreparationPanel({
   return (
     <div className="relative z-10 mx-auto flex min-h-full w-full max-w-4xl items-start px-5 pb-10 pt-16 sm:px-8 sm:pb-12 sm:pt-20 lg:px-12">
       <form onSubmit={handleSubmit} className="w-full">
-        <div className="flex items-start gap-5">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary shadow-[0_10px_28px_rgba(79,70,229,0.22)]">
-              <Icon className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 pt-0.5">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-primary">教师 Agent · 独立任务</p>
-              <h2 className="mt-1 font-display text-2xl font-black tracking-[-0.02em] text-on-surface sm:text-3xl">{definition.name}</h2>
-              <p className="mt-1.5 max-w-2xl text-xs font-semibold leading-5 text-on-surface-variant sm:text-sm">{definition.description}。提交后将创建一个不关联课程的任务。</p>
-            </div>
+        <div className="min-w-0">
+          <div className="min-w-0">
+            <h2 className="font-display text-2xl font-black tracking-[-0.02em] text-on-surface sm:text-3xl">{definition.name}</h2>
+            <p className="mt-1.5 max-w-2xl text-xs font-semibold leading-5 text-on-surface-variant sm:text-sm">{definition.description}。提交后将创建一个不关联课程的任务。</p>
           </div>
         </div>
 

@@ -118,6 +118,23 @@ def _valid_payload(topic: str = "Python 切片与元组", extras: dict | None = 
 
 
 @pytest.mark.asyncio
+async def test_plain_course_iteration_returns_markdown_artifact() -> None:
+    text = "## 课程迭代建议\n\n先用直观图像引入，再逐步过渡到形式化定义。"
+    chat = _FakeChatProvider([text])
+    executor = CourseIterationExecutor(chat, None, artifact_repository_factory=lambda: None)
+
+    result = await executor.execute(
+        _request("课程迭代：教学主题是函数极限，迭代目标是增强直观理解。")
+    )
+
+    assert result.text == text
+    assert result.artifact is not None
+    assert result.artifact.type == "course_iteration"
+    assert result.artifact.content == text
+    assert result.artifact.format == "markdown"
+
+
+@pytest.mark.asyncio
 async def test_slide_deck_degrades_when_bing_is_not_configured() -> None:
     chat = _FakeChatProvider([_valid_payload()])
     bing = _StubBing(False, SearchResult(False, ()), SearchResult(False, ()))
@@ -240,7 +257,7 @@ async def test_invalid_model_template_falls_back_to_ai_tech() -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_slide_message_falls_back_to_generic_chat(monkeypatch) -> None:
+async def test_non_slide_message_wraps_generic_chat_as_course_iteration_artifact(monkeypatch) -> None:
     class _Chat:
         is_configured = True
 
@@ -254,8 +271,11 @@ async def test_non_slide_message_falls_back_to_generic_chat(monkeypatch) -> None
 
     result = await executor.execute(_request("给我一些课程迭代建议"))
 
-    assert result.artifact is None
     assert result.text == "普通迭代建议"
+    assert result.artifact is not None
+    assert result.artifact.type == "course_iteration"
+    assert result.artifact.content == result.text
+    assert result.artifact.format == "markdown"
 
 
 def test_bing_provider_is_not_configured_without_key() -> None:
