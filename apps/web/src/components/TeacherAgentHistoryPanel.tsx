@@ -12,8 +12,8 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { AgentHistoryItem, Artifact, Attachment, CourseContext } from '../api'
 import type { TeacherAgentGroup, TeacherAgentId } from '../teacherAgents'
 import { agentGroupFor, agentGroupForArtifactType, teacherAgentGroups } from '../teacherAgents'
@@ -65,6 +65,7 @@ export default function TeacherAgentHistoryPanel({
   onDeleteHistoryItem,
   isBusy,
 }: TeacherAgentHistoryPanelProps) {
+  const layoutGroupId = useId()
   const routedGroup = agentGroupFor(activeAgentId)
   const [selectedGroupId, setSelectedGroupId] = useState<TeacherAgentId>('learning_analysis')
   const [autoSwitchNotice, setAutoSwitchNotice] = useState<string | null>(null)
@@ -97,11 +98,8 @@ export default function TeacherAgentHistoryPanel({
   const shownHistory = showAllHistory ? selectedHistory : selectedHistory.slice(0, 6)
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 18 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ type: 'spring', bounce: 0, duration: 0.42 }}
-      className="flex min-h-full w-full flex-col gap-3 overflow-y-auto bg-surface-container-low/80 p-3 backdrop-blur-xl"
+    <div
+      className="flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-y-auto bg-surface-container-low/80 p-3 backdrop-blur-xl [scrollbar-gutter:stable]"
     >
       <section className="rounded-2xl border border-white/80 bg-white/75 p-3 shadow-[0_12px_32px_rgba(25,28,26,0.06)] backdrop-blur-xl">
         <div className="flex items-start justify-between gap-3">
@@ -124,25 +122,28 @@ export default function TeacherAgentHistoryPanel({
         )}
       </section>
 
-      <div className="grid grid-cols-5 gap-1 rounded-2xl border border-white/80 bg-white/65 p-1 shadow-xs backdrop-blur-xl">
-        {teacherAgentGroups.map((group) => {
-          const Icon = groupIcons[group.id]
-          const count = agentHistory.filter((item) => historyBelongsToGroup(item, group)).length
-          return (
-            <motion.button
-              key={group.id}
-              type="button"
-              onClick={() => selectGroup(group)}
-              whileTap={{ scale: 0.96 }}
-              className={`relative isolate flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-center transition-colors ${selectedGroup.id === group.id ? 'text-on-primary' : 'text-on-surface-variant hover:bg-surface-container/80'}`}
-              aria-pressed={selectedGroup.id === group.id}
-            >
-              {selectedGroup.id === group.id && <motion.span layoutId="active-agent-tab" className="absolute inset-0 z-0 rounded-xl bg-primary shadow-[0_5px_14px_rgba(0,75,51,0.18)]" transition={{ type: 'spring', bounce: 0.12, duration: 0.35 }} />}
-              <span className="relative z-10 flex flex-col items-center gap-1"><Icon className="h-4 w-4" /><span className="w-full truncate text-[9px] font-extrabold">{group.shortName}</span><span className={`text-[8px] font-bold ${selectedGroup.id === group.id ? 'text-on-primary/75' : 'text-outline'}`}>{count}</span></span>
-            </motion.button>
-          )
-        })}
-      </div>
+      <LayoutGroup id={layoutGroupId}>
+        <div className="grid w-full min-w-0 grid-cols-5 gap-1 rounded-2xl border border-white/80 bg-white/65 p-1 shadow-xs backdrop-blur-xl">
+          {teacherAgentGroups.map((group) => {
+            const Icon = groupIcons[group.id]
+            const count = agentHistory.filter((item) => historyBelongsToGroup(item, group)).length
+            return (
+              <motion.button
+                key={group.id}
+                type="button"
+                onClick={() => selectGroup(group)}
+                whileTap={{ scale: 0.96 }}
+                className={`relative isolate flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-center transition-colors ${selectedGroup.id === group.id ? 'text-on-primary' : 'text-on-surface-variant hover:bg-surface-container/80'}`}
+                aria-label={`${group.name}，${count} 次记录`}
+                aria-pressed={selectedGroup.id === group.id}
+              >
+                {selectedGroup.id === group.id && <motion.span layoutId="active-agent-tab" className="absolute inset-0 z-0 rounded-xl bg-primary shadow-[0_5px_14px_rgba(0,75,51,0.18)]" transition={{ type: 'spring', bounce: 0.12, duration: 0.35 }} />}
+                <span className="relative z-10 flex w-full min-w-0 flex-col items-center gap-1"><Icon className="h-4 w-4 shrink-0" /><span className="w-full truncate text-[9px] font-extrabold">{group.shortName}</span><span className={`text-[8px] font-bold ${selectedGroup.id === group.id ? 'text-on-primary/75' : 'text-outline'}`}>{count}</span></span>
+              </motion.button>
+            )
+          })}
+        </div>
+      </LayoutGroup>
 
       <section className="rounded-2xl border border-white/80 bg-[#FBFDFB]/85 p-3 shadow-[0_12px_32px_rgba(25,28,26,0.05)] backdrop-blur-xl">
         <div className="flex items-start justify-between gap-2">
@@ -213,7 +214,7 @@ export default function TeacherAgentHistoryPanel({
           </motion.section>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   )
 }
 
