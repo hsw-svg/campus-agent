@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/index.md","reason":"教师工作台属于 apps/web，需要遵循现有 React/TypeScript 前端规范。"}
+{"file":".trellis/spec/frontend/responsive-motion-panels.md","reason":"报告位于响应式工作台滚动区，需保持单一滚动 owner、稳定布局和 reduced-motion 动效约束。"}

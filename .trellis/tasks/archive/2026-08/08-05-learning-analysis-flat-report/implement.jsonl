@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/index.md","reason":"实施前确认教师工作台前端的组件、状态和质量约定。"}
+{"file":".trellis/spec/frontend/responsive-motion-panels.md","reason":"实施页面级报告时复用工作台的响应式动效和滚动约定，避免布局抖动。"}
