@@ -1,7 +1,8 @@
 """Stable contracts between routing, context building, and agent execution."""
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from uuid import UUID
 
 
@@ -92,5 +93,71 @@ class AgentResult:
     warnings: tuple[str, ...] = ()
 
 
+AgentProgressPhase = Literal[
+    "routing",
+    "context",
+    "retrieval",
+    "model",
+    "validation",
+    "artifact",
+    "complete",
+]
+AgentProgressState = Literal["active", "completed", "failed"]
+
+
+@dataclass(frozen=True)
+class AgentProgress:
+    step_id: str
+    phase: AgentProgressPhase
+    state: AgentProgressState
+    label: str
+    detail: str | None = None
+    count: int | None = None
+
+
+@dataclass(frozen=True)
+class AgentExecutionEvent:
+    """Internal event emitted by an executor before it crosses the SSE boundary."""
+
+    type: Literal["status", "delta", "result"]
+    progress: AgentProgress | None = None
+    text: str | None = None
+    result: AgentResult | None = None
+
+
+def progress_event(
+    *,
+    step_id: str,
+    phase: AgentProgressPhase,
+    state: AgentProgressState,
+    label: str,
+    detail: str | None = None,
+    count: int | None = None,
+) -> AgentExecutionEvent:
+    return AgentExecutionEvent(
+        type="status",
+        progress=AgentProgress(
+            step_id=step_id,
+            phase=phase,
+            state=state,
+            label=label,
+            detail=detail,
+            count=count,
+        ),
+    )
+
+
+def delta_event(text: str) -> AgentExecutionEvent:
+    return AgentExecutionEvent(type="delta", text=text)
+
+
+def result_event(result: AgentResult) -> AgentExecutionEvent:
+    return AgentExecutionEvent(type="result", result=result)
+
+
 class AgentExecutor(Protocol):
     async def execute(self, request: AgentRequest) -> AgentResult: ...
+
+
+class StreamingAgentExecutor(Protocol):
+    def stream(self, request: AgentRequest) -> AsyncIterator[AgentExecutionEvent]: ...

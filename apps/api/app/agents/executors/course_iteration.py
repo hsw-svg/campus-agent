@@ -5,15 +5,18 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from app.agents.contracts import (
     AgentArtifact,
     AgentContext,
+    AgentExecutionEvent,
     AgentRequest,
     AgentResult,
     ContextArtifact,
+    progress_event,
+    result_event,
 )
 from app.agents.executors.generic_chat import GenericChatExecutor
 from app.artifacts.repositories import ArtifactRepository
@@ -84,30 +87,48 @@ class CourseIterationExecutor:
         self._markdown_skill = SlideDeckMarkdownSkill()
 
     async def execute(self, request: AgentRequest) -> AgentResult:
+        final_result: AgentResult | None = None
+        async for event in self.stream(request):
+            if event.type == "result" and event.result is not None:
+                final_result = event.result
+        if final_result is None:
+            raise RuntimeError("course_iteration_stream_did_not_complete")
+        return final_result
+
+    async def stream(self, request: AgentRequest) -> AsyncIterator[AgentExecutionEvent]:
         if not _should_generate_slide_deck(request.content):
             fallback = GenericChatExecutor(self.chat_provider)
-            result = await fallback.execute(request)
+            streamed_result: AgentResult | None = None
+            async for event in fallback.stream(request):
+                if event.type == "result" and event.result is not None:
+                    streamed_result = event.result
+                else:
+                    yield event
+            if streamed_result is None:
+                raise RuntimeError("course_iteration_stream_did_not_complete")
             topic = _infer_topic(request.content)
             data = {
                 "topic": topic,
                 "mode": "course_iteration",
             }
-            return AgentResult(
-                text=result.text,
+            yield result_event(AgentResult(
+                text=streamed_result.text,
                 structured_data=data,
-                citations=result.citations,
+                citations=streamed_result.citations,
                 artifact=AgentArtifact(
                     type="course_iteration",
                     title=topic,
-                    content=result.text,
+                    content=streamed_result.text,
                     data=data,
                     format="markdown",
                 ),
-                warnings=result.warnings,
-            )
-        return await self._generate_slide_deck(request)
+                warnings=streamed_result.warnings,
+            ))
+            return
+        async for event in self._stream_slide_deck(request):
+            yield event
 
-    async def _generate_slide_deck(self, request: AgentRequest) -> AgentResult:
+    async def _stream_slide_deck(self, request: AgentRequest) -> AsyncIterator[AgentExecutionEvent]:
         if not self.chat_provider.is_configured:
             raise RuntimeError("chat_model_unconfigured")
 
@@ -119,7 +140,22 @@ class CourseIterationExecutor:
         forced_template_id = explicit_template_id or previous_template_id
 
         warnings: list[str] = []
+        yield progress_event(
+            step_id="course-iteration-retrieval",
+            phase="retrieval",
+            state="active",
+            label="正在检索课程迭代所需资料",
+        )
         industry_result, job_result = await self._run_bing_searches(topic)
+        retrieved_count = len(industry_result.items) + len(job_result.items)
+        yield progress_event(
+            step_id="course-iteration-retrieval",
+            phase="retrieval",
+            state="completed",
+            label="课程资料检索完成",
+            detail="已整理可用的行业与岗位信息" if retrieved_count else "未获取到额外联网资料",
+            count=retrieved_count,
+        )
         if self.bing_provider is None or not self.bing_provider.is_configured:
             warnings.append("联网检索未启用（未配置 BING_SEARCH_API_KEY）")
         elif not industry_result.available and not job_result.available:
@@ -146,16 +182,53 @@ class CourseIterationExecutor:
             },
         ]
 
-        raw = await _collect_stream(
-            self.chat_provider.stream_reply(
-                base_messages,
-                response_format={"type": "json_object"},
-            )
+        yield progress_event(
+            step_id="course-iteration-model",
+            phase="model",
+            state="active",
+            label="正在生成课程迭代内容",
+        )
+        raw_chunks: list[str] = []
+        async for chunk in self.chat_provider.stream_reply(
+            base_messages,
+            response_format={"type": "json_object"},
+        ):
+            if not chunk:
+                continue
+            raw_chunks.append(chunk)
+            if len(raw_chunks) == 1 or len(raw_chunks) % 8 == 0:
+                yield progress_event(
+                    step_id="course-iteration-model",
+                    phase="model",
+                    state="active",
+                    label="正在生成课程迭代内容",
+                    detail="已接收模型输出片段",
+                    count=len(raw_chunks),
+                )
+        raw = "".join(raw_chunks)
+        yield progress_event(
+            step_id="course-iteration-model",
+            phase="model",
+            state="completed",
+            label="课程迭代内容生成完成",
+            count=len(raw_chunks),
         )
         data: dict[str, Any] | None = None
         try:
+            yield progress_event(
+                step_id="course-iteration-validation",
+                phase="validation",
+                state="active",
+                label="正在校验课程迭代结构",
+            )
             data = self._json_skill.run(_extract_json(raw))
         except AppError:
+            yield progress_event(
+                step_id="course-iteration-validation",
+                phase="validation",
+                state="failed",
+                label="首次结构校验未通过，正在重试",
+            )
             repair_messages = base_messages + [
                 {"role": "assistant", "content": raw},
                 {
@@ -166,13 +239,44 @@ class CourseIterationExecutor:
                     ),
                 },
             ]
-            raw = await _collect_stream(
-                self.chat_provider.stream_reply(
-                    repair_messages,
-                    response_format={"type": "json_object"},
-                )
+            yield progress_event(
+                step_id="course-iteration-model-retry",
+                phase="model",
+                state="active",
+                label="正在重新生成课程迭代结构",
+            )
+            repair_chunks: list[str] = []
+            async for chunk in self.chat_provider.stream_reply(
+                repair_messages,
+                response_format={"type": "json_object"},
+            ):
+                if not chunk:
+                    continue
+                repair_chunks.append(chunk)
+                if len(repair_chunks) == 1 or len(repair_chunks) % 8 == 0:
+                    yield progress_event(
+                        step_id="course-iteration-model-retry",
+                        phase="model",
+                        state="active",
+                        label="正在重新生成课程迭代结构",
+                        detail="已接收模型输出片段",
+                        count=len(repair_chunks),
+                    )
+            raw = "".join(repair_chunks)
+            yield progress_event(
+                step_id="course-iteration-model-retry",
+                phase="model",
+                state="completed",
+                label="课程迭代结构重新生成完成",
+                count=len(repair_chunks),
             )
             data = self._json_skill.run(_extract_json(raw))
+        yield progress_event(
+            step_id="course-iteration-validation",
+            phase="validation",
+            state="completed",
+            label="课程迭代结构校验完成",
+        )
 
         if explicit_template_id:
             selected_template_id = explicit_template_id
@@ -211,13 +315,19 @@ class CourseIterationExecutor:
             data=data,
             format="json",
         )
-        return AgentResult(
+        yield progress_event(
+            step_id="course-iteration-artifact",
+            phase="artifact",
+            state="completed",
+            label="课程迭代成果已整理",
+        )
+        yield result_event(AgentResult(
             text=markdown,
             structured_data=data,
             citations=request.context.sources,
             artifact=artifact,
             warnings=tuple(warnings),
-        )
+        ))
 
     async def _run_bing_searches(self, topic: str) -> tuple[SearchResult, SearchResult]:
         if self.bing_provider is None or not self.bing_provider.is_configured:
@@ -327,13 +437,6 @@ def _previous_template_id(previous_deck: dict[str, Any] | None) -> str | None:
         return None
     template_id = previous_data.get("template_id")
     return str(template_id) if is_known_template_id(template_id) else None
-
-
-async def _collect_stream(iterator) -> str:
-    chunks: list[str] = []
-    async for delta in iterator:
-        chunks.append(delta)
-    return "".join(chunks)
 
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)

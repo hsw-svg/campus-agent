@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type FormEvent } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef, type FormEvent } from 'react';
 import { 
   GraduationCap,
   MessageSquarePlus,
@@ -43,6 +43,7 @@ import ConversationHistory from './ConversationHistory';
 import TeacherAgentHistoryPanel from './TeacherAgentHistoryPanel';
 import Markdown from './Markdown';
 import SlideDeckPreview from './SlideDeckPreview';
+import AgentProgressPanel from './AgentProgressPanel';
 import TeacherAgentPreparationPanel, { TEACHER_AGENT_DEFINITIONS, type StandaloneTeacherAgentId } from './TeacherAgentPreparationPanel';
 
 interface TeacherWorkspaceProps {
@@ -121,8 +122,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
   const shouldReduceMotion = useReducedMotion();
   // States: 'welcome' | 'analyzing' | 'report'
   const [stage, setStage] = useState<'welcome' | 'analyzing' | 'report'>('welcome');
-  const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [analysisStep, setAnalysisStep] = useState(0);
   const [isUploadingCourseMaterial, setIsUploadingCourseMaterial] = useState(false);
   const [activeTab, setActiveTab] = useState<'workbench' | 'resources' | 'analytics'>('workbench');
   const [courses, setCourses] = useState<Course[]>([]);
@@ -190,6 +189,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     agentHistory,
     removeAgentHistory,
     route,
+    progressSteps,
     selectedArtifactIds,
     toggleArtifact,
     stopStreaming,
@@ -466,30 +466,52 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
     }
   }, [inputVal]);
 
-  // Scroll to bottom on chat update
+  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const container = chatScrollRef.current;
+    if (!container) return;
+    const anchor = chatEndRef.current;
+    if (!anchor) {
+      container.scrollTo({ top: container.scrollHeight, behavior });
+      return;
+    }
+    const containerRect = container.getBoundingClientRect();
+    const anchorRect = anchor.getBoundingClientRect();
+    const targetTop = container.scrollTop + anchorRect.bottom - containerRect.top - container.clientHeight;
+    container.scrollTo({ top: Math.max(0, targetTop), behavior });
+  }, []);
+
+  // Keep the existing reading position during streaming, but follow the tail
+  // when the user is already close to it.
   useEffect(() => {
     const container = chatScrollRef.current;
     if (!container) return;
     const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    if (distanceToBottom < 200) chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, isAiTyping]);
+    if (distanceToBottom >= 200) return;
+    const timer = window.setTimeout(() => {
+      scrollChatToBottom(shouldReduceMotion ? 'auto' : 'smooth');
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [chatMessages, isAiTyping, progressSteps.length, scrollChatToBottom, shouldReduceMotion]);
 
   // Force-snap to the tail whenever a conversation is (re)loaded so the user
-  // lands on the latest message instead of the earliest one.
+  // lands on the latest message instead of the earliest one. Reset the key
+  // while the hook clears messages so reopening the same conversation also
+  // gets a fresh snap.
   const lastLoadedConversationRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!activeConversationId) {
+    if (!activeConversationId || chatMessages.length === 0) {
       lastLoadedConversationRef.current = null;
       return;
     }
-    if (chatMessages.length === 0) return;
-    if (lastLoadedConversationRef.current === activeConversationId) return;
-    lastLoadedConversationRef.current = activeConversationId;
+    const firstMessageId = chatMessages[0]?.id ?? '';
+    const loadKey = `${activeConversationId}:${firstMessageId}:${chatMessages.length}:${learningAnalysisArtifact?.id ?? ''}`;
+    if (lastLoadedConversationRef.current === loadKey) return;
+    lastLoadedConversationRef.current = loadKey;
     const timer = window.setTimeout(() => {
-      chatEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-    }, 30);
+      scrollChatToBottom('auto');
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [activeConversationId, chatMessages.length]);
+  }, [activeConversationId, chatMessages, learningAnalysisArtifact?.id, scrollChatToBottom]);
 
   useEffect(() => {
     if (isAiTyping) {
@@ -505,7 +527,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
   const focusedLearningAnalysisRef = useRef<string | null>(null);
   useEffect(() => {
-    const reportKey = showLearningAnalysisReport && activeConversationId && learningAnalysisArtifact
+    const reportKey = isStandaloneTeacherAgentView && showLearningAnalysisReport && activeConversationId && learningAnalysisArtifact
       ? `${activeConversationId}:${learningAnalysisArtifact.id}`
       : null;
     if (!reportKey) {
@@ -518,7 +540,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       learningAnalysisReportRef.current?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth', block: 'start' });
     }, 30);
     return () => window.clearTimeout(timer);
-  }, [activeConversationId, learningAnalysisArtifact, showLearningAnalysisReport, shouldReduceMotion]);
+  }, [activeConversationId, isStandaloneTeacherAgentView, learningAnalysisArtifact, showLearningAnalysisReport, shouldReduceMotion]);
 
   useEffect(() => {
     if (!historyDetail) return;
@@ -1044,10 +1066,9 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
           {activeTab === 'workbench' ? (
             <div className="flex-1 flex flex-col h-full overflow-hidden">
               {/* Left Column: Interactive Chat & Analysis View */}
-              <section ref={chatScrollRef} className="flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto max-w-5xl mx-auto w-full space-y-5 sm:space-y-6">
+                <section ref={chatScrollRef} className="flex-1 flex min-w-0 flex-col px-3 py-4 sm:px-5 sm:py-6 overflow-y-auto max-w-5xl mx-auto w-full space-y-5 sm:space-y-6">
                   <>
                     {analysisActionNotice && <p role="alert" className="rounded-xl border border-tertiary/30 bg-tertiary-container/15 px-4 py-3 text-xs font-bold leading-relaxed text-tertiary">{analysisActionNotice}</p>}
-                
                 {/* 2A. WELCOME / INITIAL STATE (Screen 2) */}
                 {stage === 'welcome' && chatMessages.length === 0 && !showLearningAnalysisReport && (
                   <div className="flex-grow flex flex-col items-center justify-center text-center py-4 sm:py-5 space-y-4 sm:space-y-5 max-w-3xl mx-auto">
@@ -1101,51 +1122,6 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                         </div>
                         <span className="font-bold text-sm text-on-surface">{quickActions.interaction.label}</span>
                       </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 2B. ANALYSIS ANIMATION STATE (Processing flow) */}
-                {stage === 'analyzing' && !showLearningAnalysisReport && (
-                  <div className="flex-grow flex flex-col items-center justify-center py-16">
-                    <div className="w-full max-w-lg space-y-8">
-                      {/* Interactive processing bar */}
-                      <div className="flex flex-col items-center space-y-2">
-                        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center animate-spin">
-                          <Sparkles className="w-8 h-8 text-primary" />
-                        </div>
-                        <h3 className="font-bold text-lg text-primary">智能学情分析引擎正在全力处理中...</h3>
-                        <p className="text-xs text-on-surface-variant font-medium">正在读取匿名电子表格并提炼教学薄弱点</p>
-                      </div>
-
-                      {/* Horizontal timeline of checklist */}
-                      <div className="relative py-8 bg-surface-container-lowest border border-outline-variant/60 rounded-2xl px-6 shadow-xs">
-                        <div className="absolute top-1/2 left-8 right-8 h-0.5 bg-outline-variant -translate-y-1/2 z-0"></div>
-                        <div className="absolute top-1/2 left-8 right-8 h-0.5 bg-primary -translate-y-1/2 z-0 origin-left transition-all duration-500" style={{ width: `${analysisProgress}%` }}></div>
-                        
-                        <div className="relative z-10 flex justify-between">
-                          {[
-                            { name: '解析资料', activeStep: 0 },
-                            { name: '识别字段', activeStep: 1 },
-                            { name: '计算统计', activeStep: 2 },
-                            { name: '生成建议', activeStep: 3 },
-                          ].map((s, i) => {
-                            const isDone = analysisStep >= s.activeStep;
-                            return (
-                              <div key={i} className="flex flex-col items-center">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
-                                  isDone ? 'bg-primary text-on-primary scale-110 shadow-sm' : 'bg-surface-container-high text-on-surface-variant'
-                                }`}>
-                                  {isDone ? <Check className="w-4 h-4 stroke-[3]" /> : i + 1}
-                                </div>
-                                <span className={`text-xs mt-2 font-bold transition-colors ${
-                                  isDone ? 'text-primary' : 'text-on-surface-variant'
-                                }`}>{s.name}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
                     </div>
                   </div>
                 )}
@@ -1351,7 +1327,7 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
 
                 {/* 2D. RENDER ACTIVE INTERACTIVE CHAT MESSAGES */}
                 {chatMessages.length > 0 && (
-                  <div className="space-y-6 pt-4 border-t border-outline-variant/50">
+                  <div className="w-full min-w-0 space-y-6 pt-4 border-t border-outline-variant/50">
                     <div className="text-[10px] text-center tracking-widest uppercase font-bold text-outline">对话进行中</div>
                     {chatMessages.map((msg, index) => {
                       const isUser = msg.sender === 'user';
@@ -1359,17 +1335,9 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                       const isSlideDeckMessage = isSlideDeckArtifactMessage(msg);
                       const slideDeckArtifact = isSlideDeckMessage ? findArtifactForMessage(artifacts, msg, 'slide_deck') : null;
                       return (
-                        <div key={msg.id} className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                          
-                          {/* Assistant Profile picture */}
-                          {!isUser && (
-                            <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container shrink-0 shadow-sm">
-                              <Brain className="w-4 h-4" />
-                            </div>
-                          )}
-
+                        <div key={msg.id} className={`flex min-w-0 w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
                           {/* Message Content Bubble */}
-                          <div className={`${isSlideDeckMessage ? 'max-w-[98%]' : 'max-w-[85%]'} rounded-2xl px-5 py-4 shadow-xs ${
+                          <div className={`min-w-0 ${isSlideDeckMessage ? 'max-w-[98%]' : 'max-w-[85%]'} rounded-2xl px-5 py-4 shadow-xs ${
                             isUser 
                               ? 'bg-primary text-on-primary rounded-tr-none' 
                               : 'bg-surface-container-lowest text-on-surface rounded-tl-none'
@@ -1497,29 +1465,23 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                       );
                     })}
 
-                    {/* AI Thinking Animation */}
-                    {isAiTyping && (
-                      <div className="flex gap-3 justify-start items-center">
-                        <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container shrink-0">
-                          <Brain className="w-4 h-4" />
-                        </div>
-                        <div className="bg-surface-container-lowest border border-outline-variant/60 rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
-                          <span className="animate-pulse">智汇校园正在梳理教学思路</span>
-                          <span className="flex gap-0.5">
-                            <span className="w-1 h-1 bg-primary rounded-full animate-bounce"></span>
-                            <span className="w-1 h-1 bg-primary rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                            <span className="w-1 h-1 bg-primary rounded-full animate-bounce [animation-delay:0.4s]"></span>
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                    <div ref={chatEndRef} />
                   </div>
                 )}
 
+                {progressSteps.length > 0 && (
+                  <AgentProgressPanel
+                    steps={progressSteps}
+                    isRunning={isAiTyping}
+                    runStatus={runStatus}
+                    onStop={stopStreaming}
+                  />
+                )}
+
+                <div ref={chatEndRef} />
+
                 {/* 2E. SMART FOLLOW-UP AREA (Shown below the main analysis report) */}
                 {stage === 'report' && !isAiTyping && (
-                  <div className="pt-8 border-t border-outline-variant">
+                  <div className="w-full min-w-0 pt-8 border-t border-outline-variant">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container">
                         <Sparkles className="w-5 h-5" />
@@ -1564,8 +1526,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
               </section>
 
               {/* 2F. STATIONARY CHAT INPUT FOOTER AREA */}
-              {!preparingAgentId && <div className="mt-auto px-4 sm:px-6 lg:px-10 pb-4 sm:pb-8 shrink-0 bg-background pt-2 z-10 border-t border-outline-variant/10">
-                <div className="max-w-4xl mx-auto space-y-3">
+              {!preparingAgentId && <div className="mt-auto px-0 pb-4 sm:pb-8 shrink-0 bg-background pt-2 z-10 border-t border-outline-variant/10">
+                <div className="mx-auto w-full min-w-0 max-w-5xl space-y-3 px-3 sm:px-5">
                   {/* Suggestion tags list */}
                   <div className="flex gap-2 mb-2 overflow-x-auto scrollbar-hide py-1">
                     {Object.values(quickActions).map((action) => (
@@ -2013,6 +1975,14 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                     <button type="button" onClick={() => setStandaloneAgentHome(true)} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold text-outline transition hover:bg-surface hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25">
                       <ArrowLeft className="h-4 w-4" />返回{standaloneAgentDefinition?.name}首页
                     </button>
+                    {progressSteps.length > 0 && (
+                      <AgentProgressPanel
+                        steps={progressSteps}
+                        isRunning={isAiTyping}
+                        runStatus={runStatus}
+                        onStop={stopStreaming}
+                      />
+                    )}
                     {standaloneAgentSummary && <section className="rounded-2xl bg-surface/55 px-5 py-4 shadow-[0_10px_28px_rgba(25,28,26,0.04)] backdrop-blur-xl sm:px-6">
                       <p className="text-[10px] font-extrabold uppercase tracking-wider text-outline">执行摘要</p>
                       <p className="mt-2 line-clamp-3 text-xs font-semibold leading-5 text-on-surface-variant">{standaloneAgentSummary}</p>
@@ -2064,10 +2034,13 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
                     </div>
                   </section>
                 ) : isAiTyping ? (
-                  <div role="status" aria-live="polite" className="flex min-h-72 flex-1 flex-col items-center justify-center rounded-2xl bg-surface/60 px-6 py-12 text-center shadow-[0_12px_32px_rgba(25,28,26,0.05)] backdrop-blur-xl">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary"><Sparkles className="h-8 w-8 animate-pulse" /></div>
-                    <h3 className="mt-5 font-display text-lg font-extrabold text-on-surface">正在执行{standaloneAgentDefinition?.name}…</h3>
-                    <p className="mt-2 max-w-md text-xs font-semibold leading-5 text-on-surface-variant">执行完成后，完整成果会直接显示在此页面。</p>
+                  <div role="status" aria-live="polite" className="flex min-h-72 items-start justify-center rounded-2xl bg-surface/60 px-4 py-10 shadow-[0_12px_32px_rgba(25,28,26,0.05)] backdrop-blur-xl sm:px-6">
+                    <AgentProgressPanel
+                      steps={progressSteps}
+                      isRunning={isAiTyping}
+                      runStatus={runStatus}
+                      onStop={stopStreaming}
+                    />
                   </div>
                 ) : (
                   <section role="status" aria-live="polite" className="flex min-h-72 flex-1 flex-col items-center justify-center rounded-2xl bg-surface/60 px-6 py-12 text-center shadow-[0_12px_32px_rgba(25,28,26,0.05)] backdrop-blur-xl">

@@ -11,6 +11,7 @@ import {
   listConversations,
   listMessages,
   listWorkspaceAttachments,
+  progressStepFromEvent,
   streamMessage,
   sourceCitationsFromEvent,
   uploadAttachment,
@@ -19,6 +20,7 @@ import {
   type AgentHistoryItem,
   type Artifact,
   type Attachment,
+  type AgentProgressStep,
   type Conversation,
   type CourseContext,
   type StreamEvent,
@@ -116,6 +118,24 @@ function eventError(event: StreamEvent): ApiError {
   )
 }
 
+const MAX_PROGRESS_STEPS = 8
+
+function mergeProgressStep(current: AgentProgressStep[], incoming: AgentProgressStep): AgentProgressStep[] {
+  const index = current.findIndex((step) => step.id === incoming.id)
+  if (index < 0) return [...current, incoming].slice(-MAX_PROGRESS_STEPS)
+  return current.map((step, stepIndex) => stepIndex === index ? incoming : step)
+}
+
+function completeProgressSteps(
+  current: AgentProgressStep[],
+  state: 'completed' | 'failed',
+  label?: string,
+): AgentProgressStep[] {
+  return current.map((step) => step.state === 'active'
+    ? { ...step, state, label: label ?? step.label }
+    : step)
+}
+
 export function useWorkspaceChat(token: string | null, courseContext?: CourseContext) {
   const [chatMessages, setChatMessages] = useState<Message[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -131,6 +151,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
   const [runStatus, setRunStatus] = useState<RunStatus>('idle')
   const [route, setRoute] = useState<RouteState | null>(null)
   const [toolStatus, setToolStatus] = useState<string | null>(null)
+  const [progressSteps, setProgressSteps] = useState<AgentProgressStep[]>([])
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const loadVersionRef = useRef(0)
@@ -207,6 +228,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     setConversationAttachments([])
     setArtifacts([])
     setToolStatus(null)
+    setProgressSteps([])
     setCitations([])
     setSelectedAttachmentIds([])
     setSelectedArtifactIds([])
@@ -269,6 +291,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     setActiveConversationId(null)
     setRoute(null)
     setRunStatus('idle')
+    setProgressSteps([])
     setError(null)
     if (token) {
       void refreshConversations()
@@ -294,6 +317,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     setRoute(null)
     setRunStatus('idle')
     setToolStatus(null)
+    setProgressSteps([])
     setError(null)
   }, [courseContext?.courseId, workspaceAttachments])
 
@@ -346,6 +370,14 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     setError(null)
     setRunStatus('running')
     setToolStatus('正在连接智能体')
+    setProgressSteps([{
+      id: 'connection',
+      phase: 'routing',
+      state: 'active',
+      label: '正在连接智能体',
+      detail: null,
+      count: null,
+    }])
     setCitations([])
     let conversationId = initialConversationId
     let createdConversationId: string | null = null
@@ -448,9 +480,11 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       }
       if (reason instanceof DOMException && reason.name === 'AbortError') {
         setRunStatus('stopped')
+        setProgressSteps((current) => completeProgressSteps(current, 'failed', '已停止，已保留当前内容'))
         setToolStatus('已停止，已保留当前内容')
       } else {
         const needsInput = reason instanceof ApiError && (reason.code === 'agent_input_incomplete' || reason.code === 'needs_input' || reason.code?.includes('input') || reason.code === 'route_confirmation_required')
+        setProgressSteps((current) => completeProgressSteps(current, 'failed', needsInput ? '需要补充资料' : '任务执行失败'))
         setRunStatus(needsInput ? 'needs_input' : 'failed')
         setError(reason instanceof Error ? reason.message : '生成回复时出错。')
       }
@@ -485,7 +519,13 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
           runId: typeof event.data.run_id === 'string' ? event.data.run_id : null,
         })
       } else if (event.type === 'tool_status') {
-        setToolStatus(typeof event.data.status === 'string' ? event.data.status : '处理中')
+        const progressStep = progressStepFromEvent(event)
+        if (progressStep) {
+          setProgressSteps((current) => mergeProgressStep(current, progressStep))
+          setToolStatus(progressStep.label)
+        } else {
+          setToolStatus(typeof event.data.status === 'string' ? event.data.status : '处理中')
+        }
       } else if (event.type === 'delta' && typeof event.data.text === 'string') {
         setChatMessages((current) => current.map((message) =>
           message.id === assistantId ? { ...message, content: message.content + event.data.text } : message,
@@ -520,6 +560,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       } else if (event.type === 'error') {
         const failure = eventError(event)
         streamFailedRef.current = true
+        setProgressSteps((current) => completeProgressSteps(current, 'failed', '任务执行失败'))
         setRunStatus(failure.code === 'agent_input_incomplete' || failure.code?.includes('input') ? 'needs_input' : 'failed')
         const missingInputs = Array.isArray(event.data.missing_inputs)
           ? event.data.missing_inputs.filter((item): item is string => typeof item === 'string')
@@ -528,6 +569,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       } else if (event.type === 'done') {
         if (!streamFailedRef.current) {
           streamCompletedRef.current = true
+          setProgressSteps((current) => completeProgressSteps(current, 'completed'))
           setRunStatus('completed')
           setToolStatus('已完成')
         }
@@ -571,6 +613,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     if (abortRef.current) {
       abortRef.current.abort()
       setRunStatus('stopped')
+      setProgressSteps((current) => completeProgressSteps(current, 'failed', '已停止，已保留当前内容'))
       setToolStatus('已停止，已保留当前内容')
     }
   }, [])
@@ -668,6 +711,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     runStatus,
     route,
     toolStatus,
+    progressSteps,
     setIsAiTyping,
     clearChat,
     sendMessage,

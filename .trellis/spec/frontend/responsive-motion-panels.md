@@ -51,6 +51,13 @@ const layoutGroupId = useId()
 - The scroll owner uses `overflow-y-auto` and `[scrollbar-gutter:stable]` so content width does not change when a scrollbar appears.
 - All grid and flex descendants that may shrink use `min-w-0`; fixed icons use `shrink-0`.
 
+## Shared Conversation Content Column
+
+- The teacher course conversation, smart follow-up cards, agent progress panel, assistant message list, and bottom input shell share one `max-w-5xl` content column.
+- Apply the same horizontal padding to the scroll area and input column (`px-3 sm:px-5`); do not introduce a narrower `max-w-4xl` footer or a separate large-screen inset such as `lg:px-10`.
+- Keep the shared column descendants `w-full min-w-0` so long assistant content and compact progress cards preserve the same left edge without creating horizontal overflow.
+- Assistant responses use a single text column without a profile avatar; their bubble starts at the same left edge as the bottom input shell.
+
 ## Required Checks
 
 - At each responsive mode, opening the panel yields one content instance and one active shared-layout node.

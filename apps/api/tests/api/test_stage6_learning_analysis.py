@@ -64,9 +64,12 @@ def test_learning_analysis_creates_class_artifact_without_chat_credentials(clien
     start = next(data for name, data in events if name == "message_start")
     artifact = next(data for name, data in events if name == "artifact" and data.get("type") == "learning_analysis")
     done = next(data for name, data in events if name == "done")
+    progress = [data for name, data in events if name == "tool_status"]
     assert start["agent_id"] == "learning_analysis"
     assert artifact["artifact_id"]
     assert done["run_id"] == start["run_id"]
+    assert {item["phase"] for item in progress} >= {"context", "model", "validation", "artifact"}
+    assert all("A01" not in json.dumps(item, ensure_ascii=False) for item in progress)
     assert "班级整体学情分析" in response.text
     assert "A01" not in response.text
 

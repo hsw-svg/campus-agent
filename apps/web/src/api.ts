@@ -238,6 +238,18 @@ export interface StreamEvent {
   data: Record<string, unknown>
 }
 
+export type AgentProgressPhase = 'routing' | 'context' | 'retrieval' | 'model' | 'validation' | 'artifact' | 'complete'
+export type AgentProgressState = 'active' | 'completed' | 'failed'
+
+export interface AgentProgressStep {
+  id: string
+  phase: AgentProgressPhase
+  state: AgentProgressState
+  label: string
+  detail: string | null
+  count: number | null
+}
+
 export type CampusNewsCategory = 'news' | 'activity' | 'notice'
 
 export interface CampusNewsItem {
@@ -660,6 +672,48 @@ export function createConversation(token: string, courseId?: string | null, chap
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agent_id: null, course_id: courseId ?? null, chapter_id: chapterId ?? null }),
   }, token)
+}
+
+const LEGACY_PROGRESS_LABELS: Record<string, Pick<AgentProgressStep, 'phase' | 'state' | 'label'>> = {
+  agent_routed: { phase: 'routing', state: 'completed', label: '智能体已调用' },
+  generic_fallback: { phase: 'routing', state: 'completed', label: '已切换到通用对话' },
+  retrieved: { phase: 'retrieval', state: 'completed', label: '已读取相关资料' },
+  route_confirmation_required: { phase: 'routing', state: 'active', label: '等待确认智能体' },
+}
+
+function isProgressPhase(value: unknown): value is AgentProgressPhase {
+  return value === 'routing'
+    || value === 'context'
+    || value === 'retrieval'
+    || value === 'model'
+    || value === 'validation'
+    || value === 'artifact'
+    || value === 'complete'
+}
+
+function isProgressState(value: unknown): value is AgentProgressState {
+  return value === 'active' || value === 'completed' || value === 'failed'
+}
+
+export function progressStepFromEvent(event: StreamEvent): AgentProgressStep | null {
+  if (event.type !== 'tool_status') return null
+  const status = typeof event.data.status === 'string' ? event.data.status : 'processing'
+  const legacy = LEGACY_PROGRESS_LABELS[status]
+  const phase = isProgressPhase(event.data.phase) ? event.data.phase : legacy?.phase ?? 'model'
+  const state = isProgressState(event.data.state) ? event.data.state : legacy?.state ?? 'active'
+  const label = typeof event.data.label === 'string' && event.data.label.trim()
+    ? event.data.label
+    : legacy?.label ?? '智能体正在处理任务'
+  return {
+    id: typeof event.data.step_id === 'string' && event.data.step_id.trim()
+      ? event.data.step_id
+      : `legacy-${status}`,
+    phase,
+    state,
+    label,
+    detail: typeof event.data.detail === 'string' ? event.data.detail : null,
+    count: typeof event.data.count === 'number' ? event.data.count : null,
+  }
 }
 
 export function listMessages(token: string, conversationId: string): Promise<ApiMessage[]> {

@@ -27,6 +27,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Student Resume Assistant](./student-resume-assistant.md) | Current resume selection, course evidence snapshots, structured analysis Artifacts, and history isolation | Active |
 | [Slide Deck Templates](./slide-deck-templates.md) | Controlled LLM template selection, source-slide cloning, manifest-driven text filling, and PPTX export compatibility | Active |
 | [DeepTutor Integration](./deeptutor-integration.md) | Same-origin DeepTutor book/page/knowledge-base adapter, WebSocket proxy, and single-container runtime contract | Active |
+| [Conversation Streaming](./conversation-streaming.md) | Typed agent progress/delta events, SSE compatibility, safety boundary, and frontend projection | Active |
 
 ---
 

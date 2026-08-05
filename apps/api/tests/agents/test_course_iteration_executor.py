@@ -135,6 +135,21 @@ async def test_plain_course_iteration_returns_markdown_artifact() -> None:
 
 
 @pytest.mark.asyncio
+async def test_slide_deck_stream_emits_safe_progress_before_final_result() -> None:
+    chat = _FakeChatProvider([_valid_payload()])
+    bing = _StubBing(False, SearchResult(False, ()), SearchResult(False, ()))
+    executor = CourseIterationExecutor(chat, bing, artifact_repository_factory=lambda: None)
+
+    events = [event async for event in executor.stream(_request("请生成一份 Python 切片 课件"))]
+    statuses = [event.progress for event in events if event.type == "status" and event.progress]
+    result_events = [event.result for event in events if event.type == "result" and event.result]
+
+    assert {status.phase for status in statuses} >= {"retrieval", "model", "validation", "artifact"}
+    assert result_events and result_events[0].artifact is not None
+    assert all("匿名" not in (status.detail or "") for status in statuses)
+
+
+@pytest.mark.asyncio
 async def test_slide_deck_degrades_when_bing_is_not_configured() -> None:
     chat = _FakeChatProvider([_valid_payload()])
     bing = _StubBing(False, SearchResult(False, ()), SearchResult(False, ()))

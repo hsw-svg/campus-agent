@@ -1,9 +1,16 @@
 from collections.abc import AsyncIterator, Sequence
 import asyncio
+from contextlib import suppress
 from uuid import UUID
 
 from app.agents.registry import is_agent_available_for_role
-from app.agents.contracts import AgentRequest
+from app.agents.contracts import (
+    AgentExecutionEvent,
+    AgentRequest,
+    AgentResult,
+    progress_event,
+    result_event,
+)
 from app.agents.executors.registry import AgentExecutorRegistry
 from app.agents.context import ContextBuilder
 from app.agents.specs import AgentSpec, get_agent_spec
@@ -301,6 +308,18 @@ async def stream_assistant_reply(
                 embedding_provider=embedding_provider,
                 artifacts=artifacts,
             )
+            yield stream_event(
+                "tool_status",
+                {
+                    "status": "context_loading",
+                    "step_id": "agent-context",
+                    "phase": "context",
+                    "state": "active",
+                    "label": "正在读取课程与任务资料",
+                    "agent_id": resolved_agent,
+                    "run_id": str(run.id) if run else None,
+                },
+            )
             context, normalized_attachment_ids = context_builder.build(
                 workspace_id=workspace_id,
                 conversation=conversation,
@@ -319,7 +338,23 @@ async def stream_assistant_reply(
             yield stream_event(
                 "tool_status",
                 {
+                    "status": "context_ready",
+                    "step_id": "agent-context",
+                    "phase": "context",
+                    "state": "completed",
+                    "label": "课程与任务资料已准备完成",
+                    "agent_id": resolved_agent,
+                    "run_id": str(run.id) if run else None,
+                },
+            )
+            yield stream_event(
+                "tool_status",
+                {
                     "status": "agent_routed" if resolved_agent else "generic_fallback",
+                    "step_id": "agent-routing",
+                    "phase": "routing",
+                    "state": "completed",
+                    "label": f"已调用 {_agent_name(role, resolved_agent) or '通用对话'}",
                     "agent_id": resolved_agent,
                     "agent_name": _agent_name(role, resolved_agent),
                     "selection_source": route_decision.selection_source,
@@ -357,7 +392,35 @@ async def stream_assistant_reply(
                 bing_provider=_build_bing_provider(),
                 artifact_repository_factory=(lambda repo=artifacts: repo),
             ).resolve(spec)
-            result = await executor.execute(request)
+            result: AgentResult | None = None
+            streamed_text = ""
+            progress_sequence = 0
+            async for execution_event in _stream_executor(executor, request):
+                if execution_event.type == "status" and execution_event.progress is not None:
+                    progress = execution_event.progress
+                    progress_sequence += 1
+                    yield stream_event(
+                        "tool_status",
+                        {
+                            "status": _legacy_progress_status(progress),
+                            "step_id": progress.step_id,
+                            "phase": progress.phase,
+                            "state": progress.state,
+                            "label": progress.label,
+                            "detail": progress.detail,
+                            "count": progress.count,
+                            "agent_id": resolved_agent,
+                            "run_id": str(run.id) if run else None,
+                            "sequence": progress_sequence,
+                        },
+                    )
+                elif execution_event.type == "delta" and execution_event.text:
+                    streamed_text += execution_event.text
+                    yield stream_event("delta", {"text": execution_event.text})
+                elif execution_event.type == "result" and execution_event.result is not None:
+                    result = execution_event.result
+            if result is None:
+                raise RuntimeError("agent_stream_did_not_complete")
             source_payload = [
                 {
                     "attachment_id": str(source.attachment_id),
@@ -372,8 +435,13 @@ async def stream_assistant_reply(
                     "tool_status",
                     {
                         "status": "retrieved",
+                        "step_id": "agent-sources",
+                        "phase": "retrieval",
+                        "state": "completed",
+                        "label": "已读取相关资料引用",
                         "count": len(source_payload),
                         "agent_id": resolved_agent,
+                        "run_id": str(run.id) if run else None,
                     },
                 )
                 yield stream_event("artifact", {"type": "sources", "sources": source_payload})
@@ -403,6 +471,18 @@ async def stream_assistant_reply(
                     error_code=error_code,
                     error_message=error_message,
                 )
+            yield stream_event(
+                "tool_status",
+                {
+                    "status": "failed",
+                    "step_id": "agent-execution",
+                    "phase": "model",
+                    "state": "failed",
+                    "label": "智能体处理未完成",
+                    "agent_id": resolved_agent,
+                    "run_id": str(run.id) if run else None,
+                },
+            )
             yield stream_event(
                 "error",
                 {
@@ -456,7 +536,10 @@ async def stream_assistant_reply(
                 artifact_id=artifact_id,
                 artifact_status="completed" if artifact_id else "none",
             )
-        yield stream_event("delta", {"text": result.text})
+        if streamed_text != result.text:
+            final_delta = result.text[len(streamed_text):] if result.text.startswith(streamed_text) else result.text
+            if final_delta:
+                yield stream_event("delta", {"text": final_delta})
         if artifact_payload is not None:
             yield stream_event("artifact", artifact_payload)
         yield stream_event(
@@ -500,3 +583,59 @@ def _agent_name(role: str, agent_id: str | None) -> str | None:
     from app.agents.registry import list_agents
 
     return next((agent.name for agent in list_agents(role) if agent.id == agent_id), None)
+
+
+async def _stream_executor(executor: object, request: AgentRequest) -> AsyncIterator[AgentExecutionEvent]:
+    """Use a specialized executor stream or provide cancellable fallback heartbeats."""
+
+    stream_method = getattr(executor, "stream", None)
+    if callable(stream_method):
+        async for event in stream_method(request):
+            yield event
+        return
+
+    execution_task = asyncio.create_task(executor.execute(request))
+    heartbeat_count = 0
+    try:
+        yield progress_event(
+            step_id="agent-execution",
+            phase="model",
+            state="active",
+            label="智能体正在处理任务",
+        )
+        while True:
+            try:
+                result = await asyncio.wait_for(asyncio.shield(execution_task), timeout=0.7)
+                break
+            except asyncio.TimeoutError:
+                heartbeat_count += 1
+                yield progress_event(
+                    step_id="agent-execution",
+                    phase="model",
+                    state="active",
+                    label="智能体正在处理任务",
+                    detail="仍在整理结果",
+                    count=heartbeat_count,
+                )
+        yield progress_event(
+            step_id="agent-execution",
+            phase="model",
+            state="completed",
+            label="智能体处理完成",
+            count=heartbeat_count,
+        )
+        yield result_event(result)
+    except asyncio.CancelledError:
+        if not execution_task.done():
+            execution_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await execution_task
+        raise
+
+
+def _legacy_progress_status(progress) -> str:
+    if progress.state == "failed":
+        return f"{progress.phase}_failed"
+    if progress.state == "completed":
+        return f"{progress.phase}_completed"
+    return f"{progress.phase}_active"

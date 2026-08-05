@@ -3,6 +3,7 @@ from typing import Any, Literal
 
 StreamEventType = Literal[
     "message_start",
+    "route_decision",
     "delta",
     "tool_status",
     "artifact",
@@ -14,6 +15,7 @@ StreamEventType = Literal[
 # Stage 3 streaming contract before adding new event types.
 STREAM_EVENT_TYPES: tuple[StreamEventType, ...] = (
     "message_start",
+    "route_decision",
     "delta",
     "tool_status",
     "artifact",

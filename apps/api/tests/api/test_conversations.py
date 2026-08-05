@@ -1,7 +1,13 @@
+import asyncio
+import json
 from collections.abc import AsyncIterator, Sequence
+from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.agents.contracts import AgentRequest, AgentResult
+from app.services.conversations import _stream_executor
 from tests.api.conftest import make_workspace
 
 
@@ -90,6 +96,26 @@ def test_streaming_reply_emits_protocol_events_and_persists_turns(client: TestCl
     assert messages[1]["content"] == "你好，世界"
 
 
+def test_streaming_reply_forwards_each_visible_model_delta(client: TestClient) -> None:
+    token = make_workspace(client, "student")
+    client.app.state.chat_provider = FakeChatProvider(["第", "一", "步"])
+    conversation = create_conversation(client, token)
+
+    response = client.post(
+        f"/api/conversations/{conversation['id']}/messages/stream",
+        json={"content": "请分步回答"},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 200
+    events = read_events(response.text)
+    deltas = [json.loads(data)["text"] for name, data in events if name == "delta"]
+    statuses = [json.loads(data) for name, data in events if name == "tool_status"]
+    assert deltas == ["第", "一", "步"]
+    assert any(status["phase"] == "model" and status["state"] == "active" for status in statuses)
+    assert any(status["phase"] == "model" and status["state"] == "completed" for status in statuses)
+
+
 def test_first_user_turn_becomes_the_conversation_title(client: TestClient) -> None:
     token = make_workspace(client, "student")
     client.app.state.chat_provider = FakeChatProvider(["好的"])
@@ -149,3 +175,64 @@ def test_model_failure_surfaces_as_stream_error_without_assistant_message(
         f"/api/conversations/{conversation['id']}/messages", headers=auth(token)
     ).json()
     assert [message["role"] for message in messages] == ["user"]
+
+
+def test_legacy_executor_emits_cancellable_heartbeats() -> None:
+    class LegacyExecutor:
+        async def execute(self, request: AgentRequest) -> AgentResult:
+            await asyncio.sleep(0.75)
+            return AgentResult(text="完成")
+
+    request = AgentRequest(
+        workspace_id=uuid4(),
+        conversation_id=uuid4(),
+        role="teacher",
+        agent_id="legacy",
+        content="生成教学建议",
+    )
+
+    events = asyncio.run(_collect_executor_events(LegacyExecutor(), request))
+
+    statuses = [event.progress for event in events if event.type == "status"]
+    assert statuses[0] is not None and statuses[0].state == "active"
+    assert any(status is not None and status.count is not None for status in statuses)
+    assert statuses[-1] is not None and statuses[-1].state == "completed"
+    assert events[-1].result is not None and events[-1].result.text == "完成"
+
+
+@pytest.mark.asyncio
+async def test_legacy_executor_cancellation_cleans_up_background_task() -> None:
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    class LegacyExecutor:
+        async def execute(self, request: AgentRequest) -> AgentResult:
+            started.set()
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+            return AgentResult(text="不会到达")
+
+    request = AgentRequest(
+        workspace_id=uuid4(),
+        conversation_id=uuid4(),
+        role="teacher",
+        agent_id="legacy",
+        content="生成教学建议",
+    )
+    stream = _stream_executor(LegacyExecutor(), request)
+    first_event = await anext(stream)
+    assert first_event.type == "status"
+
+    pending_event = asyncio.create_task(anext(stream))
+    await started.wait()
+    pending_event.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending_event
+    assert cancelled.is_set()
+
+
+async def _collect_executor_events(executor: object, request: AgentRequest) -> list:
+    return [event async for event in _stream_executor(executor, request)]
