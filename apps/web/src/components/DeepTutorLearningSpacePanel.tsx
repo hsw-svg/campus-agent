@@ -23,12 +23,18 @@ import useDeepTutorStudyState from '../hooks/useDeepTutorStudyState'
 
 interface DeepTutorLearningSpacePanelProps {
   token: string | null
-  onOpenBooks: (bookId?: string) => void
+  onOpenBooks: (bookId?: string, pageId?: string) => void
 }
 
 function progressFor(book: DeepTutorBook, completedCount: number): number {
   if (!book.pageCount || book.pageCount <= 0) return completedCount > 0 ? 100 : 0
   return Math.min(100, Math.round((completedCount / book.pageCount) * 100))
+}
+
+function pageKeyParts(key: string): { bookId: string; pageId: string } | null {
+  const separator = key.indexOf(':')
+  if (separator <= 0 || separator === key.length - 1) return null
+  return { bookId: key.slice(0, separator), pageId: key.slice(separator + 1) }
 }
 
 export default function DeepTutorLearningSpacePanel({ token, onOpenBooks }: DeepTutorLearningSpacePanelProps) {
@@ -70,6 +76,21 @@ export default function DeepTutorLearningSpacePanel({ token, onOpenBooks }: Deep
     [books, state.lastOpened?.bookId],
   )
   const recentBooks = useMemo(() => books.slice(0, 4), [books])
+  const recentNotes = useMemo(() => Object.entries(state.notes)
+    .flatMap(([key, note]) => {
+      const parts = pageKeyParts(key)
+      if (!parts || !note.trim()) return []
+      return [{
+        ...parts,
+        note,
+        meta: state.noteMeta[key],
+      }]
+    })
+    .sort((a, b) => new Date(b.meta?.updatedAt ?? 0).getTime() - new Date(a.meta?.updatedAt ?? 0).getTime())
+    .slice(0, 4), [state.noteMeta, state.notes])
+  const recentQuestions = useMemo(() => [...state.savedQuestions]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 4), [state.savedQuestions])
 
   return (
     <div className="w-full space-y-6 py-4 sm:py-8">
@@ -132,7 +153,7 @@ export default function DeepTutorLearningSpacePanel({ token, onOpenBooks }: Deep
           {lastBook && state.lastOpened ? (
             <button
               type="button"
-              onClick={() => onOpenBooks(lastBook.id)}
+              onClick={() => onOpenBooks(lastBook.id, state.lastOpened.pageId)}
               className="group w-full rounded-2xl border border-secondary/30 bg-secondary-container/10 p-4 text-left transition hover:border-secondary/60 hover:bg-secondary-container/20"
             >
               <div className="flex items-start justify-between gap-4">
@@ -215,16 +236,63 @@ export default function DeepTutorLearningSpacePanel({ token, onOpenBooks }: Deep
         )}
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2">
+      <section className="grid gap-5 xl:grid-cols-2">
         <div className="rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-5">
-          <div className="flex items-center gap-2 text-secondary"><NotebookPen className="h-4 w-4" /><h3 className="text-sm font-black text-on-surface">学习笔记</h3></div>
-          <p className="mt-2 text-xs leading-5 text-on-surface-variant">在阅读页记录自己的理解，笔记只保存在当前浏览器，适合现场演示和快速复盘。</p>
-          <p className="mt-4 text-2xl font-black text-on-surface">{notesCount}<span className="ml-1 text-xs font-bold text-on-surface-variant">条</span></p>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-secondary"><NotebookPen className="h-4 w-4" /><h3 className="text-sm font-black text-on-surface">收藏笔记</h3></div>
+              <p className="mt-1 text-xs font-semibold text-on-surface-variant">阅读页保存的笔记会一直留在当前浏览器。</p>
+            </div>
+            <span className="rounded-full bg-primary-container/30 px-2 py-1 text-[10px] font-black text-primary">{notesCount} 条</span>
+          </div>
+          {recentNotes.length > 0 ? (
+            <div className="space-y-2">
+              {recentNotes.map((item) => (
+                <button key={`${item.bookId}:${item.pageId}`} type="button" onClick={() => onOpenBooks(item.bookId, item.pageId)} className="group w-full rounded-xl border border-outline-variant/50 bg-surface-container p-3 text-left transition hover:border-secondary/50 hover:bg-secondary-container/10">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-black text-on-surface">{item.meta?.pageTitle || `页面 ${item.pageId}`}</p>
+                      <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-on-surface-variant">{item.note}</p>
+                      <p className="mt-2 truncate text-[10px] font-bold text-outline">{item.meta?.bookTitle || '交互教材'}</p>
+                    </div>
+                    <ArrowRight className="mt-1 h-3.5 w-3.5 shrink-0 text-secondary transition group-hover:translate-x-1" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-outline-variant bg-surface-container px-4 py-6 text-center text-xs leading-5 text-on-surface-variant">还没有保存的笔记，打开交互教材后即可记录。</div>
+          )}
         </div>
+
         <div className="rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-5">
-          <div className="flex items-center gap-2 text-secondary"><Target className="h-4 w-4" /><h3 className="text-sm font-black text-on-surface">待复习问题</h3></div>
-          <p className="mt-2 text-xs leading-5 text-on-surface-variant">把页面问答中的好问题收藏下来，回到阅读页继续追问。</p>
-          <p className="mt-4 text-2xl font-black text-on-surface">{state.savedQuestions.length}<span className="ml-1 text-xs font-bold text-on-surface-variant">个</span></p>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-secondary"><Target className="h-4 w-4" /><h3 className="text-sm font-black text-on-surface">待复习问题</h3></div>
+              <p className="mt-1 text-xs font-semibold text-on-surface-variant">从这里回到问题所在页面，继续追问。</p>
+            </div>
+            <span className="rounded-full bg-error-container/50 px-2 py-1 text-[10px] font-black text-error">{state.savedQuestions.length} 个</span>
+          </div>
+          {recentQuestions.length > 0 ? (
+            <div className="space-y-2">
+              {recentQuestions.map((item) => {
+                const meta = state.noteMeta[`${item.bookId}:${item.pageId}`]
+                return (
+                  <button key={item.id} type="button" onClick={() => onOpenBooks(item.bookId, item.pageId)} className="group w-full rounded-xl border border-outline-variant/50 bg-surface-container p-3 text-left transition hover:border-secondary/50 hover:bg-secondary-container/10">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 text-xs font-black text-on-surface">{item.question}</p>
+                        <p className="mt-2 truncate text-[10px] font-bold text-outline">{meta?.bookTitle || '交互教材'} · {meta?.pageTitle || `页面 ${item.pageId}`}</p>
+                      </div>
+                      <ArrowRight className="mt-1 h-3.5 w-3.5 shrink-0 text-secondary transition group-hover:translate-x-1" />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-outline-variant bg-surface-container px-4 py-6 text-center text-xs leading-5 text-on-surface-variant">还没有收藏的问题，在页面问答中发送问题后会自动收录。</div>
+          )}
         </div>
       </section>
     </div>

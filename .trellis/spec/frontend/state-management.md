@@ -96,6 +96,45 @@ const quickActions = useMemo(
 
 ---
 
+### Feature-scoped browser persistence
+
+Feature-specific records that must survive a panel unmount but do not require cross-device sync should use a
+feature hook with a token-scoped `localStorage` key. The DeepTutor study hook is the reference implementation:
+
+```ts
+const key = `campus-agent:deeptutor-study:${token?.slice(-12) || 'guest'}`
+
+interface DeepTutorStudyState {
+  completedPages: Record<string, string[]>
+  notes: Record<string, string>
+  noteMeta: Record<string, { bookTitle?: string; pageTitle?: string; updatedAt: string }>
+  savedQuestions: DeepTutorSavedQuestion[]
+  chatHistory: Record<string, DeepTutorChatMessage[]>
+  chatSessions: Record<string, string>
+  lastOpened: { bookId: string; pageId: string } | null
+}
+```
+
+Page-scoped records use the stable `${bookId}:${pageId}` key. The reader must hydrate chat history and session id
+before opening a new stream, persist streamed user/assistant messages while they change, and clear both history and
+session id when the user explicitly clears a page. The parser must tolerate missing or malformed new fields so older
+localStorage records remain usable. This state is browser-local by design; cross-device synchronization requires a
+separate server contract.
+
+**Wrong**:
+
+```tsx
+const [messages, setMessages] = useState<TutorMessage[]>([])
+```
+
+**Correct**:
+
+```tsx
+const restored = studyState.chatHistory[`${bookId}:${pageId}`] ?? []
+setMessages(restored)
+setChatHistory(bookId, pageId, nextMessages)
+```
+
 ## Common Mistakes
 
 <!-- State management mistakes your team has made -->

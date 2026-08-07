@@ -41,18 +41,15 @@ import {
   type DeepTutorPage,
   type DeepTutorSpineItem,
 } from '../api'
-import useDeepTutorStudyState from '../hooks/useDeepTutorStudyState'
+import useDeepTutorStudyState, { type DeepTutorChatMessage } from '../hooks/useDeepTutorStudyState'
 
 interface DeepTutorBookPanelProps {
   token: string | null
   initialBookId?: string
+  initialPageId?: string
 }
 
-interface TutorMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-}
+type TutorMessage = DeepTutorChatMessage
 
 function studentReadableBooks(value: unknown): DeepTutorBook[] {
   return deepTutorBooksFromResponse(value).filter((book) => book.status !== 'draft' || (book.pageCount ?? 0) > 0)
@@ -84,7 +81,7 @@ function BookBlock({ block }: { block: DeepTutorBlock }) {
   )
 }
 
-export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBookPanelProps) {
+export default function DeepTutorBookPanel({ token, initialBookId, initialPageId }: DeepTutorBookPanelProps) {
   const [books, setBooks] = useState<DeepTutorBook[]>([])
   const [knowledgeBases, setKnowledgeBases] = useState<DeepTutorKnowledgeBase[]>([])
   const [selectedBookId, setSelectedBookId] = useState(initialBookId ?? '')
@@ -96,6 +93,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
   const [selectedKnowledgeBase, setSelectedKnowledgeBase] = useState('')
   const [question, setQuestion] = useState('')
   const [messages, setMessages] = useState<TutorMessage[]>([])
+  const [messagesPageKey, setMessagesPageKey] = useState('')
   const [noteDraft, setNoteDraft] = useState('')
   const [noteSaved, setNoteSaved] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -116,6 +114,9 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
     markPageCompleted,
     setPageNote,
     saveQuestion,
+    setChatHistory,
+    clearChatHistory,
+    setChatSession,
     setLastOpened,
   } = studyState
 
@@ -185,6 +186,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
     setSelectedPageId('')
     setPage(null)
     setMessages([])
+    setMessagesPageKey('')
     sessionIdRef.current = null
     closeSocket()
     void getDeepTutorSpine(token, selectedBookId)
@@ -192,17 +194,19 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
         if (!active || requestId !== requestIdRef.current) return
         const nextSpine = deepTutorSpineFromResponse(value).sort((a, b) => a.position - b.position)
         setSpine(nextSpine)
-        const lastOpenedPage = studyStateRef.current.lastOpened?.bookId === selectedBookId
+        const preferredPageId = initialPageId && nextSpine.some((item) => item.id === initialPageId)
+          ? initialPageId
+          : studyStateRef.current.lastOpened?.bookId === selectedBookId
           ? studyStateRef.current.lastOpened.pageId
           : ''
-        setSelectedPageId(nextSpine.some((item) => item.id === lastOpenedPage) ? lastOpenedPage : nextSpine[0]?.id ?? '')
+        setSelectedPageId(nextSpine.some((item) => item.id === preferredPageId) ? preferredPageId : nextSpine[0]?.id ?? '')
       })
       .catch((reason: unknown) => {
         if (active) setError(reason instanceof Error ? reason.message : '教材目录加载失败。')
       })
       .finally(() => { if (active) setPageLoading(false) })
     return () => { active = false }
-  }, [closeSocket, selectedBookId, token])
+  }, [closeSocket, initialPageId, selectedBookId, token])
 
   useEffect(() => {
     if (!token || !selectedBookId || !selectedPageId) {
@@ -214,8 +218,11 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
     const requestId = ++requestIdRef.current
     setPageLoading(true)
     setChatError(null)
-    setMessages([])
-    sessionIdRef.current = null
+    const pageKey = `${selectedBookId}:${selectedPageId}`
+    const restoredMessages = studyStateRef.current.chatHistory[pageKey] ?? []
+    setMessagesPageKey(pageKey)
+    setMessages(restoredMessages)
+    sessionIdRef.current = studyStateRef.current.chatSessions[pageKey] ?? null
     closeSocket()
     void getDeepTutorPage(token, selectedBookId, selectedPageId)
       .then((value) => {
@@ -223,13 +230,19 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
         setPage(deepTutorPageFromResponse(value))
         setNoteDraft(studyStateRef.current.notes[`${selectedBookId}:${selectedPageId}`] ?? '')
         setLastOpened(selectedBookId, selectedPageId)
-      })
-      .catch((reason: unknown) => {
-        if (active) setError(reason instanceof Error ? reason.message : '教材页面加载失败。')
-      })
-      .finally(() => { if (active) setPageLoading(false) })
-    return () => { active = false }
+    })
+    .catch((reason: unknown) => {
+      if (active) setError(reason instanceof Error ? reason.message : '教材页面加载失败。')
+    })
+    .finally(() => { if (active) setPageLoading(false) })
+    return () => { active = false; closeSocket() }
   }, [closeSocket, selectedBookId, selectedPageId, setLastOpened, token])
+
+  useEffect(() => {
+    const pageKey = selectedBookId && selectedPageId ? `${selectedBookId}:${selectedPageId}` : ''
+    if (!pageKey || messagesPageKey !== pageKey) return
+    setChatHistory(selectedBookId, selectedPageId, messages)
+  }, [messages, messagesPageKey, selectedBookId, selectedPageId, setChatHistory])
 
   const selectBook = (bookId: string) => {
     if (bookId === selectedBookId) return
@@ -265,7 +278,10 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
 
   const handleSaveNote = () => {
     if (!selectedBookId || !selectedPageId) return
-    setPageNote(selectedBookId, selectedPageId, noteDraft)
+    setPageNote(selectedBookId, selectedPageId, noteDraft, {
+      bookTitle: selectedBook?.title,
+      pageTitle: page?.title,
+    })
     setNoteSaved(true)
     window.setTimeout(() => setNoteSaved(false), 1800)
   }
@@ -303,8 +319,12 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
       } catch {
         // DeepTutor may emit plain text during a stream.
       }
+      if (socketRef.current !== socket) return
       const parsed: DeepTutorChatEvent = parseDeepTutorChatEvent(value)
-      if (parsed.sessionId) sessionIdRef.current = parsed.sessionId
+      if (parsed.sessionId) {
+        sessionIdRef.current = parsed.sessionId
+        setChatSession(selectedBookId, selectedPageId, parsed.sessionId)
+      }
       if (parsed.type === 'error') {
         setChatError(parsed.text || 'DeepTutor 问答失败。')
         setChatting(false)
@@ -401,7 +421,7 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
           </div>
         </aside>
 
-        <main className="min-w-0 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-4 sm:p-6">
+        <main className="min-w-0 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-4 sm:p-6 xl:self-start xl:min-h-0 xl:max-h-[calc(100vh-12.5rem)] xl:overflow-y-auto xl:[scrollbar-gutter:stable]">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-secondary"><BookOpenCheck className="h-3.5 w-3.5" /> Reading room</div>
@@ -429,8 +449,29 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
                 <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-secondary">当前页面</p><h4 className="mt-1 text-2xl font-black text-on-surface">{page.title}</h4></div>
                 {isPageCompleted(selectedBookId, page.id) && <span className="inline-flex items-center gap-1 rounded-full bg-tertiary-container px-2.5 py-1 text-[10px] font-black text-on-tertiary-container"><CheckCircle2 className="h-3.5 w-3.5" /> 已完成</span>}
               </div>
+              {page.blocks.length > 0 && (
+                <div className="mb-4 rounded-xl border border-outline-variant/50 bg-surface-container p-3">
+                  <div className="mb-2 flex items-center gap-2 text-[11px] font-black text-on-surface-variant"><Layers3 className="h-3.5 w-3.5 text-secondary" />本页结构</div>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {page.blocks.map((block, index) => (
+                      <button
+                        key={block.id}
+                        type="button"
+                        onClick={() => document.getElementById(`deeptutor-block-${block.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                        className="shrink-0 rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-2.5 py-1.5 text-[10px] font-bold text-on-surface-variant transition hover:border-secondary/50 hover:text-secondary"
+                      >
+                        {index + 1}. {block.title || blockTone(block.type).label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="space-y-4">
-                {page.blocks.length > 0 ? page.blocks.map((block) => <BookBlock key={block.id} block={block} />) : <div className="prose prose-sm max-w-none text-on-surface prose-headings:text-on-surface prose-p:text-on-surface-variant prose-strong:text-on-surface"><ReactMarkdown>{page.content}</ReactMarkdown></div>}
+                {page.blocks.length > 0 ? page.blocks.map((block) => (
+                  <div key={block.id} id={`deeptutor-block-${block.id}`} className="scroll-mt-4">
+                    <BookBlock block={block} />
+                  </div>
+                )) : <div className="prose prose-sm max-w-none text-on-surface prose-headings:text-on-surface prose-p:text-on-surface-variant prose-strong:text-on-surface"><ReactMarkdown>{page.content}</ReactMarkdown></div>}
               </div>
 
               <div className="mt-6 rounded-2xl border border-outline-variant/60 bg-surface-container p-4">
@@ -453,21 +494,21 @@ export default function DeepTutorBookPanel({ token, initialBookId }: DeepTutorBo
         <aside className="flex min-h-[34rem] flex-col rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-4">
           <div className="mb-3 flex items-start justify-between gap-2">
             <div className="flex items-center gap-2"><MessageCircleQuestion className="h-5 w-5 text-secondary" /><div><h3 className="text-sm font-black text-on-surface">页面问答</h3><p className="text-[11px] font-semibold text-on-surface-variant">围绕当前页面继续追问</p></div></div>
-            {messages.length > 0 && <button type="button" onClick={() => setMessages([])} className="text-[10px] font-bold text-outline hover:text-secondary">清空</button>}
+            {messages.length > 0 && <button type="button" onClick={() => { clearChatHistory(selectedBookId, selectedPageId); setMessages([]); sessionIdRef.current = null }} className="text-[10px] font-bold text-outline hover:text-secondary">清空</button>}
           </div>
           <div className="mb-3 rounded-xl bg-secondary-container/15 px-3 py-2 text-[11px] leading-5 text-on-surface-variant">{page ? `问答上下文：${page.title}` : '选择页面后，DeepTutor 会带入页面上下文。'}</div>
           <div className="flex-1 space-y-3 overflow-y-auto rounded-xl bg-surface-container p-3">
             {messages.length === 0 && <div className="py-10 text-center"><MessageCircleQuestion className="mx-auto h-7 w-7 text-secondary/60" /><p className="mt-3 text-xs leading-5 text-on-surface-variant">例如：请用一个生活中的例子解释本页的核心概念。</p></div>}
             {messages.map((message) => (
               <div key={message.id} className={`rounded-xl px-3 py-2 text-xs leading-5 ${message.role === 'user' ? 'ml-5 bg-secondary text-on-secondary' : 'mr-5 bg-surface-container-lowest text-on-surface'}`}>
-                {message.content || (chatting && message.role === 'assistant' ? <span className="inline-flex items-center gap-1.5 text-on-surface-variant"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />正在思考…</span> : '暂无回复')}
+                {message.content || (chatting && message.role === 'assistant' ? <span className="inline-flex items-center gap-1.5 text-on-surface-variant"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />正在生成回答…</span> : '暂无回复')}
                 {message.role === 'user' && <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-on-secondary/70"><Bookmark className="h-3 w-3" />已加入待复习问题</div>}
               </div>
             ))}
           </div>
           <div className="mt-3 space-y-2">
             <textarea value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); handleQuestion() } }} placeholder={selectedBook ? '向当前教材提问…' : '先选择教材'} rows={3} className="w-full resize-none rounded-xl border border-outline-variant/60 bg-surface px-3 py-2 text-xs outline-none transition-colors focus:border-secondary" disabled={!selectedBook || !selectedPageId || chatting} />
-            <button type="button" onClick={handleQuestion} disabled={!selectedBook || !selectedPageId || !question.trim() || chatting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-secondary px-3 py-2.5 text-xs font-black text-on-secondary disabled:cursor-not-allowed disabled:opacity-50">{chatting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{chatting ? 'DeepTutor 正在回答' : '发送并收藏问题'}</button>
+            <button type="button" onClick={handleQuestion} disabled={!selectedBook || !selectedPageId || !question.trim() || chatting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-secondary px-3 py-2.5 text-xs font-black text-on-secondary disabled:cursor-not-allowed disabled:opacity-50">{chatting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{chatting ? '正在回答…' : '发送并收藏问题'}</button>
           </div>
         </aside>
       </section>

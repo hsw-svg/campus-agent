@@ -1,4 +1,4 @@
-import { GraduationCap, Presentation, BookOpen, ShieldAlert, EyeOff, Lock, Landmark, ArrowRight } from 'lucide-react';
+import { GraduationCap, Presentation, BookOpen, ShieldAlert, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import { WorkspaceRole } from '../types';
 
@@ -137,30 +137,6 @@ export default function RoleSelector({ onSelectRole, isLoading = false, notice }
       {isLoading && <p className="fixed bottom-24 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-2 text-sm text-white shadow-lg">正在准备匿名工作空间…</p>}
       {notice && <p role="alert" className="fixed bottom-24 left-1/2 -translate-x-1/2 max-w-[90vw] rounded-xl bg-error-container px-4 py-2 text-sm text-on-error-container shadow-lg">{notice}</p>}
 
-      {/* Footer Security Promises */}
-      <footer className="w-full bg-surface-container-low border-t border-outline-variant py-5 px-4 sm:py-6 sm:px-6 lg:px-10">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-8">
-            <div className="flex items-center gap-1.5 text-on-surface-variant">
-              <EyeOff className="w-4.5 h-4.5 text-primary" />
-              <span className="text-sm font-medium">匿名使用</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-on-surface-variant">
-              <Landmark className="w-4.5 h-4.5 text-primary" />
-              <span className="text-sm font-medium">角色隔离</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-on-surface-variant">
-              <Lock className="w-4.5 h-4.5 text-primary" />
-              <span className="text-sm font-medium">资料可控</span>
-            </div>
-          </div>
-          <div className="text-xs text-on-surface-variant flex flex-wrap justify-center md:justify-end items-center gap-3 text-center md:text-right">
-            <span>© 2024 智汇校园</span>
-            <span className="hidden md:inline font-light">基于大语言模型的学术辅助系统</span>
-            <a className="hover:text-primary hover:underline underline-offset-4 font-semibold" href="#">隐私协议</a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

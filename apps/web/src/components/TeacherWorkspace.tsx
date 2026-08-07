@@ -790,8 +790,8 @@ export default function TeacherWorkspace({ token, onBackToRoles }: TeacherWorksp
       
       {/* 1. SIDEBAR NAVIGATION */}
       {showCreateCourseDialog && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/25 p-4" role="dialog" aria-modal="true" aria-labelledby="create-course-title">
-          <form onSubmit={handleCreateCourse} className="w-full max-w-md rounded-2xl border border-outline-variant bg-surface p-6 shadow-2xl">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/45 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="create-course-title">
+          <form onSubmit={handleCreateCourse} className="w-full max-w-md rounded-2xl border border-outline-variant bg-surface-container-lowest p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <p className="mb-1 text-[11px] font-bold tracking-widest text-primary">课程空间</p>
