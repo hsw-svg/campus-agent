@@ -332,9 +332,11 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
             <section className={`mx-auto flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-y-auto ${
               activeSection === 'resume'
                 ? 'max-w-none p-3 sm:p-4 xl:overflow-hidden xl:p-0'
+                : activeSection === 'deep-tutor'
+                  ? 'max-w-none overflow-hidden p-2 sm:p-3'
                 : activeSection === 'learning' && chatMessages.length === 0
                   ? 'max-w-none overflow-hidden p-0'
-                  : `space-y-6 p-4 sm:p-6 ${activeSection === 'campus' || activeSection === 'courses' || activeSection === 'course-detail' || activeSection === 'learning-space' || activeSection === 'deep-tutor' ? 'max-w-7xl' : 'max-w-4xl'}`
+                  : `space-y-6 p-4 sm:p-6 ${activeSection === 'campus' || activeSection === 'courses' || activeSection === 'course-detail' || activeSection === 'learning-space' ? 'max-w-7xl' : 'max-w-4xl'}`
             }`}>
 
             {activeSection === 'resume' && <ResumeAssistantPanel token={token} />}
