@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
-- **Last Active**: 2026-08-05
+- **Total Sessions**: 10
+- **Last Active**: 2026-08-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~306 | Active |
+| `journal-1.md` | ~339 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-08-12 | 完善学生课程上下文与教材知识库 | `7f8a6cf6b58ff327fb3eedb4b57697c1be4b6698` | `master` |
 | 9 | 2026-08-05 | 课程切换驱动教师端快捷任务 | `62dcb2b` | `master` |
 | 8 | 2026-08-05 | 教师独立 Agent 与历史栏修复 | `5a4101e`, `97554dc` | `master` |
 | 7 | 2026-08-04 | 教师独立智能体入口 | `5840de0` | `master` |
