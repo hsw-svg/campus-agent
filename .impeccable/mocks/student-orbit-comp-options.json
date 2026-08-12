@@ -1,0 +1,44 @@
+{
+  "title": "确定星图学习舱的最终构图",
+  "question": "三张方案共享同一视觉世界，只改变首屏焦点与信息组织。请选择作为学生端实现法则的方案。",
+  "options": [
+    {
+      "id": "comp-1",
+      "label": "课程星球",
+      "kicker": "原方向稿",
+      "lineage": "中心课程星球与章节轨道",
+      "thesis": "以课程本身作为学习宇宙中心，学生围绕章节轨道探索教材、问答和任务。",
+      "palette": ["#07142E", "#4ED8D0", "#6C7DFF", "#F6B95E"],
+      "materials": ["玻璃轨道环", "课程星球", "3D AI 学伴"],
+      "viewport": "中央课程星球展开章节轨道，左侧课程和教材，右侧AI问答，下方今日航线。",
+      "risk": "视觉主题最完整，但中心星球可能占用较多内容空间。",
+      "hero": ".impeccable/mocks/student-orbit-comp-1.webp"
+    },
+    {
+      "id": "comp-2",
+      "label": "全息教材",
+      "kicker": "阅读优先",
+      "lineage": "打开的教材投射知识轨道",
+      "thesis": "让交互教材成为主舞台，知识图谱、例题、笔记和练习直接从页面展开。",
+      "palette": ["#07142E", "#4ED8D0", "#6C7DFF", "#F6B95E"],
+      "materials": ["全息书页", "轨道知识节点", "3D AI 学伴"],
+      "viewport": "中央全息教材占据首屏主体，左侧章节，右侧AI问答，底部今日航线。",
+      "risk": "最利于核心教材功能，但课程中心的宏观探索感较弱。",
+      "hero": ".impeccable/mocks/student-orbit-comp-2.webp"
+    },
+    {
+      "id": "comp-3",
+      "label": "今日学习航线",
+      "kicker": "路径优先",
+      "lineage": "横向星图学习站点",
+      "thesis": "把一天的学习任务变成可见航线，完成、当前和待解锁状态一眼可辨。",
+      "palette": ["#07142E", "#4ED8D0", "#6C7DFF", "#F6B95E"],
+      "materials": ["星图航线", "玻璃学习站", "3D AI 学伴"],
+      "viewport": "五个学习站点横跨首屏，当前站点展开内容，下方持续显示下一项任务。",
+      "risk": "流程感最强，但需避免被理解为游戏关卡地图。",
+      "hero": ".impeccable/mocks/student-orbit-comp-3.webp"
+    }
+  ],
+  "steer": true,
+  "followup": false
+}

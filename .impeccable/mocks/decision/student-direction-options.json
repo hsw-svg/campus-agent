@@ -1,0 +1,93 @@
+{
+  "title": "选择学生端沉浸式学习世界",
+  "question": "教师与教务端保持成熟校园 SaaS。以下方向只作用于学生端，并保留课程、教材、问答、练习与学习进度。",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "知识光谱实验场",
+      "kicker": "STUDENT EXPERIENCE",
+      "lineage": "光谱仪、棱镜实验与交互科学展台",
+      "thesis": "学生把课程材料送入知识棱镜，AI 学伴将其分解为概念、例题、练习和掌握证据。",
+      "palette": ["#08152B", "#35D5C8", "#8C6FF7", "#FFCA58"],
+      "materials": ["半透明知识棱镜", "柔和体积光", "精密实验刻度"],
+      "viewport": "中央3D知识棱镜连接课程星片、交互教材与AI问答，右侧机器人学伴解释当前章节，下方光谱带呈现学习路径。",
+      "risk": "光效若失控会接近泛化科技展台，必须让每束光对应真实学习状态。",
+      "raised": [
+        {"from": "青春知识印刷社", "raise": "加入更大胆的学生表达色块，让视觉不只剩冷色科技感。"},
+        {"from": "生长式知识花园", "raise": "每个课程节点具备可感知的成长状态，而非静态装饰。"},
+        {"from": "知识引力场", "raise": "首屏保留一个尺度足够大的核心机制，形成评委记忆点。"}
+      ],
+      "sketch": ".impeccable/mocks/decision/student-spectrum.webp"
+    },
+    {
+      "id": "model-pick",
+      "label": "星图学习舱",
+      "kicker": "MY PICK",
+      "lineage": "天文馆星图、轨道模型与探索舱",
+      "thesis": "课程是可探索星系，章节是轨道，AI 学伴带学生从当前知识点飞向下一项可完成任务。",
+      "palette": ["#07142E", "#4ED8D0", "#6C7DFF", "#F6B95E"],
+      "materials": ["深空星图", "玻璃轨道环", "柔和3D学习机器人"],
+      "viewport": "学生置身一座全屏学习舱，中央课程星球展开章节轨道，左侧是课程与教材，右侧AI学伴和即时问答，下方显示今日航线。",
+      "risk": "宇宙学习隐喻较常见，必须用真实课程结构和高完成度交互避免成为背景主题。",
+      "sketch": ".impeccable/mocks/decision/student-orbit.webp"
+    },
+    {
+      "id": "challenger-riso",
+      "label": "青春知识印刷社",
+      "verdict": "competitive",
+      "lineage": "校园社团刊物、Risograph 套色印刷与剪贴学习手册",
+      "thesis": "课程像一本学生亲手编辑的彩色学习刊物，AI 把笔记、问答和练习叠印成个人知识版面。",
+      "palette": ["#F4E9D0", "#1856A3", "#F34B8B", "#F4C542"],
+      "materials": ["暖纸纹", "荧光套色油墨", "半调网点与剪纸形状"],
+      "viewport": "首屏是一张可操作的校园学习杂志跨页，课程、交互教材、错题与AI问答以套色版块组织，机器人化为印刷社编辑。",
+      "case": "学生认同感和视觉区分度极强，同时仍能承载内容阅读；空间沉浸感弱于3D方向。",
+      "risk": "套印、颗粒与字体若过量会影响长文本阅读。",
+      "sketch": ".impeccable/mocks/decision/student-riso.webp",
+      "hero": "https://impeccable.style/worlds/cards/risograph-web-system-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/risograph-web-system.webp"
+    },
+    {
+      "id": "challenger-garden",
+      "label": "生长式知识花园",
+      "verdict": "competitive",
+      "lineage": "植物标本册、校园温室与新艺术运动生长边框",
+      "thesis": "知识节点随阅读、问答和练习逐步发芽开花，AI 学伴负责照料并解释成长证据。",
+      "palette": ["#F7F0DD", "#2E6B50", "#D86F8B", "#35485C"],
+      "materials": ["温暖纸面", "几何化植物枝条", "透明温室层板"],
+      "viewport": "中央课程知识树从交互教材生长，章节沿枝条展开，机器人园丁提示下一项任务，周围是课程、笔记、错题与成果清场。",
+      "case": "学习成长隐喻直观、亲和且适合长期使用；竞赛冲击力低于深色空间方向。",
+      "risk": "如果植物只作边框，会退化为普通教育插画风。",
+      "sketch": ".impeccable/mocks/decision/student-garden.webp",
+      "hero": "https://impeccable.style/worlds/cards/design-canon-mloda-polska-secession-page-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/design-canon-mloda-polska-secession-page.webp"
+    },
+    {
+      "id": "challenger-blackhole",
+      "label": "知识引力场",
+      "verdict": "competitive",
+      "lineage": "黑洞吸积盘、轨道观测与时间切片",
+      "thesis": "当前难点成为知识引力中心，相关教材、问答、例题和练习沿轨道聚合，直至学生跨过理解阈值。",
+      "palette": ["#03050C", "#E9F5FF", "#52A9FF", "#FF9B4A"],
+      "materials": ["深空黑场", "蓝白知识盘", "金色光子环"],
+      "viewport": "首屏中央是可交互知识引力场，课程资源沿轨道排列，机器人观察员锁定当前难点，章节路径和学习状态位于清晰边缘控制台。",
+      "case": "视觉冲击与核心机制最强；对所有课程长期复用时隐喻可能过重。",
+      "risk": "暗黑和吸积盘若处理不当会压迫学生，或被误解为科学专题产品。",
+      "sketch": ".impeccable/mocks/decision/student-blackhole.webp",
+      "hero": "https://impeccable.style/worlds/cards/galaxies-nebulae-deep-time-accretion-disk-threshold-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/galaxies-nebulae-deep-time-accretion-disk-threshold.webp"
+    }
+  ],
+  "reroll": {"registers": ["safer", "bolder"]},
+  "canon": true,
+  "canonCard": {
+    "label": "沉浸式学习仪表板",
+    "thesis": "在成熟学生工作台上增加课程封面、学习进度、轻量3D学伴和动效。",
+    "palette": ["#F7FAFC", "#17324D", "#536DFE", "#17B6A4"],
+    "materials": ["柔和卡片", "课程插画", "克制光效"],
+    "viewport": "课程中心、继续学习、AI问答和成长进度组成熟悉学生首页。",
+    "risk": "可用性稳定，但竞赛第一眼与同类教育平台接近。",
+    "sketch": ".impeccable/mocks/decision/student-canon.webp"
+  },
+  "steer": true,
+  "followup": true
+}

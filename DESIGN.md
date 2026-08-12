@@ -831,3 +831,38 @@ This project uses the Notion analysis as a design reference for information arch
 - For each visual change, inspect the desktop and narrow viewport states, then run `npm.cmd run lint` and `npm.cmd run build`.
 
 Source: [VoltAgent/awesome-design-md](https://github.com/VoltAgent/awesome-design-md), selected `design-md/notion/DESIGN.md` from the official repository. This project-specific section takes precedence wherever the upstream analysis conflicts with 智汇校园's product or engineering constraints.
+
+## 智汇校园角色视觉系统（当前实现）
+
+三类用户是彼此独立的产品端，不共享工作台首页。角色选择页只负责进入对应端；进入后，教师只能看到教师工作台，学生只能看到学生学习空间，行政只能看到行政工作台。
+
+### 教师端与行政端：成熟校园 SaaS
+
+- 目标：高信息密度、稳定、易扫描、低学习成本，视觉服务于任务效率。
+- 采用浅色学术表面、清晰侧栏、克制阴影、蓝绿状态色和规则卡片层级。
+- 禁止把学生端的星空、行星轨道和机器人装饰迁入教师或行政的核心工作流。
+
+### 学生端：星图学习舱
+
+- 目标：把课程、章节进度和 AI 辅学组织成可探索的学习旅程，同时保留真实功能入口。
+- 基础画布为深海军蓝 `#061126`；主强调色为青绿 `#4ed8d0`，探索/进度辅色为蓝紫 `#6c7dff`，当前节点强调为暖金 `#f6b95e`。
+- 中央课程使用课程星球作为唯一视觉锚点；章节沿轨道分布，状态必须同时用图标、文本或可访问标签表达，不能只靠颜色。
+- 左侧课程与教材区复用真实课程数据和 `CourseArtwork`；右侧 AI 学伴提供问题建议，不替代现有问答流程。
+- 学生端可以使用生成式星空、课程星球和非真人机器人资产，但不得将文字烘焙进图片；实际课程名、状态与操作必须由 HTML 渲染。
+- 视觉动效仅用于进入、悬停和空间层次；遵守 `prefers-reduced-motion`，减少动态时关闭非必要位移。
+- 学习中心、课程中心、学习空间、交互教材、校园中心、简历助手统一放在工作区顶部的智能体路径导航中；学生端不得同时显示第二套常驻侧栏或底部重复导航。
+- 最近对话属于按需辅助信息，通过顶部入口打开模态弹窗；关闭后必须回到原工作上下文，不占用星图常驻宽度。
+
+### 星图学习舱响应式规则
+
+- `>= 1024px`：课程列表、中央星图、AI 学伴三栏并列；底部显示学习路线。
+- `< 1024px`：隐藏课程侧栏；AI 学伴改为可展开浮层，始终保留触发按钮。
+- `< 640px`：章节节点改为完整横向滚动轨道，不删除后续章节；触控操作高度至少 44px。
+- 小屏必须保持课程标题、继续学习、章节节点和 AI 学伴入口可达；装饰性星球允许裁切，但功能控件不得依赖画布外区域。
+
+### 实现资产
+
+- `apps/web/src/assets/student-orbit/starfield.webp`：无文字星空背景。
+- `apps/web/src/assets/student-orbit/course-planet.webp`：透明背景课程星球。
+- `apps/web/src/assets/student-orbit/ai-companion.webp`：透明背景非真人 AI 学伴。
+- 三项资产均保留同名 `.prompt.md`，用于后续一致化再生成。

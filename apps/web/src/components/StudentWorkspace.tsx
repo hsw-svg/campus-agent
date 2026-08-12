@@ -5,9 +5,6 @@ import {
   BookOpenCheck,
   History,
   FolderOpen,
-  MoreVertical,
-  PanelLeftClose,
-  PanelLeftOpen,
   ShieldCheck,
   Search,
   Activity,
@@ -18,16 +15,19 @@ import {
   Mic,
   Image as ImageIcon,
   Compass,
-  FileText,
-  HelpCircle,
   Sparkles,
-  ClipboardList,
   CheckCircle,
   Copy,
   Newspaper,
   LibraryBig,
   CircleCheckBig,
-  FileUser
+  FileUser,
+  FileText,
+  HelpCircle,
+  ClipboardList,
+  MessageSquare,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -44,7 +44,6 @@ import {
 } from '../api';
 import { Message } from '../types';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
-import ConversationHistory from './ConversationHistory';
 import ResourcePicker from './ResourcePicker';
 import CampusNewsPanel from './CampusNewsPanel';
 import CourseCenterPanel from './CourseCenterPanel';
@@ -52,6 +51,7 @@ import CourseDetailPanel from './CourseDetailPanel';
 import ResumeAssistantPanel from './ResumeAssistantPanel';
 import DeepTutorBookPanel from './DeepTutorBookPanel';
 import DeepTutorLearningSpacePanel from './DeepTutorLearningSpacePanel';
+import StudentOrbitHome from './StudentOrbitHome';
 
 interface StudentWorkspaceProps {
   token: string | null;
@@ -108,7 +108,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   const [inputVal, setInputVal] = useState('');
   const [copied, setCopied] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -124,6 +124,15 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isAiTyping]);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHistoryOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [historyOpen]);
 
   const handleSendMessage = (textToSend?: string) => {
     const finalMsg = textToSend || inputVal;
@@ -147,7 +156,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   }, [token])
 
   useEffect(() => {
-    if (activeSection === 'courses' && courses.length === 0 && !courseLoadAttemptedRef.current) {
+    if ((activeSection === 'learning' || activeSection === 'courses') && courses.length === 0 && !courseLoadAttemptedRef.current) {
       void refreshCourses()
     }
   }, [activeSection, courses.length, refreshCourses])
@@ -244,149 +253,10 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   );
 
   return (
-    <div className="flex h-screen w-full font-sans antialiased bg-background text-on-surface overflow-hidden">
+    <div className="student-orbit-shell flex h-screen w-full overflow-hidden bg-background font-sans text-on-surface antialiased">
       
-      {/* SIDEBAR NAVIGATION */}
-      <aside className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-outline-variant bg-surface-container-low py-4 px-3 transition-transform duration-300 ${sidebarCollapsed ? '-translate-x-full' : '-translate-x-full lg:translate-x-0'}`}>
-        <div className="flex items-center gap-3 px-2 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-white shadow-sm">
-            <BookOpen className="w-6 h-6" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="font-display text-lg font-extrabold text-secondary leading-tight">智汇校园</h1>
-            <p className="text-xs text-on-surface-variant font-medium">学生工作台</p>
-          </div>
-          <button type="button" aria-label="折叠侧边栏" onClick={() => setSidebarCollapsed(true)} className="rounded-lg p-1.5 text-outline transition-all duration-200 hover:bg-surface-container hover:text-secondary">
-            <PanelLeftClose className="w-4 h-4" />
-          </button>
-        </div>
-
-        <button 
-          onClick={() => {
-            setLearningCourse(null);
-            setLearningChapterId(null);
-            setActiveSection('learning');
-            clearChat();
-          }}
-          className="flex items-center justify-center gap-2 w-full py-3 mb-6 bg-secondary text-on-secondary rounded-xl font-semibold text-sm hover:opacity-95 transition-all active:scale-95 shadow-sm cursor-pointer"
-        >
-          <Compass className="w-4.5 h-4.5" />
-          新建学习任务
-        </button>
-
-        <nav className="flex-1 space-y-1 overflow-y-auto">
-          <div className="px-3 py-1 mb-1 text-[11px] text-outline font-bold tracking-wider">菜单</div>
-          
-          <button 
-            onClick={() => {
-              if (learningCourse) {
-                clearChat();
-                setLearningCourse(null);
-                setLearningChapterId(null);
-              }
-              setActiveSection('learning');
-            }}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              activeSection === 'learning'
-                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary' 
-                : 'text-on-surface-variant hover:bg-surface-container-high'
-            }`}
-          >
-            <Compass className="w-4.5 h-4.5" />
-            <span>学习中心</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={showCourseCenter}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              activeSection === 'courses' || activeSection === 'course-detail'
-                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
-                : 'text-on-surface-variant hover:bg-surface-container-high'
-            }`}
-          >
-            <LibraryBig className="w-4.5 h-4.5" />
-            <span>课程中心</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSection('learning-space')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              activeSection === 'learning-space'
-                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
-                : 'text-on-surface-variant hover:bg-surface-container-high'
-            }`}
-          >
-            <Sparkles className="w-4.5 h-4.5" />
-            <span>学习空间</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setDeepTutorBookId(''); setDeepTutorPageId(''); setActiveSection('deep-tutor') }}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              activeSection === 'deep-tutor'
-                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
-                : 'text-on-surface-variant hover:bg-surface-container-high'
-            }`}
-          >
-            <BookOpenCheck className="w-4.5 h-4.5" />
-            <span>交互教材</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSection('campus')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              activeSection === 'campus'
-                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
-                : 'text-on-surface-variant hover:bg-surface-container-high'
-            }`}
-          >
-            <Newspaper className="w-4.5 h-4.5" />
-            <span>校园中心</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSection('resume')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left font-semibold text-sm transition-all duration-200 cursor-pointer ${
-              activeSection === 'resume'
-                ? 'text-secondary bg-secondary-container/10 border-r-4 border-secondary'
-                : 'text-on-surface-variant hover:bg-surface-container-high'
-            }`}
-          >
-            <FileUser className="w-4.5 h-4.5" />
-            <span>简历助手</span>
-          </button>
-
-          <ConversationHistory
-            conversations={conversations.filter((conversation) => conversation.agent_id !== 'resume_helper' && (learningCourse
-              ? conversation.course_id === learningCourse.id && conversation.chapter_id === learningChapterId
-              : conversation.course_id === null))}
-            activeConversationId={activeConversationId}
-            onOpen={(id) => { setActiveSection('learning'); void openConversation(id); }}
-            onDelete={(id) => { void removeConversation(id); }}
-            accentClass="text-secondary"
-          />
-        </nav>
-
-        {/* User Info */}
-        <div className="mt-auto p-2 bg-surface-container/50 rounded-xl border border-outline-variant flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-sm shrink-0 border border-outline-variant">
-            学生
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold truncate">学生用户</p>
-            <p className="text-[10px] text-on-surface-variant truncate font-semibold tracking-wider">本科生</p>
-          </div>
-          <MoreVertical className="w-4 h-4 text-outline cursor-pointer hover:text-secondary" />
-        </div>
-      </aside>
-
       {/* MAIN CONTENT AREA */}
-      <main className={`flex-1 flex flex-col bg-background min-h-screen pb-16 lg:pb-0 relative overflow-hidden transition-[margin-left] duration-300 ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-72'}`}>
+      <main className="relative flex h-screen min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
         {activeSection === 'learning' && (error || exportError) && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{error || exportError}</div>}
         {activeSection === 'learning' && courseError && <div role="alert" className="mx-10 mt-3 rounded-xl border border-error/30 bg-error-container px-4 py-2 text-xs text-on-error-container">{courseError}</div>}
         {activeSection === 'learning' && (toolStatus || route || runStatus === 'failed' || runStatus === 'needs_input') && (
@@ -400,41 +270,71 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         )}
         
         {/* Top App Bar */}
-        <header className="sticky top-0 z-40 h-16 bg-surface border-b border-outline-variant flex justify-between items-center px-10 shrink-0">
-          <div className="flex items-center gap-3">
-            {sidebarCollapsed && (
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed(false)}
-                aria-label="展开侧边栏"
-                className="rounded-lg p-2 text-secondary transition-all duration-200 hover:bg-surface-container"
-              >
-                <PanelLeftOpen className="w-5 h-5" />
-              </button>
-            )}
-            <div className="flex items-center gap-1 px-3 py-1 bg-surface-container-high rounded-full border border-outline-variant shadow-xs">
+        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-outline-variant/70 bg-surface-container-low/90 px-4 shadow-[0_8px_30px_rgba(0,5,20,0.2)] backdrop-blur-xl sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2 text-secondary" aria-label="智汇校园学生端">
+              <BookOpen className="h-5 w-5" />
+              <span className="hidden text-sm font-black sm:inline">智汇校园</span>
+            </div>
+            <span className="hidden h-5 w-px bg-outline-variant sm:block" aria-hidden="true" />
+            <div className="flex items-center gap-2 rounded-lg border border-outline-variant/80 bg-surface-container px-3 py-1.5">
               <ShieldCheck className="w-4 h-4 text-secondary" />
-              <span className="text-xs font-bold text-on-surface-variant">安全学生工作空间</span>
+              <span className="text-xs font-bold text-on-surface-variant">匿名学习空间</span>
             </div>
           </div>
 
-          <button 
-            onClick={onBackToRoles}
-            className="flex items-center gap-1 px-4 py-2 bg-secondary-container text-on-secondary-container rounded-full font-semibold text-xs hover:bg-opacity-95 transition-all active:scale-95 cursor-pointer"
-          >
-            <UserRoundCheck className="w-3.5 h-3.5" />
-            切换角色
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              className="flex min-h-10 items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-xs font-semibold text-on-surface-variant transition-colors hover:border-secondary/50 hover:text-secondary"
+            >
+              <History className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">最近对话</span>
+              {conversations.length > 0 && <span className="tabular-nums text-secondary">{conversations.length}</span>}
+            </button>
+            <button
+              type="button"
+              onClick={onBackToRoles}
+              className="flex min-h-10 items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-xs font-semibold text-on-surface-variant transition-colors hover:border-secondary/50 hover:text-secondary"
+            >
+              <UserRoundCheck className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">切换角色</span>
+            </button>
+          </div>
         </header>
 
+        <nav className="student-agent-trail" aria-label="学生智能体导航">
+          <button type="button" aria-current={activeSection === 'learning' ? 'page' : undefined} data-active={activeSection === 'learning'} onClick={() => { clearChat(); setLearningCourse(null); setLearningChapterId(null); setActiveSection('learning') }}>
+            <Compass /><span><small>学习智能体</small>学习中心</span>
+          </button>
+          <button type="button" aria-current={activeSection === 'courses' || activeSection === 'course-detail' ? 'page' : undefined} data-active={activeSection === 'courses' || activeSection === 'course-detail'} onClick={showCourseCenter}>
+            <LibraryBig /><span><small>课程智能体</small>课程中心</span>
+          </button>
+          <button type="button" aria-current={activeSection === 'learning-space' ? 'page' : undefined} data-active={activeSection === 'learning-space'} onClick={() => setActiveSection('learning-space')}>
+            <Sparkles /><span><small>知识智能体</small>学习空间</span>
+          </button>
+          <button type="button" aria-current={activeSection === 'deep-tutor' ? 'page' : undefined} data-active={activeSection === 'deep-tutor'} onClick={() => { setDeepTutorBookId(''); setDeepTutorPageId(''); setActiveSection('deep-tutor') }}>
+            <BookOpenCheck /><span><small>教材智能体</small>交互教材</span>
+          </button>
+          <button type="button" aria-current={activeSection === 'campus' ? 'page' : undefined} data-active={activeSection === 'campus'} onClick={() => setActiveSection('campus')}>
+            <Newspaper /><span><small>校园智能体</small>校园中心</span>
+          </button>
+          <button type="button" aria-current={activeSection === 'resume' ? 'page' : undefined} data-active={activeSection === 'resume'} onClick={() => setActiveSection('resume')}>
+            <FileUser /><span><small>成长智能体</small>简历助手</span>
+          </button>
+        </nav>
+
         {/* Chat / Workbench layout */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           
-          <div className="flex-1 flex flex-col h-full overflow-hidden">
-            <section className={`flex-1 flex flex-col overflow-y-auto mx-auto w-full ${
+          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <section className={`mx-auto flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-y-auto ${
               activeSection === 'resume'
                 ? 'max-w-none p-3 sm:p-4 xl:overflow-hidden xl:p-0'
-                : `space-y-6 p-4 sm:p-6 ${activeSection === 'campus' || activeSection === 'courses' || activeSection === 'course-detail' || activeSection === 'learning-space' || activeSection === 'deep-tutor' ? 'max-w-7xl' : 'max-w-4xl'}`
+                : activeSection === 'learning' && chatMessages.length === 0
+                  ? 'max-w-none overflow-hidden p-0'
+                  : `space-y-6 p-4 sm:p-6 ${activeSection === 'campus' || activeSection === 'courses' || activeSection === 'course-detail' || activeSection === 'learning-space' || activeSection === 'deep-tutor' ? 'max-w-7xl' : 'max-w-4xl'}`
             }`}>
 
             {activeSection === 'resume' && <ResumeAssistantPanel token={token} />}
@@ -496,52 +396,17 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
             )}
 
             {activeSection === 'learning' && chatMessages.length === 0 && (
-              <div className="flex-grow flex flex-col items-center text-center py-6 space-y-6 max-w-4xl mx-auto w-full">
-                <div className="relative w-20 h-20">
-                  <div className="absolute inset-0 bg-secondary/5 rounded-full animate-pulse"></div>
-                  <div className="absolute inset-3 bg-secondary/10 rounded-full flex items-center justify-center">
-                    <BookOpen className="w-8 h-8 text-secondary" />
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <h2 className="font-display text-2xl font-bold text-on-surface">{learningCourse ? `开始学习「${learningChapter?.title ?? learningCourse.name}」` : '开启你的学术与学习智能陪伴'}</h2>
-                  <p className="text-sm text-on-surface-variant font-medium animate-fade-in">
-                    {learningCourse ? '围绕当前章节提问、上传资料或生成练习，完成后记得记录本节进度。' : '输入你的学术难点、复习章节，或点击下方的智能引擎快捷入口，自动为你制定冲刺大纲！'}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
-                  <button 
-                    onClick={() => handleSendMessage('论文辅助：生成计算机大模型相关大纲')}
-                    className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-2xl flex items-center justify-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
-                      <FileText className="w-6 h-6" />
-                    </div>
-                    <span className="font-bold text-sm text-on-surface">论文辅助</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleSendMessage('知识问答：Python 列表与元组的深度区别')}
-                    className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-2xl flex items-center justify-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
-                      <HelpCircle className="w-6 h-6" />
-                    </div>
-                    <span className="font-bold text-sm text-on-surface">知识问答</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleSendMessage('课程总结：自动生成 Python 复习备考冲刺计划')}
-                    className="bg-surface-container-lowest border border-outline-variant/60 p-4 rounded-2xl flex items-center justify-center gap-3 hover:border-secondary hover:shadow-md transition-all group cursor-pointer text-center"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-secondary-container/30 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
-                      <ClipboardList className="w-6 h-6" />
-                    </div>
-                    <span className="font-bold text-sm text-on-surface">课程总结</span>
-                  </button>
-                </div>
-              </div>
+              <StudentOrbitHome
+                courses={courses}
+                learningCourse={learningCourse}
+                learningChapterId={learningChapterId}
+                loading={courseLoading}
+                onOpenCourses={showCourseCenter}
+                onStartCourse={(course, chapterId) => { void enterCourseLearning(course, chapterId) }}
+                onOpenBook={() => { setDeepTutorBookId(''); setDeepTutorPageId(''); setActiveSection('deep-tutor') }}
+                onOpenLearningSpace={() => setActiveSection('learning-space')}
+                onAsk={(prompt) => handleSendMessage(prompt)}
+              />
             )}
 
             {activeSection === 'learning' && chatMessages.length > 0 && (
@@ -591,9 +456,9 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                     <div className="bg-surface-container-lowest border border-outline-variant/60 rounded-2xl px-5 py-4 text-xs font-semibold text-on-surface-variant flex items-center gap-2">
                       <span className="animate-pulse">学生智能助手正在提炼课程纲领与要点</span>
                       <span className="flex gap-0.5">
-                        <span className="w-1 h-1 bg-secondary rounded-full animate-bounce"></span>
-                        <span className="w-1 h-1 bg-secondary rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                        <span className="w-1 h-1 bg-secondary rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                        <span className="h-1 w-1 animate-pulse rounded-full bg-secondary"></span>
+                        <span className="h-1 w-1 animate-pulse rounded-full bg-secondary [animation-delay:0.2s]"></span>
+                        <span className="h-1 w-1 animate-pulse rounded-full bg-secondary [animation-delay:0.4s]"></span>
                       </span>
                     </div>
                   </div>
@@ -605,26 +470,26 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
           {/* Input Footer */}
           {activeSection === 'learning' && chatMessages.length > 0 && <div className="px-6 pb-3 xl:hidden">{resourcePicker}</div>}
-          {activeSection === 'learning' && <div className="mt-auto px-10 pb-8 shrink-0 bg-background pt-2 border-t border-outline-variant/10 z-10">
+          {activeSection === 'learning' && chatMessages.length > 0 && <div className="z-10 mt-auto shrink-0 border-t border-outline-variant/30 bg-background px-4 pb-5 pt-2 sm:px-6 lg:px-10 lg:pb-6">
             <div className="max-w-4xl mx-auto space-y-3">
               <div className="flex gap-2 overflow-x-auto scrollbar-hide py-1">
                 <button 
                   onClick={() => handleSendMessage('论文辅助：生成计算机大模型相关大纲')}
-                  className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
+                  className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border border-outline-variant bg-surface-container px-3 py-2 text-[11px] font-bold text-on-surface-variant transition-colors hover:bg-surface-container-high"
                 >
-                  📝 论文大纲构思
+                  <FileText className="h-3.5 w-3.5" />论文大纲构思
                 </button>
                 <button 
                   onClick={() => handleSendMessage('知识问答：Python 列表与元组的深度区别')}
-                  className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
+                  className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border border-outline-variant bg-surface-container px-3 py-2 text-[11px] font-bold text-on-surface-variant transition-colors hover:bg-surface-container-high"
                 >
-                  💡 算法概念答疑
+                  <HelpCircle className="h-3.5 w-3.5" />算法概念答疑
                 </button>
                 <button 
                   onClick={() => handleSendMessage('课程总结：自动生成 Python 复习备考冲刺计划')}
-                  className="whitespace-nowrap px-3 py-1 bg-surface-container hover:bg-surface-container-high text-[11px] font-bold text-on-surface-variant border border-outline-variant rounded-full transition-colors cursor-pointer"
+                  className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border border-outline-variant bg-surface-container px-3 py-2 text-[11px] font-bold text-on-surface-variant transition-colors hover:bg-surface-container-high"
                 >
-                  📅 期末复习冲刺
+                  <ClipboardList className="h-3.5 w-3.5" />期末复习冲刺
                 </button>
               </div>
 
@@ -641,15 +506,16 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                   }}
                   className="w-full bg-transparent border-none outline-none focus:outline-hidden text-sm p-1 resize-none font-sans leading-relaxed text-on-surface min-h-[44px] scrollbar-hide" 
                   placeholder="提问你的学术盲点或概念..." 
+                  aria-label="向学生智能助手提问"
                   rows={2}
                 />
                 <div className="flex items-center justify-between pt-2 border-t border-outline-variant/35">
                   <div className="flex gap-1">
-                    <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-outline hover:text-secondary transition-colors rounded-lg hover:bg-surface-container cursor-pointer">
+                    <button type="button" aria-label="上传学习资料" onClick={() => fileInputRef.current?.click()} className="grid h-11 w-11 place-items-center rounded-lg text-outline transition-colors hover:bg-surface-container hover:text-secondary">
                       <Paperclip className="w-4 h-4" />
                     </button>
                     <input ref={fileInputRef} type="file" className="hidden" accept=".txt,.md,.docx,.pdf,.xlsx,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file); event.currentTarget.value = ''; }} />
-                    <button className="p-1.5 text-outline hover:text-secondary transition-colors rounded-lg hover:bg-surface-container cursor-pointer">
+                    <button type="button" aria-label="使用语音输入" className="grid h-11 w-11 place-items-center rounded-lg text-outline transition-colors hover:bg-surface-container hover:text-secondary">
                       <Mic className="w-4 h-4" />
                     </button>
                   </div>
@@ -668,7 +534,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           </div>
 
           {/* Right sidebar */}
-          {activeSection === 'learning' && <aside className="w-80 h-full border-l border-outline-variant bg-surface-container-low flex flex-col p-4 gap-6 overflow-y-auto shrink-0 hidden xl:flex">
+          {activeSection === 'learning' && chatMessages.length > 0 && <aside className="hidden h-full w-80 shrink-0 flex-col gap-6 overflow-y-auto border-l border-outline-variant bg-surface-container-low p-4 xl:flex">
             {resourcePicker}
             <div className="space-y-3">
               <h3 className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider px-1">学习备考资料袋</h3>
@@ -699,26 +565,50 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         </div>
       </main>
 
-      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-6 rounded-2xl border border-outline-variant bg-surface-container-lowest/95 p-1.5 shadow-xl backdrop-blur lg:hidden" aria-label="学生端主导航">
-        <button type="button" onClick={() => { clearChat(); setLearningCourse(null); setLearningChapterId(null); setActiveSection('learning') }} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'learning' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
-          <Compass className="h-4 w-4" />学习
-        </button>
-        <button type="button" onClick={showCourseCenter} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'courses' || activeSection === 'course-detail' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
-          <LibraryBig className="h-4 w-4" />课程
-        </button>
-        <button type="button" onClick={() => setActiveSection('learning-space')} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'learning-space' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
-          <Sparkles className="h-4 w-4" />空间
-        </button>
-        <button type="button" onClick={() => { setDeepTutorBookId(''); setDeepTutorPageId(''); setActiveSection('deep-tutor') }} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'deep-tutor' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
-          <BookOpenCheck className="h-4 w-4" />教材
-        </button>
-        <button type="button" onClick={() => setActiveSection('campus')} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'campus' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
-          <Newspaper className="h-4 w-4" />校园
-        </button>
-        <button type="button" onClick={() => setActiveSection('resume')} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-black ${activeSection === 'resume' ? 'bg-secondary text-on-secondary' : 'text-on-surface-variant'}`}>
-          <FileUser className="h-4 w-4" />简历
-        </button>
-      </nav>
+      {historyOpen && (
+        <div className="student-history-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setHistoryOpen(false) }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="student-history-title" className="student-history-dialog">
+            <header>
+              <div>
+                <History aria-hidden="true" />
+                <div>
+                  <h2 id="student-history-title">最近对话</h2>
+                  <p>继续之前的学习任务，或清理不再需要的记录。</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setHistoryOpen(false)} aria-label="关闭最近对话">
+                <X />
+              </button>
+            </header>
+            <div className="student-history-list">
+              {conversations.filter((conversation) => conversation.agent_id !== 'resume_helper' && (learningCourse
+                ? conversation.course_id === learningCourse.id && conversation.chapter_id === learningChapterId
+                : conversation.course_id === null)).length === 0 ? (
+                <div className="student-history-empty">
+                  <MessageSquare aria-hidden="true" />
+                  <strong>暂无历史对话</strong>
+                  <span>开始学习或向 AI 学伴提问后，对话会保存在这里。</span>
+                </div>
+              ) : conversations.filter((conversation) => conversation.agent_id !== 'resume_helper' && (learningCourse
+                ? conversation.course_id === learningCourse.id && conversation.chapter_id === learningChapterId
+                : conversation.course_id === null)).map((conversation) => (
+                  <div key={conversation.id} className="student-history-item" data-active={activeConversationId === conversation.id}>
+                    <button type="button" onClick={() => { setActiveSection('learning'); setHistoryOpen(false); void openConversation(conversation.id) }}>
+                      <MessageSquare aria-hidden="true" />
+                      <span>
+                        <strong>{conversation.title || '未命名对话'}</strong>
+                        <small>{activeConversationId === conversation.id ? '当前对话' : '点击继续学习'}</small>
+                      </span>
+                    </button>
+                    <button type="button" onClick={() => { void removeConversation(conversation.id) }} aria-label={`删除对话：${conversation.title || '未命名对话'}`}>
+                      <Trash2 />
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </section>
+        </div>
+      )}
 
     </div>
   );
