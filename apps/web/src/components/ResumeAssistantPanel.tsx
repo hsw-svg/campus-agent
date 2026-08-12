@@ -46,19 +46,19 @@ export default function ResumeAssistantPanel({ token }: ResumeAssistantPanelProp
   }
 
   return (
-    <div className="grid min-h-full w-full gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-0">
+    <div className="student-resume-shell grid min-h-full w-full gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-0">
       <div className="min-w-0 space-y-5 p-1 sm:p-3 xl:overflow-y-auto xl:p-6">
-        <section className="relative overflow-hidden rounded-3xl border border-secondary/15 bg-[linear-gradient(135deg,rgba(207,250,254,0.72),rgba(255,255,255,0.92)_48%,rgba(199,210,254,0.5))] p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)] sm:p-7">
-          <div className="absolute -right-10 -top-12 h-40 w-40 rounded-full bg-secondary/10 blur-2xl" />
+        <section className="student-resume-hero relative overflow-hidden rounded-3xl border border-secondary/20 p-5 sm:p-7">
+          <div className="absolute -right-10 -top-12 h-40 w-40 rounded-full bg-secondary/15 blur-2xl" />
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-secondary/20 bg-white/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-secondary">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-secondary/30 bg-secondary/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-secondary">
                 <Sparkles className="h-3.5 w-3.5" />AI Career Companion
               </div>
               <h1 className="mt-3 font-display text-2xl font-extrabold tracking-tight text-on-surface sm:text-3xl">简历助手</h1>
               <p className="mt-2 text-sm font-medium leading-relaxed text-on-surface-variant">基于你的真实简历与课程学习进度，定位表达问题、匹配岗位关键词，并生成有证据边界的优化草稿。</p>
             </div>
-            <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/80 bg-white/70 p-3 backdrop-blur">
+            <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-outline-variant/80 bg-surface-container-lowest/80 p-3 backdrop-blur">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-on-secondary"><FileSearch className="h-5 w-5" /></div>
               <div>
                 <p className="text-[10px] font-bold text-outline">分析原则</p>
@@ -75,7 +75,7 @@ export default function ResumeAssistantPanel({ token }: ResumeAssistantPanelProp
         )}
 
         <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="rounded-3xl border border-outline-variant/70 bg-white p-5 shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+          <div className="student-resume-card rounded-3xl border border-outline-variant/70 bg-surface-container-lowest p-5">
             <SectionTitle index="01" title="上传当前简历" subtitle="支持 PDF、DOCX、TXT、Markdown，最大 25 MB" />
             <button
               type="button"
@@ -122,7 +122,7 @@ export default function ResumeAssistantPanel({ token }: ResumeAssistantPanelProp
             )}
           </div>
 
-          <div className="rounded-3xl border border-outline-variant/70 bg-white p-5 shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+          <div className="student-resume-card rounded-3xl border border-outline-variant/70 bg-surface-container-lowest p-5">
             <SectionTitle index="02" title="设置求职方向" subtitle="均为可选；留空时生成通用优化建议" />
             <label className="mt-4 block">
               <span className="text-[11px] font-black text-on-surface">目标岗位</span>
@@ -151,7 +151,7 @@ export default function ResumeAssistantPanel({ token }: ResumeAssistantPanelProp
           </div>
         </section>
 
-        <section className="rounded-3xl border border-outline-variant/70 bg-white p-5 shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+        <section className="student-resume-card rounded-3xl border border-outline-variant/70 bg-surface-container-lowest p-5">
           <SectionTitle index="03" title="选择课程学习证据" subtitle="已开始课程默认选中；未开始课程不会作为能力依据" />
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             {assistant.loading ? (
@@ -188,7 +188,7 @@ export default function ResumeAssistantPanel({ token }: ResumeAssistantPanelProp
           </div>
           <div className="flex shrink-0 gap-2">
             {assistant.status === 'failed' && (
-              <button type="button" onClick={assistant.retryAnalysis} className="inline-flex items-center gap-1.5 rounded-xl border border-secondary/30 bg-white px-4 py-2.5 text-xs font-black text-secondary">
+              <button type="button" onClick={assistant.retryAnalysis} className="inline-flex items-center gap-1.5 rounded-xl border border-secondary/30 bg-surface-container-lowest px-4 py-2.5 text-xs font-black text-secondary">
                 <RotateCcw className="h-4 w-4" />重新分析
               </button>
             )}
@@ -206,7 +206,7 @@ export default function ResumeAssistantPanel({ token }: ResumeAssistantPanelProp
         </section>
 
         {assistant.activeHistory && !report && (
-          <section className="rounded-3xl border border-outline-variant/70 bg-white p-6 text-center">
+          <section className="student-resume-card rounded-3xl border border-outline-variant/70 bg-surface-container-lowest p-6 text-center">
             <AlertCircle className="mx-auto h-7 w-7 text-error" />
             <h2 className="mt-2 text-sm font-black text-on-surface">这次分析未生成报告</h2>
             <p className="mt-1 text-xs text-on-surface-variant">{assistant.activeHistory.error_message || '可以保留当前简历和设置后重新分析。'}</p>
@@ -223,7 +223,7 @@ export default function ResumeAssistantPanel({ token }: ResumeAssistantPanelProp
         )}
 
         {!report && !assistant.activeHistory && !assistant.loading && (
-          <section className="rounded-3xl border border-dashed border-outline-variant bg-white/60 px-6 py-12 text-center">
+          <section className="student-resume-empty rounded-3xl border border-dashed border-outline-variant bg-surface-container-lowest/60 px-6 py-12 text-center">
             <FileText className="mx-auto h-8 w-8 text-outline" />
             <h2 className="mt-3 text-sm font-black text-on-surface">完整优化报告将在这里展示</h2>
             <p className="mt-1 text-xs font-medium text-on-surface-variant">包含问题清单、岗位匹配、课程能力映射和可复制的完整草稿。</p>
@@ -277,7 +277,7 @@ function ResumeReportView({
   onCopy: (key: string, value: string) => Promise<void>
 }) {
   return (
-    <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 rounded-3xl border border-outline-variant/70 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)] sm:p-7">
+    <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="student-resume-card space-y-5 rounded-3xl border border-outline-variant/70 bg-surface-container-lowest p-5 sm:p-7">
       <div className="flex items-start gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-secondary text-white"><CheckCircle2 className="h-5 w-5" /></div>
         <div>
@@ -344,7 +344,7 @@ function ResumeReportView({
         </div>
       </div>
 
-      <div className="rounded-3xl border border-secondary/20 bg-[linear-gradient(180deg,rgba(207,250,254,0.3),white)] p-4 sm:p-5">
+      <div className="student-resume-draft rounded-3xl border border-secondary/20 p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-secondary">Optimized Draft</p>
@@ -359,7 +359,7 @@ function ResumeReportView({
           {report.optimized_resume_sections.map((section, index) => {
             const key = `section-${index}`
             return (
-              <article key={`${section.heading}-${index}`} className="rounded-2xl border border-outline-variant/60 bg-white p-4">
+              <article key={`${section.heading}-${index}`} className="rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-4">
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="text-xs font-black text-on-surface">{section.heading}</h4>
                   <button type="button" onClick={() => void onCopy(key, `## ${section.heading}\n\n${section.markdown}`)} className="inline-flex items-center gap-1 text-[9px] font-black text-secondary">

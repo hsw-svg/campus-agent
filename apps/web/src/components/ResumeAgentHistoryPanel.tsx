@@ -26,9 +26,9 @@ export default function ResumeAgentHistoryPanel({
       initial={{ opacity: 0, x: 18 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ type: 'spring', bounce: 0, duration: 0.42 }}
-      className="flex min-h-0 w-full flex-col gap-3 xl:h-full xl:overflow-y-auto xl:bg-surface-container-low/80 xl:p-3 xl:backdrop-blur-xl"
+      className="student-resume-history flex min-h-0 w-full flex-col gap-3 xl:h-full xl:overflow-y-auto xl:bg-surface-container-low/80 xl:p-3 xl:backdrop-blur-xl"
     >
-      <section className="rounded-2xl border border-white/80 bg-white/80 p-4 shadow-[0_12px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl">
+      <section className="rounded-2xl border border-outline-variant/80 bg-surface-container-lowest/80 p-4 backdrop-blur-xl">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
@@ -52,7 +52,7 @@ export default function ResumeAgentHistoryPanel({
         )}
       </section>
 
-      <section className="rounded-2xl border border-white/80 bg-white/80 p-3 shadow-[0_12px_32px_rgba(15,23,42,0.05)] backdrop-blur-xl">
+      <section className="rounded-2xl border border-outline-variant/80 bg-surface-container-lowest/80 p-3 backdrop-blur-xl">
         {history.length === 0 ? (
           <div className="rounded-xl border border-dashed border-outline-variant px-4 py-8 text-center">
             <FileClock className="mx-auto h-6 w-6 text-outline" />
@@ -118,7 +118,7 @@ function HistoryItem({
   }, [menuOpen])
 
   return (
-    <div className={`relative rounded-xl border px-3 py-2.5 transition-colors ${active ? 'border-secondary/35 bg-secondary/5' : 'border-outline-variant/70 bg-white hover:border-secondary/30 hover:bg-secondary/5'}`}>
+    <div className={`relative rounded-xl border px-3 py-2.5 transition-colors ${active ? 'border-secondary/50 bg-secondary/10 shadow-[inset_3px_0_0_#4ed8d0]' : 'border-outline-variant/70 bg-surface-container-low hover:border-secondary/30 hover:bg-secondary/5'}`}>
       <button type="button" onClick={onOpen} className="block w-full pr-5 text-left">
         <div className="flex items-start gap-2.5">
           <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${statusDot(item.status)}`} />
@@ -149,7 +149,7 @@ function HistoryItem({
             setConfirming(false)
             setMenuOpen((current) => !current)
           }}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-outline hover:bg-black/5 hover:text-on-surface"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-outline hover:bg-white/5 hover:text-on-surface"
         >
           <MoreVertical className="h-3.5 w-3.5" />
         </button>
@@ -160,14 +160,14 @@ function HistoryItem({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -4 }}
               onClick={(event) => event.stopPropagation()}
-              className="absolute right-0 top-7 z-20 w-32 overflow-hidden rounded-xl border border-outline-variant/70 bg-white p-1 shadow-[0_12px_32px_rgba(15,23,42,0.15)]"
+              className="absolute right-0 top-7 z-20 w-32 overflow-hidden rounded-xl border border-outline-variant/70 bg-surface-container-lowest p-1 shadow-[0_16px_40px_rgba(0,5,20,0.45)]"
             >
               {confirming ? (
                 <div className="p-1">
                   <p className="px-1 pb-1.5 text-[9px] font-bold text-on-surface-variant">确认删除该记录？</p>
                   <div className="flex gap-1">
                     <button type="button" onClick={onDelete} className="flex-1 rounded-lg bg-error px-2 py-1.5 text-[9px] font-extrabold text-white">删除</button>
-                    <button type="button" onClick={() => setConfirming(false)} className="flex-1 rounded-lg bg-black/5 px-2 py-1.5 text-[9px] font-extrabold text-on-surface">取消</button>
+                    <button type="button" onClick={() => setConfirming(false)} className="flex-1 rounded-lg bg-white/5 px-2 py-1.5 text-[9px] font-extrabold text-on-surface">取消</button>
                   </div>
                 </div>
               ) : (

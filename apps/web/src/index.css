@@ -114,6 +114,15 @@ textarea:focus-visible {
   --color-surface-container-high: #142743;
   --color-surface-container-highest: #1d3454;
   --color-surface-container-lowest: #0a1930;
+  --color-primary: #8b8cfb;
+  --color-primary-container: #24295d;
+  --color-on-primary-container: #e2e4ff;
+  --color-tertiary: #f5bd68;
+  --color-tertiary-container: #4a351d;
+  --color-on-tertiary-container: #ffe4b8;
+  --color-error: #fb7185;
+  --color-error-container: #4c1d2b;
+  --color-on-error-container: #fecdd3;
   --color-outline: #6f87a8;
   --color-outline-variant: #274261;
   color-scheme: dark;
@@ -134,6 +143,75 @@ textarea:focus-visible {
 
 .student-orbit-shell :focus-visible {
   outline-color: rgba(78, 216, 208, 0.88);
+}
+
+.student-resume-shell {
+  position: relative;
+  background:
+    radial-gradient(circle at 42% 0%, rgba(61, 114, 178, 0.13), transparent 34%),
+    radial-gradient(circle at 96% 24%, rgba(78, 216, 208, 0.08), transparent 26%),
+    #061126;
+}
+
+.student-resume-shell::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background-image:
+    radial-gradient(circle at 8% 16%, rgba(158, 203, 255, 0.52) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 72% 8%, rgba(78, 216, 208, 0.44) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 90% 62%, rgba(158, 203, 255, 0.34) 0 1px, transparent 1.5px);
+  background-size: 172px 172px, 227px 227px, 293px 293px;
+  opacity: 0.38;
+}
+
+.student-resume-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.student-resume-hero {
+  background:
+    radial-gradient(circle at 82% 20%, rgba(78, 216, 208, 0.13), transparent 30%),
+    linear-gradient(135deg, rgba(15, 45, 80, 0.96), rgba(8, 25, 49, 0.98) 54%, rgba(20, 31, 70, 0.94));
+  box-shadow: inset 0 1px 0 rgba(166, 211, 255, 0.08), 0 22px 52px rgba(0, 6, 22, 0.28);
+}
+
+.student-resume-card,
+.student-resume-history > section {
+  box-shadow: inset 0 1px 0 rgba(166, 211, 255, 0.05), 0 16px 42px rgba(0, 6, 22, 0.2);
+}
+
+.student-resume-card {
+  background-image: linear-gradient(145deg, rgba(15, 37, 70, 0.62), rgba(8, 24, 47, 0.32));
+}
+
+.student-resume-draft {
+  background:
+    radial-gradient(circle at 88% 10%, rgba(78, 216, 208, 0.1), transparent 26%),
+    linear-gradient(180deg, rgba(13, 40, 69, 0.94), rgba(7, 22, 43, 0.96));
+}
+
+.student-resume-empty {
+  background-image: radial-gradient(circle at 50% 42%, rgba(78, 216, 208, 0.08), transparent 34%);
+}
+
+.student-resume-history {
+  border-left: 1px solid rgba(83, 118, 163, 0.18);
+  background-image: linear-gradient(180deg, rgba(8, 22, 44, 0.88), rgba(5, 16, 34, 0.94));
+}
+
+.student-resume-shell input:focus-visible,
+.student-resume-shell textarea:focus-visible {
+  outline: none;
+}
+
+@media (max-width: 1279px) {
+  .student-resume-history {
+    border-top: 1px solid rgba(83, 118, 163, 0.18);
+    border-left: 0;
+  }
 }
 
 .student-agent-trail {
