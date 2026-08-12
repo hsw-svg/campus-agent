@@ -32,6 +32,20 @@ class FakeEmbeddingProvider:
         return [[1.0, 0.0] for _ in texts]
 
 
+class FakeCourseKnowledgeBaseClient:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    async def sync_course_material(self, **values) -> dict[str, str]:
+        self.calls.append(values)
+        course_id = str(values["course_id"]).replace("-", "")
+        return {
+            "knowledge_base_name": f"campus-course-{course_id}",
+            "task_id": "kb-task-1",
+            "operation": "create",
+        }
+
+
 def create_conversation(client: TestClient, token: str) -> dict:
     response = client.post("/api/conversations", json={}, headers=auth(token))
     assert response.status_code == 201
@@ -139,6 +153,63 @@ def test_workspace_attachment_can_be_uploaded_and_listed_without_conversation(
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [attachment["id"]]
     assert client.get("/api/conversations", headers=auth(token)).json() == []
+
+
+def test_student_course_textbook_is_bound_and_queues_knowledge_base_build(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    knowledge_client = FakeCourseKnowledgeBaseClient()
+    client.app.state.deeptutor_client = knowledge_client
+    token = make_workspace(client, "student")
+    course = client.post("/api/courses/defaults", headers=auth(token)).json()[0]
+
+    response = client.post(
+        "/api/workspaces/current/attachments",
+        params={"course_id": course["id"]},
+        files={"file": ("textbook.md", "课程教材正文", "text/markdown")},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 201
+    attachment = response.json()
+    assert attachment["scope"] == "workspace"
+    assert attachment["conversation_id"] is None
+    assert attachment["course_id"] == course["id"]
+    assert attachment["knowledge_base_status"] == "queued"
+    assert attachment["knowledge_base_task_id"] == "kb-task-1"
+    assert len(knowledge_client.calls) == 1
+    assert knowledge_client.calls[0]["filename"] == "textbook.md"
+    listed = client.get(
+        "/api/workspaces/current/attachments",
+        params={"course_id": course["id"]},
+        headers=auth(token),
+    ).json()
+    assert listed[0]["knowledge_base_status"] == "queued"
+
+
+def test_deeptutor_unavailable_does_not_roll_back_local_course_textbook(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    client.app.state.object_storage = LocalObjectStorage(tmp_path)
+    token = make_workspace(client, "student")
+    course = client.post("/api/courses/defaults", headers=auth(token)).json()[0]
+
+    response = client.post(
+        "/api/workspaces/current/attachments",
+        params={"course_id": course["id"]},
+        files={"file": ("offline.md", "离线仍可检索的教材", "text/markdown")},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 201
+    attachment = response.json()
+    assert attachment["status"] == "degraded"
+    assert attachment["extracted_chars"] > 0
+    assert attachment["knowledge_base_status"] == "unavailable"
+    assert "本地检索可用" in attachment["knowledge_base_message"]
 
 
 def test_course_library_upload_rejects_unsupported_file_type(

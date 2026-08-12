@@ -27,6 +27,8 @@ import {
   startCourseChapter,
   type CourseDetail,
   type CourseSummary,
+  type Conversation,
+  type Attachment,
 } from '../api';
 import { useWorkspaceChat } from '../hooks/useWorkspaceChat';
 import CampusNewsPanel from './CampusNewsPanel';
@@ -35,7 +37,13 @@ import CourseDetailPanel from './CourseDetailPanel';
 import ResumeAssistantPanel from './ResumeAssistantPanel';
 import DeepTutorBookPanel from './DeepTutorBookPanel';
 import DeepTutorLearningSpacePanel from './DeepTutorLearningSpacePanel';
-import StudentOrbitHome, { type TutorRoleId } from './StudentOrbitHome';
+import StudentOrbitHome from './StudentOrbitHome';
+import {
+  latestStudentCourseConversation,
+  normalizeStudentVisibleText,
+  studentChatConversations,
+  type TutorRoleId,
+} from '../studentLearning';
 
 interface StudentWorkspaceProps {
   token: string | null;
@@ -51,10 +59,10 @@ function visibleStudentPrompt(content: string): string {
 }
 
 const tutorRoleInstructions: Record<TutorRoleId, string> = {
-  default: '请使用 DeepTutor 默认角色。以均衡学伴方式回答：先给清晰结论，再用简短例子和下一步学习建议帮助理解。',
-  peer: '请使用 DeepTutor 的 peer 角色。像同学共同讨论：语气平等亲和，多用生活化类比和启发式追问，鼓励学生先表达自己的理解，不使用居高临下的讲授口吻。',
-  'research-assistant': '请使用 DeepTutor 的 research-assistant 角色。像研究助理分析：明确概念边界、关键假设、证据与推理链，区分事实和推断，并给出可以继续验证或检索的问题。',
-  teacher: '请使用 DeepTutor 的 teacher 角色。像导师结构化教学：先说明学习目标，再分层讲解核心知识点，穿插典型例子，最后用检查问题确认学生是否掌握。',
+  default: '请以均衡学伴方式回答：先给清晰结论，再用简短例子和下一步学习建议帮助理解。',
+  peer: '请像同学共同讨论：语气平等亲和，多用生活化类比和启发式追问，鼓励学生先表达自己的理解，不使用居高临下的讲授口吻。',
+  'research-assistant': '请像研究助理分析：明确概念边界、关键假设、证据与推理链，区分事实和推断，并给出可以继续验证或检索的问题。',
+  teacher: '请像导师结构化教学：先说明学习目标，再分层讲解核心知识点，穿插典型例子，最后用检查问题确认学生是否掌握。',
 }
 
 export default function StudentWorkspace({ token, onBackToRoles }: StudentWorkspaceProps) {
@@ -70,6 +78,8 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   const [deepTutorBookId, setDeepTutorBookId] = useState('');
   const [deepTutorPageId, setDeepTutorPageId] = useState('');
   const courseLoadAttemptedRef = useRef(false);
+  const restoreVersionRef = useRef(0);
+  const autoRestoreTokenRef = useRef<string | null>(null);
   const learningChapter = learningCourse?.chapters.find((chapter) => chapter.id === learningChapterId) ?? null;
   const courseContext = useMemo(() => learningCourse ? {
     courseId: learningCourse.id,
@@ -88,6 +98,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
     uploadFile,
     error,
     conversations,
+    conversationsLoaded,
     activeConversationId,
     openConversation,
     removeConversation,
@@ -101,10 +112,41 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   const [inputVal, setInputVal] = useState('');
   const [copied, setCopied] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [pendingConversationId, setPendingConversationId] = useState<string | null>(null);
+  const [materialNotice, setMaterialNotice] = useState<string | null>(null);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const courseMaterials = useMemo(
+    () => learningCourse ? attachments.filter((attachment) => (
+      attachment.scope === 'workspace'
+      && attachment.course_id === learningCourse.id
+    )) : [],
+    [attachments, learningCourse?.id],
+  );
+
+  const describeMaterialUpload = (attachment: Attachment): string => {
+    if (attachment.status === 'failed') {
+      return attachment.status_message || '教材上传后解析失败。';
+    }
+    if (attachment.knowledge_base_status === 'queued' || attachment.knowledge_base_status === 'syncing') {
+      return `「${attachment.filename}」已绑定课程，教材知识库正在构建。`;
+    }
+    if (attachment.knowledge_base_status === 'failed' || attachment.knowledge_base_status === 'unavailable') {
+      return attachment.knowledge_base_message || `「${attachment.filename}」已绑定课程，本地检索可用。`;
+    }
+    return `「${attachment.filename}」已添加到当前课程。`;
+  };
+
+  const uploadLearningMaterial = async (file: File) => {
+    setMaterialNotice(`正在上传「${file.name}」…`);
+    const attachment = learningCourse
+      ? await uploadFile(file, 'workspace', learningCourse.id)
+      : await uploadFile(file);
+    if (attachment) setMaterialNotice(describeMaterialUpload(attachment));
+  };
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -116,6 +158,10 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isAiTyping]);
+
+  useEffect(() => {
+    setMaterialNotice(null);
+  }, [learningCourse?.id]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -148,6 +194,67 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
       setCourseLoading(false)
     }
   }, [token])
+
+  const visibleConversations = useMemo(
+    () => studentChatConversations(conversations),
+    [conversations],
+  )
+
+  const restoreStudentConversation = useCallback(async (conversation: Conversation) => {
+    if (!token) return
+    const restoreVersion = ++restoreVersionRef.current
+    setCourseError(null)
+    clearChat()
+    setPendingConversationId(null)
+    try {
+      if (conversation.course_id === null) {
+        setLearningCourse(null)
+        setLearningChapterId(null)
+        setLearningSessionOpen(true)
+        setActiveSection('learning')
+        setPendingConversationId(conversation.id)
+        return
+      }
+      const detail = await getCourseDetail(token, conversation.course_id)
+      if (restoreVersion !== restoreVersionRef.current) return
+      if (conversation.chapter_id && !detail.chapters.some((chapter) => chapter.id === conversation.chapter_id)) {
+        throw new Error('该历史对话关联的课程章节已不可用。')
+      }
+      setLearningCourse(detail)
+      setLearningChapterId(conversation.chapter_id)
+      setLearningSessionOpen(true)
+      setCourseDetail(detail)
+      setCourses((current) => current.some((item) => item.id === detail.id)
+        ? current.map((item) => item.id === detail.id ? detail : item)
+        : [detail, ...current])
+      setActiveSection('learning')
+      setPendingConversationId(conversation.id)
+    } catch (reason) {
+      if (restoreVersion !== restoreVersionRef.current) return
+      setCourseError(reason instanceof Error ? reason.message : '无法恢复课程对话。')
+    }
+  }, [clearChat, token])
+
+  useEffect(() => {
+    if (!pendingConversationId) return
+    const target = conversations.find((conversation) => conversation.id === pendingConversationId)
+    if (!target) {
+      setPendingConversationId(null)
+      return
+    }
+    const contextMatches = target.course_id === (learningCourse?.id ?? null)
+      && target.chapter_id === learningChapterId
+    if (!contextMatches) return
+    setPendingConversationId(null)
+    void openConversation(target.id)
+  }, [conversations, learningChapterId, learningCourse?.id, openConversation, pendingConversationId])
+
+  useEffect(() => {
+    if (!token || !conversationsLoaded || autoRestoreTokenRef.current === token) return
+    autoRestoreTokenRef.current = token
+    const latest = latestStudentCourseConversation(conversations)
+    if (latest) void restoreStudentConversation(latest)
+  }, [conversations, conversationsLoaded, restoreStudentConversation, token])
 
   useEffect(() => {
     if ((activeSection === 'learning' || activeSection === 'courses') && courses.length === 0 && !courseLoadAttemptedRef.current) {
@@ -185,6 +292,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
         : await startCourse(token, course.id)
       const nextChapterId = chapterId ?? detail.current_chapter_id ?? detail.chapters[0]?.id ?? null
       clearChat()
+      setPendingConversationId(latestStudentCourseConversation(conversations, detail.id, nextChapterId)?.id ?? null)
       setLearningCourse(detail)
       setLearningChapterId(nextChapterId)
       setLearningSessionOpen(true)
@@ -205,6 +313,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
     try {
       const detail = await completeCourseChapter(token, learningCourse.id, learningChapterId)
       clearChat()
+      setPendingConversationId(latestStudentCourseConversation(conversations, detail.id, detail.current_chapter_id)?.id ?? null)
       setLearningCourse(detail)
       setLearningChapterId(detail.current_chapter_id)
       setCourseDetail(detail)
@@ -241,10 +350,10 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
       />
       <div className="student-shared-composer-tools">
         <div>
-          <button type="button" aria-label="上传学习资料" onClick={() => fileInputRef.current?.click()}>
+          <button type="button" aria-label={learningCourse ? '上传课程教材' : '上传学习资料'} onClick={() => fileInputRef.current?.click()}>
             <Paperclip />
           </button>
-          <input ref={fileInputRef} type="file" className="hidden" accept=".txt,.md,.docx,.pdf,.xlsx,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file); event.currentTarget.value = ''; }} />
+          <input ref={fileInputRef} type="file" className="hidden" accept=".txt,.md,.docx,.pdf,.xlsx,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadLearningMaterial(file); event.currentTarget.value = ''; }} />
           <button type="button" aria-label="使用语音输入"><Mic /></button>
           {attachments.length > 0 && <span className="student-shared-composer-attachment">已添加 {attachments.length} 份资料</span>}
         </div>
@@ -276,14 +385,15 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
       <div className="student-orbit-message-list">
         {chatMessages.map((msg) => {
           const isUser = msg.sender === 'user';
+          const visibleContent = isUser ? visibleStudentPrompt(msg.content) : normalizeStudentVisibleText(msg.content);
           return (
             <div key={msg.id} className={`student-orbit-message ${isUser ? 'is-user' : 'is-assistant'}`}>
               {!isUser && <span className="student-orbit-message-avatar"><BookOpen /></span>}
               <div>
                 <header><span>{isUser ? '学生（您）' : '学生智能助手'}</span><time>{msg.timestamp}</time></header>
-                <div className="student-orbit-message-content">{isUser ? visibleStudentPrompt(msg.content) : msg.content}</div>
+                <div className="student-orbit-message-content">{visibleContent}</div>
                 {!isUser && msg.content && (
-                  <button type="button" onClick={() => copyText(msg.content)} className="student-orbit-message-copy">
+                  <button type="button" onClick={() => copyText(visibleContent)} className="student-orbit-message-copy">
                     <Copy />{copied ? '复制成功！' : '复制回答'}
                   </button>
                 )}
@@ -326,7 +436,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           </div>
 
           <div className="student-agent-trail-links">
-            <button type="button" aria-current={activeSection === 'learning' ? 'page' : undefined} data-active={activeSection === 'learning'} onClick={() => { clearChat(); setLearningCourse(null); setLearningChapterId(null); setLearningSessionOpen(false); setActiveSection('learning') }}>
+            <button type="button" aria-current={activeSection === 'learning' ? 'page' : undefined} data-active={activeSection === 'learning'} onClick={() => { restoreVersionRef.current += 1; setPendingConversationId(null); clearChat(); setLearningCourse(null); setLearningChapterId(null); setLearningSessionOpen(false); setActiveSection('learning') }}>
               <Compass /><span><small>学习智能体</small>学习中心</span>
             </button>
             <button type="button" aria-current={activeSection === 'courses' || activeSection === 'course-detail' ? 'page' : undefined} data-active={activeSection === 'courses' || activeSection === 'course-detail'} onClick={showCourseCenter}>
@@ -350,11 +460,11 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
-              aria-label={`最近对话${conversations.length > 0 ? `，${conversations.length} 条` : ''}`}
+              aria-label={`最近对话${visibleConversations.length > 0 ? `，${visibleConversations.length} 条` : ''}`}
             >
               <History className="h-3.5 w-3.5" />
               <span>最近对话</span>
-              {conversations.length > 0 && <span className="tabular-nums text-secondary">{conversations.length}</span>}
+              {visibleConversations.length > 0 && <span className="tabular-nums text-secondary">{visibleConversations.length}</span>}
             </button>
             <button
               type="button"
@@ -438,6 +548,9 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                 composer={sharedComposer}
                 conversationActive={learningSessionOpen || chatMessages.length > 0}
                 conversationContent={orbitConversationContent}
+                materialCount={courseMaterials.length}
+                materialNotice={materialNotice}
+                onUploadMaterial={() => fileInputRef.current?.click()}
               />
             )}
           </section>
@@ -463,30 +576,35 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
               </button>
             </header>
             <div className="student-history-list">
-              {conversations.filter((conversation) => conversation.agent_id !== 'resume_helper' && (learningCourse
-                ? conversation.course_id === learningCourse.id && conversation.chapter_id === learningChapterId
-                : conversation.course_id === null)).length === 0 ? (
+              {visibleConversations.length === 0 ? (
                 <div className="student-history-empty">
                   <MessageSquare aria-hidden="true" />
                   <strong>暂无历史对话</strong>
                   <span>开始学习或向 AI 学伴提问后，对话会保存在这里。</span>
                 </div>
-              ) : conversations.filter((conversation) => conversation.agent_id !== 'resume_helper' && (learningCourse
-                ? conversation.course_id === learningCourse.id && conversation.chapter_id === learningChapterId
-                : conversation.course_id === null)).map((conversation) => (
+              ) : visibleConversations.map((conversation) => {
+                const conversationCourse = courses.find((course) => course.id === conversation.course_id)
+                  ?? (learningCourse?.id === conversation.course_id ? learningCourse : null)
+                const conversationChapter = learningCourse?.id === conversation.course_id
+                  ? learningCourse.chapters.find((chapter) => chapter.id === conversation.chapter_id)
+                  : null
+                const contextLabel = conversation.course_id === null
+                  ? '通用学习对话'
+                  : `${conversationCourse?.name ?? '课程已不可用'} · ${conversationChapter?.title ?? '课程学习'}`
+                return (
                   <div key={conversation.id} className="student-history-item" data-active={activeConversationId === conversation.id}>
-                    <button type="button" onClick={() => { setActiveSection('learning'); setHistoryOpen(false); void openConversation(conversation.id) }}>
+                    <button type="button" onClick={() => { setHistoryOpen(false); void restoreStudentConversation(conversation) }}>
                       <MessageSquare aria-hidden="true" />
                       <span>
                         <strong>{conversation.title || '未命名对话'}</strong>
-                        <small>{activeConversationId === conversation.id ? '当前对话' : '点击继续学习'}</small>
+                        <small>{activeConversationId === conversation.id ? `当前对话 · ${contextLabel}` : contextLabel}</small>
                       </span>
                     </button>
                     <button type="button" onClick={() => { void removeConversation(conversation.id) }} aria-label={`删除对话：${conversation.title || '未命名对话'}`}>
                       <Trash2 />
                     </button>
                   </div>
-                ))}
+                )})}
             </div>
           </section>
         </div>

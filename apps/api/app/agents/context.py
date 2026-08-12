@@ -15,6 +15,7 @@ from app.core.errors import AppError
 from app.integrations.embedding.providers import EmbeddingProvider
 from app.repositories.conversations import MessageRepository
 from app.services.attachments import retrieve_context
+from app.courses.context import CourseLearningContext, course_context_prompt
 
 
 class ContextBuilder:
@@ -46,6 +47,7 @@ class ContextBuilder:
         selected_attachment_ids: Sequence[UUID] | None = None,
         selected_artifact_ids: Sequence[UUID] = (),
         workflow_id: str | None = None,
+        course_context: CourseLearningContext | None = None,
     ) -> tuple[AgentContext, tuple[UUID, ...]]:
         spec = get_agent_spec(role, agent_id) or AgentSpec(
             id=agent_id,
@@ -76,7 +78,15 @@ class ContextBuilder:
             workflow_id=workflow_id,
             conversation_course_id=conversation.course_id,
         )
-        if spec.context_policy.requires_explicit_attachments and not selected and not allows_empty_materials:
+        allows_course_metadata = (
+            role == "student" and agent_id == "course_qa" and course_context is not None
+        )
+        if (
+            spec.context_policy.requires_explicit_attachments
+            and not selected
+            and not allows_empty_materials
+            and not allows_course_metadata
+        ):
             raise AppError(
                 code="agent_input_incomplete",
                 message="请选择目标智能体需要的资料。",
@@ -135,6 +145,13 @@ class ContextBuilder:
             {"role": "system", "content": spec.system_prompt},
             *history,
         ]
+        if course_context is not None:
+            messages[0] = {
+                "role": "system",
+                "content": messages[0]["content"]
+                + "\n\n"
+                + course_context_prompt(course_context),
+            }
         if selected_artifacts:
             artifact_text = "\n\n".join(
                 f"[已选择成果：{artifact.title}]\n{artifact.content}"
@@ -183,6 +200,7 @@ class ContextBuilder:
                 attachment_text="\n".join(chunk.content for chunk in attachment_chunks),
                 attachment_filenames=tuple(attachment.filename for attachment in selected),
                 selected_artifacts=context_artifacts,
+                course=course_context,
             ),
             selected_ids,
         )

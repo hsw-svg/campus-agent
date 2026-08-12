@@ -21,6 +21,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
 | [Responsive Motion Panels](./responsive-motion-panels.md) | Single-instance responsive panels, scoped shared-layout motion, and stable scrolling | Active |
+| [Student Learning Continuity](./student-learning-continuity.md) | Anonymous role resume, course/chapter conversation restoration, and contextual tutor recommendations | Active |
 
 ---
 

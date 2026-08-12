@@ -139,6 +139,7 @@ function completeProgressSteps(
 export function useWorkspaceChat(token: string | null, courseContext?: CourseContext) {
   const [chatMessages, setChatMessages] = useState<Message[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [conversationsLoaded, setConversationsLoaded] = useState(false)
   const [workspaceAttachments, setWorkspaceAttachments] = useState<Attachment[]>([])
   const [conversationAttachments, setConversationAttachments] = useState<Attachment[]>([])
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
@@ -171,6 +172,8 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
       setConversations(await listConversations(token))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法读取对话列表。')
+    } finally {
+      setConversationsLoaded(true)
     }
   }, [token])
 
@@ -281,6 +284,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     abortRef.current?.abort()
     setChatMessages([])
     setConversations([])
+    setConversationsLoaded(!token)
     setWorkspaceAttachments([])
     setConversationAttachments([])
     setArtifacts([])
@@ -295,11 +299,35 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     setError(null)
     if (token) {
       void refreshConversations()
+    }
+    return () => abortRef.current?.abort()
+  }, [token, refreshConversations])
+
+  useEffect(() => {
+    loadVersionRef.current += 1
+    resourceVersionRef.current += 1
+    workspaceResourceVersionRef.current += 1
+    agentHistoryVersionRef.current += 1
+    abortRef.current?.abort()
+    setChatMessages([])
+    setWorkspaceAttachments([])
+    setConversationAttachments([])
+    setArtifacts([])
+    setAgentHistory([])
+    setCitations([])
+    setSelectedAttachmentIds([])
+    setSelectedArtifactIds([])
+    setActiveConversationId(null)
+    setRoute(null)
+    setRunStatus('idle')
+    setToolStatus(null)
+    setProgressSteps([])
+    setError(null)
+    if (token) {
       void refreshWorkspaceAttachments()
       void refreshAgentHistory()
     }
-    return () => abortRef.current?.abort()
-  }, [token, refreshConversations, refreshWorkspaceAttachments, refreshAgentHistory])
+  }, [token, courseContext?.courseId, refreshWorkspaceAttachments, refreshAgentHistory])
 
   const clearChat = useCallback(() => {
     loadVersionRef.current += 1
@@ -698,6 +726,7 @@ export function useWorkspaceChat(token: string | null, courseContext?: CourseCon
     chatMessages,
     setChatMessages,
     conversations,
+    conversationsLoaded,
     attachments,
     workspaceAttachments,
     conversationAttachments,

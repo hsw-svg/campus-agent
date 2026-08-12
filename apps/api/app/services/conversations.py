@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator, Sequence
 import asyncio
 from contextlib import suppress
+from dataclasses import replace
 from uuid import UUID
 
 from app.agents.registry import is_agent_available_for_role
@@ -22,6 +23,10 @@ from app.artifacts.repositories import ArtifactRepository
 from app.attachments.repositories import AttachmentRepository, Retriever
 from app.integrations.embedding.providers import EmbeddingProvider
 from app.services.routing import classify_message
+from app.services.student_branding import (
+    StudentBrandStreamFilter,
+    normalize_student_visible_text,
+)
 from app.conversations.models import Conversation, Message
 from app.conversations.streaming import stream_event
 from app.core.errors import AppError
@@ -29,6 +34,7 @@ from app.integrations.llm.providers import ChatProvider
 from app.integrations.search.bing import BingSearchProvider
 from app.core.config import get_settings
 from app.repositories.conversations import ConversationRepository, MessageRepository
+from app.courses.context import CourseLearningContext
 
 
 def _build_bing_provider() -> BingSearchProvider:
@@ -44,6 +50,7 @@ MAX_CONTEXT_MESSAGES = 20
 
 DEFAULT_TITLE = "新对话"
 TITLE_MAX_LENGTH = 30
+STUDENT_QUESTION_MARKER = "\n\n用户问题："
 
 
 def create_conversation(
@@ -87,7 +94,8 @@ def get_owned_conversation(
 def derive_title(content: str) -> str:
     """Use the first user turn as a readable conversation title."""
 
-    condensed = " ".join(content.split())
+    visible_content = content.rsplit(STUDENT_QUESTION_MARKER, 1)[-1]
+    condensed = " ".join(visible_content.split())
     if not condensed:
         return DEFAULT_TITLE
     if len(condensed) <= TITLE_MAX_LENGTH:
@@ -119,6 +127,7 @@ async def stream_assistant_reply(
     input_refs: Sequence[str] | None = None,
     existing_run: AgentRun | None = None,
     existing_user_message: Message | None = None,
+    course_context: CourseLearningContext | None = None,
 ) -> AsyncIterator[str]:
     """Persist the user turn, stream the assistant reply, and persist the result.
 
@@ -155,6 +164,7 @@ async def stream_assistant_reply(
             workspace_id=workspace_id,
             manual_agent_id=agent_id,
             selected_attachment_ids=selected_attachment_ids,
+            course_context=course_context,
         )
 
     resolved_agent = route_decision.agent
@@ -170,6 +180,9 @@ async def stream_assistant_reply(
         agent_id=resolved_agent or "generic_chat",
         workflow_id=workflow_id,
         conversation_course_id=conversation.course_id,
+    )
+    authoritative_course_id = (
+        str(conversation.course_id) if conversation.course_id is not None else course_id
     )
 
     user_message = existing_user_message or messages.add(
@@ -205,7 +218,7 @@ async def stream_assistant_reply(
                 if selected_artifact_ids is not None
                 else None
             ),
-            "course_id": course_id,
+            "course_id": authoritative_course_id,
             "workflow_id": workflow_id,
             "parent_run_id": parent_run_id,
             "input_refs": list(input_refs) if input_refs is not None else None,
@@ -233,7 +246,8 @@ async def stream_assistant_reply(
                 "selection_source": route_decision.selection_source,
                 "confidence": route_decision.confidence,
                 "run_id": str(run.id) if run else None,
-                "course_id": course_id,
+                "course_id": authoritative_course_id,
+                "chapter_id": str(conversation.chapter_id) if conversation.chapter_id else None,
                 "workflow_id": workflow_id,
                 "parent_run_id": str(parent_run_id) if parent_run_id else None,
             },
@@ -329,6 +343,7 @@ async def stream_assistant_reply(
                 selected_attachment_ids=selected_attachment_ids,
                 selected_artifact_ids=selected_artifact_ids or (),
                 workflow_id=workflow_id,
+                course_context=course_context,
             )
             if run is not None and agent_runs is not None:
                 agent_runs.update(
@@ -370,7 +385,7 @@ async def stream_assistant_reply(
                 content=user_content,
                 selected_attachment_ids=normalized_attachment_ids,
                 selected_artifact_ids=tuple(selected_artifact_ids or ()),
-                course_id=course_id,
+                course_id=authoritative_course_id,
                 workflow_id=workflow_id,
                 allow_empty_materials=allow_empty_materials,
                 parent_run_id=parent_run_id,
@@ -394,6 +409,7 @@ async def stream_assistant_reply(
             ).resolve(spec)
             result: AgentResult | None = None
             streamed_text = ""
+            student_brand_filter = StudentBrandStreamFilter() if role == "student" else None
             progress_sequence = 0
             async for execution_event in _stream_executor(executor, request):
                 if execution_event.type == "status" and execution_event.progress is not None:
@@ -415,12 +431,24 @@ async def stream_assistant_reply(
                         },
                     )
                 elif execution_event.type == "delta" and execution_event.text:
-                    streamed_text += execution_event.text
-                    yield stream_event("delta", {"text": execution_event.text})
+                    visible_delta = (
+                        student_brand_filter.feed(execution_event.text)
+                        if student_brand_filter is not None
+                        else execution_event.text
+                    )
+                    if visible_delta:
+                        streamed_text += visible_delta
+                        yield stream_event("delta", {"text": visible_delta})
                 elif execution_event.type == "result" and execution_event.result is not None:
                     result = execution_event.result
             if result is None:
                 raise RuntimeError("agent_stream_did_not_complete")
+            if student_brand_filter is not None:
+                final_visible_delta = student_brand_filter.finish()
+                if final_visible_delta:
+                    streamed_text += final_visible_delta
+                    yield stream_event("delta", {"text": final_visible_delta})
+                result = replace(result, text=normalize_student_visible_text(result.text))
             source_payload = [
                 {
                     "attachment_id": str(source.attachment_id),

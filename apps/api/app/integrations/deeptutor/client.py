@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -189,6 +190,98 @@ class DeepTutorClient:
     async def list_knowledge_bases(self) -> Any:
         return await self._request("GET", f"{self.knowledge_prefix}/list")
 
+    async def _multipart_request(
+        self,
+        path: str,
+        *,
+        filename: str,
+        content: bytes,
+        content_type: str,
+        data: Mapping[str, str] | None = None,
+    ) -> Any:
+        if not self.is_configured:
+            raise DeepTutorError(
+                "deeptutor_unavailable",
+                "DeepTutor integration is not enabled.",
+                status_code=503,
+            )
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as http_client:
+                response = await http_client.post(
+                    self._url(path),
+                    data=dict(data or {}),
+                    files={"files": (filename, content, content_type)},
+                )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise DeepTutorError(
+                "deeptutor_upstream_error",
+                "DeepTutor rejected the knowledge-base upload.",
+                status_code=502,
+                details={"upstream_status": error.response.status_code, "path": path},
+            ) from error
+        except (httpx.HTTPError, OSError) as error:
+            raise DeepTutorError(
+                "deeptutor_unavailable",
+                "DeepTutor is unavailable.",
+                status_code=503,
+                details={"path": path},
+            ) from error
+        try:
+            return response.json()
+        except ValueError as error:
+            raise DeepTutorError(
+                "deeptutor_invalid_response",
+                "DeepTutor returned an invalid JSON response.",
+                details={"path": path},
+            ) from error
+
+    async def sync_course_material(
+        self,
+        *,
+        course_id: str,
+        filename: str,
+        content: bytes,
+        content_type: str,
+    ) -> dict[str, Any]:
+        """Create or append to one stable DeepTutor knowledge base per course."""
+
+        knowledge_base_name = course_knowledge_base_name(course_id)
+        listed = await self.list_knowledge_bases()
+        names = _knowledge_base_names(listed)
+        encoded_name = quote(knowledge_base_name, safe="")
+        if knowledge_base_name in names:
+            result = await self._multipart_request(
+                f"{self.knowledge_prefix}/{encoded_name}/upload",
+                filename=filename,
+                content=content,
+                content_type=content_type,
+            )
+        else:
+            result = await self._multipart_request(
+                f"{self.knowledge_prefix}/create",
+                filename=filename,
+                content=content,
+                content_type=content_type,
+                data={"name": knowledge_base_name},
+            )
+        if not isinstance(result, Mapping):
+            raise DeepTutorError(
+                "deeptutor_invalid_response",
+                "DeepTutor did not return a knowledge-base task.",
+            )
+        task_id = result.get("task_id")
+        if not isinstance(task_id, str) or not task_id:
+            raise DeepTutorError(
+                "deeptutor_invalid_response",
+                "DeepTutor did not return a knowledge-base task identifier.",
+            )
+        return {
+            "knowledge_base_name": knowledge_base_name,
+            "task_id": task_id,
+            "operation": "upload" if knowledge_base_name in names else "create",
+        }
+
     @asynccontextmanager
     async def chat_socket(self) -> AsyncIterator[Any]:
         if not self.is_configured:
@@ -215,3 +308,25 @@ class DeepTutorClient:
                 "DeepTutor chat is unavailable.",
                 status_code=503,
             ) from error
+
+
+def course_knowledge_base_name(course_id: str) -> str:
+    normalized = course_id.strip().lower().replace("-", "")
+    return f"campus-course-{normalized}"
+
+
+def _knowledge_base_names(value: Any) -> set[str]:
+    records: Any = value
+    if isinstance(value, Mapping):
+        for key in ("knowledge_bases", "items", "data"):
+            candidate = value.get(key)
+            if isinstance(candidate, list):
+                records = candidate
+                break
+    if not isinstance(records, list):
+        return set()
+    return {
+        str(item.get("name"))
+        for item in records
+        if isinstance(item, Mapping) and isinstance(item.get("name"), str)
+    }

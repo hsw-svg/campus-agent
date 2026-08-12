@@ -35,6 +35,7 @@ from app.api.courses import get_owned_course
 from app.api.courses import get_course_repository, get_student_course_service
 from app.repositories.courses import CourseRepository
 from app.services.student_courses import StudentCourseService
+from app.courses.context import CourseLearningContext
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -90,6 +91,7 @@ class StreamMessageRequest(BaseModel):
     selected_attachment_ids: list[UUID] | None = None
     selected_artifact_ids: list[UUID] | None = None
     course_id: str | None = Field(default=None, max_length=96)
+    chapter_id: UUID | None = None
     workflow_id: str | None = Field(default=None, max_length=96)
     parent_run_id: UUID | None = None
     input_refs: list[str] | None = Field(default=None, max_length=64)
@@ -208,8 +210,10 @@ async def route_message(
     attachments: AttachmentRepository = Depends(get_attachment_repository),
     agent_runs: AgentRunRepository = Depends(get_agent_run_repository),
     agent_router: AgentRouter = Depends(get_agent_router),
+    student_courses: StudentCourseService = Depends(get_student_course_service),
 ) -> RouteResponse:
     conversation = get_owned_conversation(conversations, workspace.id, conversation_id)
+    course_context = _course_context(student_courses, workspace.id, conversation)
     agent_id = _normalize_agent_id(payload.agent_id)
     decision = await classify_message(
         router=agent_router,
@@ -221,6 +225,7 @@ async def route_message(
         workspace_id=workspace.id,
         manual_agent_id=agent_id,
         selected_attachment_ids=payload.selected_attachment_ids,
+        course_context=course_context,
     )
     run = agent_runs.create(
         workspace_id=workspace.id,
@@ -256,8 +261,11 @@ async def stream_message(
     attachments: AttachmentRepository = Depends(get_attachment_repository),
     agent_runs: AgentRunRepository = Depends(get_agent_run_repository),
     artifacts: ArtifactRepository = Depends(get_artifact_repository),
+    student_courses: StudentCourseService = Depends(get_student_course_service),
 ) -> StreamingResponse:
     conversation = get_owned_conversation(conversations, workspace.id, conversation_id)
+    _validate_stream_course_context(conversation, payload)
+    course_context = _course_context(student_courses, workspace.id, conversation)
     generator = await stream_assistant_reply(
         conversations=conversations,
         messages=messages,
@@ -279,6 +287,7 @@ async def stream_message(
         workflow_id=payload.workflow_id,
         parent_run_id=payload.parent_run_id,
         input_refs=payload.input_refs,
+        course_context=course_context,
     )
     return StreamingResponse(
         generator,
@@ -289,6 +298,48 @@ async def stream_message(
 
 def _normalize_agent_id(agent_id: str | None) -> str | None:
     return None if agent_id in {None, AUTO_AGENT_ID} else agent_id
+
+
+def _course_context(
+    student_courses: StudentCourseService,
+    workspace_id: UUID,
+    conversation: Conversation,
+) -> CourseLearningContext | None:
+    if conversation.course_id is None:
+        return None
+    return student_courses.get_learning_context(
+        workspace_id,
+        conversation.course_id,
+        conversation.chapter_id,
+    )
+
+
+def _validate_stream_course_context(
+    conversation: Conversation,
+    payload: StreamMessageRequest,
+) -> None:
+    mismatches: dict[str, str | None] = {}
+    if (
+        conversation.course_id is not None
+        and payload.course_id is not None
+        and payload.course_id != str(conversation.course_id)
+    ):
+        mismatches["course_id"] = payload.course_id
+    if payload.chapter_id is not None and payload.chapter_id != conversation.chapter_id:
+        mismatches["chapter_id"] = str(payload.chapter_id)
+    if mismatches:
+        raise AppError(
+            code="conversation_course_context_mismatch",
+            message="The selected course or chapter does not match this conversation.",
+            status_code=422,
+            details={
+                "submitted": mismatches,
+                "conversation": {
+                    "course_id": str(conversation.course_id) if conversation.course_id else None,
+                    "chapter_id": str(conversation.chapter_id) if conversation.chapter_id else None,
+                },
+            },
+        )
 
 
 def _route_response(role: str, decision, run_id: UUID, status: str) -> RouteResponse:

@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Compass,
   GraduationCap,
+  FileUp,
   LockKeyhole,
   MessageCircleQuestion,
   Microscope,
@@ -17,8 +18,9 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { CourseDetail, CourseSummary } from '../api'
+import { buildTutorRecommendedQuestions, type TutorRoleId } from '../studentLearning'
 import planetImage from '../assets/student-orbit/course-planet.webp'
 import defaultCompanionImage from '../assets/student-orbit/ai-companion-default.webp'
 import peerCompanionImage from '../assets/student-orbit/ai-companion-peer.webp'
@@ -41,9 +43,13 @@ interface StudentOrbitHomeProps {
   composer: ReactNode
   conversationActive: boolean
   conversationContent: ReactNode
+  materialCount: number
+  materialNotice: string | null
+  onUploadMaterial: () => void
 }
 
 const fallbackStages = ['课程导览', '核心概念', '知识问答', '随堂练习', '总结巩固']
+const questionIcons = [CircleHelp, NotebookPen, MessageCircleQuestion]
 
 const tutorRoles = [
   { id: 'default', label: '默认学伴', description: '均衡讲解与学习引导', icon: Bot, image: defaultCompanionImage },
@@ -51,8 +57,6 @@ const tutorRoles = [
   { id: 'research-assistant', label: '研究助理', description: '重视证据、资料与推理', icon: Microscope, image: researchCompanionImage },
   { id: 'teacher', label: '导师', description: '结构化讲授与逐步检查', icon: GraduationCap, image: teacherCompanionImage },
 ] as const
-
-export type TutorRoleId = (typeof tutorRoles)[number]['id']
 
 export default function StudentOrbitHome({
   courses,
@@ -69,6 +73,9 @@ export default function StudentOrbitHome({
   composer,
   conversationActive,
   conversationContent,
+  materialCount,
+  materialNotice,
+  onUploadMaterial,
 }: StudentOrbitHomeProps) {
   const reduceMotion = useReducedMotion()
   const [companionOpen, setCompanionOpen] = useState(false)
@@ -80,6 +87,10 @@ export default function StudentOrbitHome({
     ?? learningCourse?.chapters.find((chapter) => chapter.current)
     ?? learningCourse?.chapters[0]
     ?? null
+  const recommendedQuestions = useMemo(
+    () => buildTutorRecommendedQuestions(selectedRoleId, learningCourse, currentChapter),
+    [currentChapter, learningCourse, selectedRoleId],
+  )
   const orbitStages = learningCourse?.chapters.slice(0, 7).map((chapter) => ({
     id: chapter.id,
     label: chapter.title,
@@ -140,9 +151,17 @@ export default function StudentOrbitHome({
 
         <div className="student-orbit-materials">
           <div className="student-orbit-section-heading">
-            <div><span>交互教材</span></div>
+            <div><span>课程教材</span><strong>{materialCount || '—'}</strong></div>
             <button type="button" onClick={onOpenBook}>打开教材<ArrowRight /></button>
           </div>
+          <button type="button" onClick={onUploadMaterial} disabled={!learningCourse}>
+            <FileUp />
+            <span>
+              <strong>上传课程教材</strong>
+              <small>{learningCourse ? `绑定到「${learningCourse.name}」` : '请先选择课程'}</small>
+            </span>
+          </button>
+          {materialNotice && <p className="px-2 text-xs leading-5 text-teal-100" role="status">{materialNotice}</p>}
           <button type="button" onClick={onOpenBook}>
             <BookOpenCheck />
             <span><strong>课程阅读舱</strong><small>教材、笔记与章节问答</small></span>
@@ -229,7 +248,7 @@ export default function StudentOrbitHome({
         </div>
         {roleMenuOpen && (
           <div id="student-orbit-role-menu" className="student-orbit-role-menu" role="menu" aria-label="选择 AI 学伴角色">
-            <header><strong>选择学伴角色</strong><small>采用 DeepTutor 角色模式</small></header>
+            <header><strong>选择学伴角色</strong><small>回答方式随角色动态调整</small></header>
             {tutorRoles.map(({ id, label, description, icon: RoleIcon, image }) => (
               <button
                 type="button"
@@ -252,9 +271,14 @@ export default function StudentOrbitHome({
           <p>{currentChapter ? `正在关注「${currentChapter.title}」` : '选择课程后，我会跟随你的章节进度。'}</p>
         </div>
         <div className="student-orbit-questions">
-          <button type="button" onClick={() => launchConversation('请解释当前课程的核心知识点。')}><CircleHelp />解释课程核心知识点</button>
-          <button type="button" onClick={() => launchConversation('请根据当前章节生成一道随堂练习，并在我回答后给出反馈。')}><NotebookPen />生成一道随堂练习</button>
-          <button type="button" onClick={() => launchConversation('请总结当前章节，并指出最容易混淆的知识点。')}><MessageCircleQuestion />梳理容易混淆的知识点</button>
+          {recommendedQuestions.map((question, index) => {
+            const QuestionIcon = questionIcons[index] ?? CircleHelp
+            return (
+              <button type="button" key={question.prompt} onClick={() => launchConversation(question.prompt)}>
+                <QuestionIcon />{question.label}
+              </button>
+            )
+          })}
         </div>
       </aside>
 

@@ -49,6 +49,10 @@ class Attachment(Base):
     scope: Mapped[str] = mapped_column(String(16), nullable=False, default="conversation")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="uploaded")
     status_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    knowledge_base_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    knowledge_base_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    knowledge_base_task_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    knowledge_base_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     extracted_chars: Mapped[int] = mapped_column(nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

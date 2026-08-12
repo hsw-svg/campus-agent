@@ -15,9 +15,10 @@ Use this contract when the application reads DeepTutor books, knowledge bases, p
 - `GET /api/deeptutor/books/{book_id}/pages/{page_id} -> upstream page`
 - `POST /api/deeptutor/books?compile_page=false` accepts a JSON object and calls the create or compile-page upstream route.
 - `GET /api/deeptutor/knowledge-bases -> upstream knowledge-base list`
+- Internal textbook sync uses multipart `POST /api/v1/knowledge/create` and `POST /api/v1/knowledge/{kb_name}/upload` through `DeepTutorClient`.
 - `WS /api/deeptutor/chat` proxies browser messages to DeepTutor's unified `/api/v1/ws` endpoint.
 
-The adapter lives in `app.integrations.deeptutor.client.DeepTutorClient`; routes in `app.api.deeptutor` are its only application-facing consumers.
+The adapter lives in `app.integrations.deeptutor.client.DeepTutorClient`. Browser-facing consumers use `app.api.deeptutor`; course Attachment upload is the only other allowed consumer and stores only stable KB/task state.
 
 ### 3. Contracts
 
@@ -35,6 +36,7 @@ The adapter lives in `app.integrations.deeptutor.client.DeepTutorClient`; routes
 - Compose allows up to 300 seconds for each local DeepTutor HTTP stage and Nginx allows 900 seconds for the complete browser request. Spine generation can exceed two minutes even with a healthy provider, so the shorter general-purpose API timeout must not be reused for book creation in the demo container.
 - Local container development layers `docker-compose.dev.yml` over the production Compose file. It bind-mounts `apps/api/app` and the editable `apps/web` source paths with repository-relative paths, runs Uvicorn reload and Vite HMR inside the same `app` container, and swaps in `nginx.dev.conf`; Nginx still exposes only port `8080`, and DeepTutor remains private on `127.0.0.1:8001`.
 - Student-side reading progress, notes, and saved questions are demo-only browser state under `campus-agent:deeptutor-study:<workspace-token-suffix>`; they do not replace DeepTutor's server-side book data or introduce a second application chat state.
+- Course textbook sync receives bytes only after filename/size/course ownership checks and local parsing. DeepTutor degradation must not remove the local course material.
 
 ### Container development convention
 

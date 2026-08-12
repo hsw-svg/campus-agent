@@ -87,3 +87,57 @@ async def test_deeptutor_client_reports_disabled_integration() -> None:
 
     assert error.value.code == "deeptutor_unavailable"
     assert error.value.status_code == 503
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("listed", "expected_path", "expected_operation"),
+    [
+        ([], "/api/v1/knowledge/create", "create"),
+        (
+            [{"name": "campus-course-12345678123456781234567812345678"}],
+            "/api/v1/knowledge/campus-course-12345678123456781234567812345678/upload",
+            "upload",
+        ),
+    ],
+)
+async def test_sync_course_material_creates_or_appends_stable_knowledge_base(
+    monkeypatch: pytest.MonkeyPatch,
+    listed: list[dict[str, str]],
+    expected_path: str,
+    expected_operation: str,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/knowledge/list"):
+            return httpx.Response(200, json=listed)
+        return httpx.Response(200, json={"task_id": "kb-task-1"})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    client = DeepTutorClient("http://127.0.0.1:8001", enabled=True)
+
+    result = await client.sync_course_material(
+        course_id="12345678-1234-5678-1234-567812345678",
+        filename="calculus.pdf",
+        content=b"textbook",
+        content_type="application/pdf",
+    )
+
+    assert result == {
+        "knowledge_base_name": "campus-course-12345678123456781234567812345678",
+        "task_id": "kb-task-1",
+        "operation": expected_operation,
+    }
+    assert requests[-1].url.path == expected_path
+    assert "multipart/form-data" in requests[-1].headers["content-type"]
+    assert b'filename="calculus.pdf"' in requests[-1].content
+    if expected_operation == "create":
+        assert b'name="name"' in requests[-1].content
+        assert b"campus-course-12345678123456781234567812345678" in requests[-1].content

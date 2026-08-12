@@ -1,8 +1,7 @@
-import logging
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 
 from app.api.courses import get_course_repository, get_owned_course
@@ -10,11 +9,11 @@ from app.attachments.dependencies import get_attachment_repository, get_object_s
 from app.attachments.parsing import MAX_ATTACHMENT_BYTES, validate_filename
 from app.attachments.repositories import AttachmentRepository
 
-logger = logging.getLogger(__name__)
 from app.core.errors import AppError
 from app.integrations.embedding.providers import EmbeddingProvider
 from app.integrations.storage.base import ObjectStorage
 from app.services.attachments import process_attachment
+from app.integrations.deeptutor.client import DeepTutorClient, DeepTutorError, course_knowledge_base_name
 from app.services.conversations import get_owned_conversation
 from app.repositories.courses import CourseRepository
 from app.repositories.conversations import ConversationRepository
@@ -41,6 +40,10 @@ class AttachmentResponse(BaseModel):
     scope: str
     status: str
     status_message: str | None
+    knowledge_base_name: str | None
+    knowledge_base_status: str | None
+    knowledge_base_task_id: str | None
+    knowledge_base_message: str | None
     extracted_chars: int
     created_at: datetime
     updated_at: datetime
@@ -52,6 +55,7 @@ class AttachmentResponse(BaseModel):
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_attachment(
+    request: Request,
     conversation_id: UUID,
     file: UploadFile = File(...),
     scope: str = Form("conversation"),
@@ -77,6 +81,7 @@ async def upload_attachment(
         attachments=attachments,
         storage=storage,
         embedding_provider=embedding_provider,
+        deeptutor_client=request.app.state.deeptutor_client,
     )
 
 
@@ -109,12 +114,9 @@ def list_current_workspace_attachments(
     courses: CourseRepository = Depends(get_course_repository),
     attachments: AttachmentRepository = Depends(get_attachment_repository),
 ) -> list[AttachmentResponse]:
-    logger.info(f"[DEBUG] list_current_workspace_attachments called with course_id={course_id}")
     if course_id is not None:
         get_owned_course(courses, workspace.id, course_id)
-    result = attachments.list_workspace_for_conversation(workspace.id, course_id)
-    logger.info(f"[DEBUG] Returning {len(result)} attachments for course_id={course_id}")
-    return result
+    return attachments.list_workspace_for_conversation(workspace.id, course_id)
 
 
 @workspace_attachment_router.post(
@@ -123,6 +125,7 @@ def list_current_workspace_attachments(
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_workspace_attachment(
+    request: Request,
     file: UploadFile = File(...),
     course_id: UUID | None = Query(None),
     workspace: AnonymousWorkspace = Depends(get_current_workspace),
@@ -142,6 +145,7 @@ async def upload_workspace_attachment(
         attachments=attachments,
         storage=storage,
         embedding_provider=embedding_provider,
+        deeptutor_client=request.app.state.deeptutor_client,
     )
 
 
@@ -155,6 +159,7 @@ async def _create_uploaded_attachment(
     attachments: AttachmentRepository,
     storage: ObjectStorage,
     embedding_provider: EmbeddingProvider,
+    deeptutor_client: DeepTutorClient,
 ) -> AttachmentResponse:
     filename = validate_filename(file.filename)
     content = await file.read(MAX_ATTACHMENT_BYTES + 1)
@@ -185,9 +190,50 @@ async def _create_uploaded_attachment(
         return attachments.update(
             attachment, status="failed", status_message=f"文件保存失败：{error}"
         )
-    return process_attachment(
+    processed = process_attachment(
         attachment=attachment,
         content=content,
         repository=attachments,
         embedding_provider=embedding_provider,
+    )
+    if scope != "workspace" or course_id is None:
+        return processed
+    knowledge_base_name = course_knowledge_base_name(str(course_id))
+    if processed.status == "failed":
+        return attachments.update(
+            processed,
+            knowledge_base_name=knowledge_base_name,
+            knowledge_base_status="failed",
+            knowledge_base_message="教材未完成解析，知识库构建未启动。",
+        )
+    attachments.update(
+        processed,
+        knowledge_base_name=knowledge_base_name,
+        knowledge_base_status="syncing",
+        knowledge_base_message="教材知识库任务正在提交。",
+    )
+    try:
+        result = await deeptutor_client.sync_course_material(
+            course_id=str(course_id),
+            filename=filename,
+            content=content,
+            content_type=file.content_type or "application/octet-stream",
+        )
+    except DeepTutorError as error:
+        unavailable = error.code == "deeptutor_unavailable"
+        return attachments.update(
+            processed,
+            knowledge_base_status="unavailable" if unavailable else "failed",
+            knowledge_base_message=(
+                "教材已绑定课程，本地检索可用；教材知识库服务暂不可用。"
+                if unavailable
+                else "教材已绑定课程，本地检索可用；教材知识库任务提交失败。"
+            ),
+        )
+    return attachments.update(
+        processed,
+        knowledge_base_name=str(result["knowledge_base_name"]),
+        knowledge_base_status="queued",
+        knowledge_base_task_id=str(result["task_id"]),
+        knowledge_base_message="教材已绑定课程，知识库正在构建。",
     )

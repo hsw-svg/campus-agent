@@ -6,6 +6,7 @@ from app.attachments.models import Attachment
 from app.attachments.repositories import AttachmentRepository
 from app.conversations.models import Conversation
 from app.repositories.conversations import MessageRepository
+from app.courses.context import CourseLearningContext
 
 
 def make_route_context(
@@ -17,6 +18,7 @@ def make_route_context(
     messages: MessageRepository,
     workspace_id,
     selected_attachment_ids: Sequence[UUID] | None = None,
+    course_context: CourseLearningContext | None = None,
 ) -> RouteContext:
     selected = (
         attachments.list_selected_for_conversation(
@@ -49,6 +51,7 @@ def make_route_context(
         selected_attachment_ids=tuple(str(attachment.id) for attachment in selected),
         recent_messages=recent_messages,
         conversation_agent_id=conversation.agent_id,
+        course=course_context,
     )
 
 
@@ -83,6 +86,7 @@ async def classify_message(
     workspace_id,
     manual_agent_id: str | None = None,
     selected_attachment_ids: Sequence[UUID] | None = None,
+    course_context: CourseLearningContext | None = None,
 ) -> RouteDecision:
     context = make_route_context(
         conversation=conversation,
@@ -92,5 +96,6 @@ async def classify_message(
         messages=messages,
         workspace_id=workspace_id,
         selected_attachment_ids=selected_attachment_ids,
+        course_context=course_context,
     )
     return await router.route(context, manual_agent_id=manual_agent_id)

@@ -101,6 +101,10 @@ export interface Attachment {
   scope: 'conversation' | 'workspace'
   status: 'uploaded' | 'parsing' | 'indexed' | 'degraded' | 'failed'
   status_message: string | null
+  knowledge_base_name: string | null
+  knowledge_base_status: 'syncing' | 'queued' | 'ready' | 'unavailable' | 'failed' | null
+  knowledge_base_task_id: string | null
+  knowledge_base_message: string | null
   extracted_chars: number
   created_at: string
   updated_at: string
@@ -847,6 +851,7 @@ export async function* streamMessage(options: {
       selected_attachment_ids: options.selectedAttachmentIds,
       selected_artifact_ids: options.selectedArtifactIds,
       course_id: options.courseContext?.courseId ?? null,
+      chapter_id: options.courseContext?.chapterId ?? null,
       workflow_id: options.courseContext?.workflowId ?? null,
       parent_run_id: options.parentRunId ?? null,
       input_refs: options.inputRefs ?? [],

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.artifacts.models import Artifact
 from app.conversations.models import Conversation
 from app.core.errors import AppError
+from app.courses.context import CourseLearningContext
 from app.courses.models import (
     Course,
     CourseChapter,
@@ -205,6 +206,32 @@ class StudentCourseService:
             "current_chapter_id": progress.current_chapter_id if progress else None,
             "weak_points": weak_points,
         }
+
+    def get_learning_context(
+        self,
+        workspace_id: UUID,
+        course_id: UUID,
+        chapter_id: UUID | None,
+    ) -> CourseLearningContext:
+        course = self._owned_course(workspace_id, course_id)
+        chapter = (
+            self._owned_chapter(workspace_id, course_id, chapter_id)
+            if chapter_id is not None
+            else None
+        )
+        return CourseLearningContext(
+            course_id=str(course.id),
+            course_name=course.name,
+            description=course.description,
+            category=course.category,
+            teacher_name=course.teacher_name,
+            chapter_id=str(chapter.id) if chapter is not None else None,
+            chapter_title=chapter.title if chapter is not None else None,
+            chapter_summary=chapter.summary if chapter is not None else None,
+            knowledge_points=tuple(str(item) for item in (chapter.knowledge_points or ()))
+            if chapter is not None
+            else (),
+        )
 
     def start_course(self, workspace_id: UUID, course_id: UUID) -> dict[str, Any]:
         course = self._owned_course(workspace_id, course_id)

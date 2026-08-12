@@ -21,6 +21,8 @@ from app.repositories.conversations import ConversationRepository, MessageReposi
 from app.services.conversations import get_owned_conversation, stream_assistant_reply
 from app.workspaces.dependencies import get_chat_provider, get_current_workspace, get_embedding_provider
 from app.workspaces.models import AnonymousWorkspace
+from app.api.courses import get_student_course_service
+from app.services.student_courses import StudentCourseService
 
 router = APIRouter(prefix="/api/agent-runs", tags=["agent-runs"])
 
@@ -38,6 +40,7 @@ async def retry_agent_run(
     retriever: Retriever = Depends(get_retriever),
     embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
     artifacts: ArtifactRepository = Depends(get_artifact_repository),
+    student_courses: StudentCourseService = Depends(get_student_course_service),
 ) -> StreamingResponse:
     run = agent_runs.get(workspace.id, run_id)
     if run is None:
@@ -65,6 +68,15 @@ async def retry_agent_run(
             status_code=409,
         )
     conversation = get_owned_conversation(conversations, workspace.id, run.conversation_id)
+    course_context = (
+        student_courses.get_learning_context(
+            workspace.id,
+            conversation.course_id,
+            conversation.chapter_id,
+        )
+        if conversation.course_id is not None
+        else None
+    )
     message = messages.get(workspace.id, run.message_id)
     if message is None:
         from app.core.errors import AppError
@@ -97,6 +109,7 @@ async def retry_agent_run(
         input_refs=tuple(run.input_refs or []),
         existing_run=run,
         existing_user_message=message,
+        course_context=course_context,
     )
     return StreamingResponse(
         generator,

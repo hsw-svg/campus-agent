@@ -65,6 +65,8 @@ Keep the existing event names: `message_start`, `route_decision`, `delta`, `tool
 
 Visible plain-text model fragments are sent as `delta` immediately. Structured slide-deck JSON remains internal until validation and Markdown/Artifact normalization finish. The service sends a final delta only when no equivalent visible text has already been forwarded.
 
+For `role == "student"`, every visible delta and the persisted assistant result pass through the shared student-brand contract. `StudentBrandStreamFilter` retains a possible trailing prefix across delta boundaries, so fragments such as `"Deep"` and `"Tutor助手发现"` become `"AI 学伴发现"` without briefly exposing a partial internal brand. `normalize_student_visible_text` applies the same replacements to the final `AgentResult.text` before persistence. Non-student streams, integration routes, logs, and engineering identifiers remain unchanged.
+
 ### Safety boundary
 
 Progress fields must not contain hidden chain-of-thought, prompts, provider exceptions, credentials, raw attachment rows, or student identifiers. Learning-analysis progress is limited to anonymous stage summaries and aggregate counts.
@@ -84,6 +86,8 @@ The teacher progress panel is part of the conversation flow and must render afte
 | Browser aborts the request | Cancel and await the fallback task/iterator; do not leave a background execution running. |
 | Unknown optional status fields | Existing SSE consumers ignore them and continue processing `done`/`error`. |
 | Invalid learning table | Emit a failed validation stage and return the existing `learning_analysis_input_invalid` error without exposing rows. |
+| Student internal brand is split across deltas | Buffer the possible brand prefix, emit only normalized visible text, and persist the identical normalized result. |
+| Teacher/admin response contains an engineering integration name | Preserve it; student-brand normalization is role-scoped. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -93,6 +97,7 @@ The teacher progress panel is part of the conversation flow and must render afte
 - **Bad:** A `tool_status.detail` includes a prompt, a spreadsheet row, a student ID, or a provider exception.
 - **Bad:** The frontend appends a normalized final response after already displaying the same text fragments, duplicating the assistant answer.
 - **Bad:** A progress panel creates its own vertical scroll container inside the conversation scroll owner.
+- **Bad:** Apply a regex independently to each delta; a provider can split a controlled brand between chunks and leak both halves.
 
 ## 6. Tests Required
 
@@ -101,6 +106,7 @@ The teacher progress panel is part of the conversation flow and must render afte
 - Learning-analysis API test: assert context/model/validation/artifact phases and absence of an anonymous row identifier from serialized status.
 - Legacy-executor test: assert heartbeat fallback completes and cancellation awaits the background task.
 - Frontend type/build check: assert `progressStepFromEvent` handles enriched and legacy `tool_status` payloads; run lint/typecheck and production build.
+- Student branding tests: cover compact/spaced/case-insensitive variants, assistant/teaching-assistant suffixes, arbitrary delta splits, SSE-visible equality, and persisted-history equality.
 - Docker-served browser check: assert the progress panel is compact, expandable while running, collapsed after completion, and old full-dialogue thinking animations are absent.
 
 ## 7. Wrong vs Correct
@@ -128,3 +134,21 @@ yield progress_event(
 ```
 
 The service serializes this safe internal event into the existing `tool_status` SSE event, and the frontend maps it once through `progressStepFromEvent`.
+
+### Wrong: per-delta replacement
+
+```python
+yield stream_event("delta", {"text": INTERNAL_BRAND_RE.sub("AI 学伴", raw_delta)})
+```
+
+This leaks `"Deep"` followed by `"Tutor助手"` when the controlled term crosses a chunk boundary.
+
+### Correct: stateful student-visible filtering
+
+```python
+visible_delta = student_brand_filter.feed(raw_delta)
+if visible_delta:
+    yield stream_event("delta", {"text": visible_delta})
+```
+
+Flush the filter at result completion, normalize `AgentResult.text` through the same contract, then persist it.

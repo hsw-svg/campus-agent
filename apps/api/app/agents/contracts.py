@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
+from app.courses.context import CourseLearningContext
+
 
 AgentExecutorId = str
 
@@ -54,6 +56,7 @@ class AgentContext:
     attachment_text: str = ""
     attachment_filenames: tuple[str, ...] = ()
     selected_artifacts: tuple[ContextArtifact, ...] = ()
+    course: CourseLearningContext | None = None
 
 
 @dataclass(frozen=True)

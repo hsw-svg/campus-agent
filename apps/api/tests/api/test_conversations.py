@@ -71,6 +71,103 @@ def test_new_conversation_starts_empty(client: TestClient) -> None:
     assert messages.json() == []
 
 
+def _started_course_conversation(client: TestClient, token: str) -> tuple[dict, dict, dict]:
+    courses = client.post("/api/courses/defaults", headers=auth(token)).json()
+    course = next(item for item in courses if item["name"] == "高等数学")
+    detail = client.post(f"/api/courses/{course['id']}/start", headers=auth(token)).json()
+    chapter = detail["chapters"][0]
+    conversation = client.post(
+        "/api/conversations",
+        json={"course_id": course["id"], "chapter_id": chapter["id"]},
+        headers=auth(token),
+    ).json()
+    return course, chapter, conversation
+
+
+def test_course_conversation_injects_server_owned_course_and_chapter_context(
+    client: TestClient,
+) -> None:
+    token = make_workspace(client, "student")
+    course, chapter, conversation = _started_course_conversation(client, token)
+    provider = FakeChatProvider(["课程导览"])
+    client.app.state.chat_provider = provider
+
+    response = client.post(
+        f"/api/conversations/{conversation['id']}/messages/stream",
+        json={
+            "content": "当前课程主要内容是什么？",
+            "course_id": course["id"],
+            "chapter_id": chapter["id"],
+        },
+        headers=auth(token),
+    )
+
+    assert response.status_code == 200
+    system_prompt = provider.calls[0][0]["content"]
+    assert "课程：高等数学" in system_prompt
+    assert f"当前章节：{chapter['title']}" in system_prompt
+    assert chapter["summary"] in system_prompt
+    assert "极限" in system_prompt
+    assert "大学英语" not in system_prompt
+
+
+def test_stream_rejects_course_context_that_does_not_match_conversation(
+    client: TestClient,
+) -> None:
+    token = make_workspace(client, "student")
+    _, _, conversation = _started_course_conversation(client, token)
+    provider = FakeChatProvider(["不应调用"])
+    client.app.state.chat_provider = provider
+
+    response = client.post(
+        f"/api/conversations/{conversation['id']}/messages/stream",
+        json={"content": "当前课程是什么？", "course_id": str(uuid4())},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "conversation_course_context_mismatch"
+    assert provider.calls == []
+    assert client.get(
+        f"/api/conversations/{conversation['id']}/messages", headers=auth(token)
+    ).json() == []
+
+
+def test_course_qa_can_answer_from_course_metadata_without_textbook(
+    client: TestClient,
+) -> None:
+    token = make_workspace(client, "student")
+    course, chapter, conversation = _started_course_conversation(client, token)
+    provider = FakeChatProvider([
+        json.dumps(
+            {
+                "answer": "本章学习函数、极限与连续。",
+                "key_points": ["函数性质", "极限", "连续"],
+                "follow_up_questions": ["先复习哪个概念？"],
+            },
+            ensure_ascii=False,
+        )
+    ])
+    client.app.state.chat_provider = provider
+
+    response = client.post(
+        f"/api/conversations/{conversation['id']}/messages/stream",
+        json={
+            "content": "当前课程主要内容是什么？",
+            "agent_id": "course_qa",
+            "selected_attachment_ids": [],
+            "course_id": course["id"],
+            "chapter_id": chapter["id"],
+        },
+        headers=auth(token),
+    )
+
+    assert response.status_code == 200
+    assert "agent_input_incomplete" not in response.text
+    assert "本章学习函数、极限与连续" in response.text
+    assert any("课程：高等数学" in message["content"] for message in provider.calls[0])
+
+
 def test_streaming_reply_emits_protocol_events_and_persists_turns(client: TestClient) -> None:
     token = make_workspace(client, "student")
     client.app.state.chat_provider = FakeChatProvider(["你好", "，世界"])
@@ -116,6 +213,37 @@ def test_streaming_reply_forwards_each_visible_model_delta(client: TestClient) -
     assert any(status["phase"] == "model" and status["state"] == "completed" for status in statuses)
 
 
+def test_student_stream_filters_internal_brand_across_deltas_and_history(
+    client: TestClient,
+) -> None:
+    token = make_workspace(client, "student")
+    client.app.state.chat_provider = FakeChatProvider(
+        ["Deep", "Tutor助手发现", "：矩阵乘法需要满足维度条件。"]
+    )
+    conversation = create_conversation(client, token)
+
+    response = client.post(
+        f"/api/conversations/{conversation['id']}/messages/stream",
+        json={"content": "矩阵为什么不能随便相乘？"},
+        headers=auth(token),
+    )
+
+    assert response.status_code == 200
+    deltas = [
+        json.loads(data)["text"]
+        for name, data in read_events(response.text)
+        if name == "delta"
+    ]
+    visible_reply = "".join(deltas)
+    assert visible_reply == "AI 学伴发现：矩阵乘法需要满足维度条件。"
+    assert "deeptutor" not in visible_reply.lower().replace(" ", "")
+
+    messages = client.get(
+        f"/api/conversations/{conversation['id']}/messages", headers=auth(token)
+    ).json()
+    assert messages[-1]["content"] == visible_reply
+
+
 def test_first_user_turn_becomes_the_conversation_title(client: TestClient) -> None:
     token = make_workspace(client, "student")
     client.app.state.chat_provider = FakeChatProvider(["好的"])
@@ -131,6 +259,30 @@ def test_first_user_turn_becomes_the_conversation_title(client: TestClient) -> N
         f"/api/conversations/{conversation['id']}", headers=auth(token)
     ).json()
     assert refreshed["title"] == "帮我复习线性代数"
+
+
+def test_student_role_instruction_does_not_replace_the_conversation_title(
+    client: TestClient,
+) -> None:
+    token = make_workspace(client, "student")
+    client.app.state.chat_provider = FakeChatProvider(["好的"])
+    conversation = create_conversation(client, token)
+
+    client.post(
+        f"/api/conversations/{conversation['id']}/messages/stream",
+        json={
+            "content": (
+                "请像导师结构化教学：先说明学习目标，再分层讲解。"
+                "\n\n用户问题：矩阵乘法为什么要求维度匹配？"
+            )
+        },
+        headers=auth(token),
+    )
+
+    refreshed = client.get(
+        f"/api/conversations/{conversation['id']}", headers=auth(token)
+    ).json()
+    assert refreshed["title"] == "矩阵乘法为什么要求维度匹配？"
 
 
 def test_unconfigured_model_emits_a_retryable_error_and_keeps_the_user_turn(

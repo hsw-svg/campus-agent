@@ -13,6 +13,7 @@ from app.agents.intent_retrieval import (
 from app.agents.registry import AgentDefinition, is_agent_available_for_role, list_agents
 from app.core.errors import AppError
 from app.core.json_guard import parse_json
+from app.courses.context import CourseLearningContext
 
 
 ROUTE_CONFIDENCE_THRESHOLD = 0.8
@@ -45,6 +46,7 @@ class RouteContext:
     selected_attachment_ids: tuple[str, ...] = ()
     recent_messages: tuple[dict[str, Any], ...] = ()
     conversation_agent_id: str | None = None
+    course: CourseLearningContext | None = None
 
 
 @dataclass(frozen=True)
@@ -249,6 +251,20 @@ def _classifier_messages(
         "attachments": attachments,
         "recent_messages": list(context.recent_messages[-6:]),
         "conversation_agent_id": context.conversation_agent_id,
+        "course": (
+            {
+                "course_id": context.course.course_id,
+                "course_name": context.course.course_name,
+                "description": context.course.description,
+                "category": context.course.category,
+                "chapter_id": context.course.chapter_id,
+                "chapter_title": context.course.chapter_title,
+                "chapter_summary": context.course.chapter_summary,
+                "knowledge_points": list(context.course.knowledge_points),
+            }
+            if context.course is not None
+            else None
+        ),
         "allowed_agents": allowed,
     }
     allowed_ids = [agent["id"] for agent in allowed]
@@ -284,7 +300,7 @@ def _missing_inputs_for_agent(agent_id: str, context: RouteContext) -> list[str]
         if any(_is_tabular(attachment) for attachment in attachments):
             return []
         return ["匿名成绩、作业或练习统计表格"]
-    if agent_id == "course_qa" and not attachments:
+    if agent_id == "course_qa" and not attachments and context.course is None:
         return ["明确选择的课程资料"]
     if agent_id == "personal_tutor" and not attachments:
         return ["明确选择的错题、作业或薄弱点材料"]

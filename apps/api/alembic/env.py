@@ -12,6 +12,13 @@ from app.agents.models import AgentRun
 from app.artifacts.models import Artifact
 from app.campus_news.models import CampusNewsItem, CampusNewsSourceState
 from app.resumes.models import StudentResumeProfile
+from app.courses.models import (  # noqa: F401
+    Course,
+    CourseChapter,
+    CourseChapterProgress,
+    StudentCourseProgress,
+    StudentCourseWeakPoint,
+)
 
 
 config = context.config
