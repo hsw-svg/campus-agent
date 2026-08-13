@@ -3,9 +3,11 @@ import test from 'node:test'
 import type { Conversation, CourseDetail } from './api'
 import {
   buildTutorRecommendedQuestions,
+  firstCourseTextbookPage,
   latestStudentCourseConversation,
   normalizeStudentVisibleText,
   studentChatConversations,
+  startedStudentCourses,
 } from './studentLearning'
 
 const course: CourseDetail = {
@@ -23,6 +25,7 @@ const course: CourseDetail = {
   started: true,
   progress_percent: 25,
   last_studied_at: '2026-08-12T08:00:00Z',
+  deeptutor_book_id: 'bk-linear-algebra',
   chapters: [
     {
       id: 'chapter-matrix',
@@ -31,6 +34,8 @@ const course: CourseDetail = {
       position: 1,
       estimated_minutes: 30,
       knowledge_points: ['维度匹配', '线性变换'],
+      deeptutor_chapter_id: 'ch-matrix',
+      deeptutor_page_ids: ['pg-matrix'],
       completed: false,
       current: true,
     },
@@ -120,4 +125,26 @@ test('normalizes legacy student-visible internal branding', () => {
     normalizeStudentVisibleText('deep tutor 建议先画图。'),
     '智汇校园 建议先画图。',
   )
+})
+
+test('keeps only started courses and orders recent learning first', () => {
+  const notStarted = { ...course, id: 'course-new', started: false, last_studied_at: null }
+  const recent = { ...course, id: 'course-recent', last_studied_at: '2026-08-12T12:00:00Z' }
+
+  assert.deepEqual(
+    startedStudentCourses([course, notStarted, recent]).map((item) => item.id),
+    ['course-recent', course.id],
+  )
+})
+
+test('resolves a bound Tutor page without inventing a link', () => {
+  assert.deepEqual(firstCourseTextbookPage(course, course.chapters[0]), {
+    bookId: 'bk-linear-algebra',
+    pageId: 'pg-matrix',
+  })
+  assert.equal(firstCourseTextbookPage({ ...course, deeptutor_book_id: null }), null)
+  assert.equal(firstCourseTextbookPage({
+    ...course,
+    chapters: [{ ...course.chapters[0], deeptutor_page_ids: [] }],
+  }), null)
 })

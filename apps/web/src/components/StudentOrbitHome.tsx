@@ -1,13 +1,14 @@
 import {
+  ArrowLeft,
   ArrowRight,
   Bot,
+  BookOpen,
   BookOpenCheck,
   Check,
   CircleHelp,
   Compass,
   GraduationCap,
   FileUp,
-  LockKeyhole,
   MessageCircleQuestion,
   Microscope,
   NotebookPen,
@@ -20,7 +21,7 @@ import {
 import { motion, useReducedMotion } from 'motion/react'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { CourseDetail, CourseSummary } from '../api'
-import { buildTutorRecommendedQuestions, type TutorRoleId } from '../studentLearning'
+import { buildTutorRecommendedQuestions, firstCourseTextbookPage, type TutorRoleId } from '../studentLearning'
 import planetImage from '../assets/student-orbit/course-planet.webp'
 import defaultCompanionImage from '../assets/student-orbit/ai-companion-default.webp'
 import peerCompanionImage from '../assets/student-orbit/ai-companion-peer.webp'
@@ -34,7 +35,11 @@ interface StudentOrbitHomeProps {
   learningChapterId: string | null
   loading: boolean
   onOpenCourses: () => void
-  onStartCourse: (course: CourseSummary | CourseDetail, chapterId?: string) => void | Promise<void>
+  onSelectCourse: (course: CourseSummary) => void | Promise<void>
+  onSelectChapter: (course: CourseDetail, chapterId: string) => void | Promise<void>
+  onBackToOverview: () => void
+  onManageCourse: (course: CourseSummary | CourseDetail) => void | Promise<void>
+  onOpenTextbook: (bookId: string, pageId: string) => void
   onOpenBook: () => void
   onOpenLearningSpace: () => void
   onAsk: (prompt: string) => void | Promise<void>
@@ -48,7 +53,6 @@ interface StudentOrbitHomeProps {
   onUploadMaterial: () => void
 }
 
-const fallbackStages = ['课程导览', '核心概念', '知识问答', '随堂练习', '总结巩固']
 const questionIcons = [CircleHelp, NotebookPen, MessageCircleQuestion]
 
 const tutorRoles = [
@@ -64,7 +68,11 @@ export default function StudentOrbitHome({
   learningChapterId,
   loading,
   onOpenCourses,
-  onStartCourse,
+  onSelectCourse,
+  onSelectChapter,
+  onBackToOverview,
+  onManageCourse,
+  onOpenTextbook,
   onOpenBook,
   onOpenLearningSpace,
   onAsk,
@@ -82,24 +90,19 @@ export default function StudentOrbitHome({
   const [roleMenuOpen, setRoleMenuOpen] = useState(false)
   const selectedRole = tutorRoles.find((role) => role.id === selectedRoleId) ?? tutorRoles[0]
   const SelectedRoleIcon = selectedRole.icon
-  const featuredCourse = learningCourse ?? courses.find((course) => course.started) ?? courses[0] ?? null
-  const currentChapter = learningCourse?.chapters.find((chapter) => chapter.id === learningChapterId)
-    ?? learningCourse?.chapters.find((chapter) => chapter.current)
-    ?? learningCourse?.chapters[0]
-    ?? null
+  const currentChapter = learningChapterId
+    ? learningCourse?.chapters.find((chapter) => chapter.id === learningChapterId) ?? null
+    : null
   const recommendedQuestions = useMemo(
     () => buildTutorRecommendedQuestions(selectedRoleId, learningCourse, currentChapter),
     [currentChapter, learningCourse, selectedRoleId],
   )
-  const orbitStages = learningCourse?.chapters.slice(0, 7).map((chapter) => ({
+  const orbitStages = learningCourse?.chapters.map((chapter) => ({
     id: chapter.id,
     label: chapter.title,
-    state: chapter.completed ? 'complete' : chapter.current ? 'active' : 'locked',
-  })) ?? fallbackStages.map((label, index) => ({
-    id: `stage-${index}`,
-    label,
-    state: index === 0 ? 'active' : 'locked',
-  }))
+    state: chapter.completed ? 'complete' : chapter.id === learningChapterId ? 'active' : 'available',
+  })) ?? []
+  const textbookEntry = firstCourseTextbookPage(learningCourse, currentChapter)
 
   const launchConversation = (prompt: string) => {
     const cleanPrompt = prompt.trim()
@@ -127,21 +130,21 @@ export default function StudentOrbitHome({
               <span>从课程中心选择第一门课程</span>
             </button>
           )}
-          {courses.slice(0, 3).map((course) => {
-            const selected = featuredCourse?.id === course.id
+          {courses.map((course) => {
+            const selected = learningCourse?.id === course.id
             return (
               <button
                 type="button"
                 key={course.id}
                 className="student-orbit-course-card"
                 data-selected={selected}
-                onClick={() => { void onStartCourse(course) }}
+                onClick={() => { void onSelectCourse(course) }}
                 aria-pressed={selected}
               >
                 <span className="student-orbit-course-art" aria-hidden="true"><CourseArtwork thumbnailKey={course.thumbnail_key} name={course.name} /></span>
                 <span className="min-w-0">
                   <strong>{course.name}</strong>
-                  <small>{course.category ?? '通识课程'} · {course.started ? `已学 ${course.progress_percent}%` : '尚未开始'}</small>
+                  <small>{course.category ?? '通识课程'} · 已学 {course.progress_percent}%</small>
                 </span>
                 {selected ? <Check aria-hidden="true" /> : <Play aria-hidden="true" />}
               </button>
@@ -175,12 +178,12 @@ export default function StudentOrbitHome({
 
       <div className="student-orbit-stage">
         <div className="student-orbit-stage-copy">
-          <span><Sparkles />当前课程星图</span>
-          <h2>{featuredCourse?.name ?? '选择一门课程，开启学习航线'}</h2>
-          <p>{currentChapter ? `当前章节：${currentChapter.title}` : '课程章节会围绕星球展开，完成状态和下一步清晰可见。'}</p>
+          <span><Sparkles />{learningCourse ? '课程章节星图' : '我的学习星系'}</span>
+          <h2>{learningCourse?.name ?? '正在学习的课程围绕星球展开'}</h2>
+          <p>{learningCourse ? (currentChapter ? `当前章节：${currentChapter.title}` : '选择一个章节，开始带上下文的学习与问答。') : `${courses.length} 门课程正在学习，点击课程查看真实章节与进度。`}</p>
         </div>
 
-        <div className="student-orbit-system" aria-label="课程章节轨道">
+        <div className="student-orbit-system" aria-label={learningCourse ? '课程章节轨道' : '正在学习课程轨道'}>
           <motion.img
             className="student-orbit-planet"
             src={planetImage}
@@ -193,29 +196,52 @@ export default function StudentOrbitHome({
           <div className="student-orbit-ring student-orbit-ring-c" aria-hidden="true" />
 
           <div className="student-orbit-primary-card">
-            <span><Sparkles />{featuredCourse ? '课程已就绪' : '等待选择课程'}</span>
-            <strong>{currentChapter?.title ?? featuredCourse?.name ?? '前往课程中心选择课程'}</strong>
+            <span><Sparkles />{learningCourse ? '课程已定位' : '学习总览'}</span>
+            <strong>{currentChapter?.title ?? learningCourse?.name ?? `${courses.length} 门课程学习中`}</strong>
           </div>
 
-          {orbitStages.map((stage, index) => (
+          {!learningCourse && courses.map((course, index) => (
+            <button
+              type="button"
+              key={course.id}
+              className="student-orbit-node student-orbit-course-node"
+              data-state="course"
+              style={{
+                ...orbitPosition(index, courses.length),
+                '--course-progress': `${Math.max(0, Math.min(100, course.progress_percent)) * 3.6}deg`,
+              } as CSSProperties}
+              onClick={() => { void onSelectCourse(course) }}
+              aria-label={`${course.name}，学习进度 ${course.progress_percent}%`}
+            >
+              <span><BookOpen /></span>
+              <small>{course.progress_percent}% 已完成</small>
+              <strong>{course.name}</strong>
+            </button>
+          ))}
+
+          {learningCourse && orbitStages.map((stage, index) => (
             <button
               type="button"
               key={stage.id}
               className="student-orbit-node"
               data-state={stage.state}
-              style={{ '--orbit-index': index, '--orbit-count': orbitStages.length } as CSSProperties}
-              onClick={() => {
-                if (learningCourse && stage.state !== 'locked') void onStartCourse(learningCourse, stage.id)
-              }}
-              disabled={stage.state === 'locked'}
+              style={orbitPosition(index, orbitStages.length)}
+              onClick={() => { void onSelectChapter(learningCourse, stage.id) }}
               aria-current={stage.state === 'active' ? 'step' : undefined}
-              aria-label={`${stage.label}，${stage.state === 'complete' ? '已完成' : stage.state === 'active' ? '当前章节' : '尚未解锁'}`}
+              aria-label={`${stage.label}，${stage.state === 'complete' ? '已完成' : stage.state === 'active' ? '当前章节' : '可学习'}`}
             >
-              <span>{stage.state === 'complete' ? <Check /> : stage.state === 'active' ? <Sparkles /> : <LockKeyhole />}</span>
+              <span>{stage.state === 'complete' ? <Check /> : stage.state === 'active' ? <Sparkles /> : <Play />}</span>
               <small>第 {index + 1} 章</small>
               <strong>{stage.label}</strong>
             </button>
           ))}
+
+          {!learningCourse && !loading && courses.length === 0 && (
+            <button type="button" className="student-orbit-empty-state" onClick={onOpenCourses}><Compass /><strong>还没有正在学习的课程</strong><small>前往课程中心选择并开始学习</small></button>
+          )}
+          {learningCourse && learningCourse.chapters.length === 0 && (
+            <button type="button" className="student-orbit-empty-state" onClick={() => { void onManageCourse(learningCourse) }}><BookOpenCheck /><strong>课程还没有章节</strong><small>创建交互教材后自动生成章节</small></button>
+          )}
 
           <button
             type="button"
@@ -227,6 +253,13 @@ export default function StudentOrbitHome({
             <Sparkles />AI 学伴
           </button>
         </div>
+        {learningCourse && (
+          <div className="student-orbit-stage-actions" aria-label="课程星图操作">
+            <button type="button" onClick={onBackToOverview}><ArrowLeft />返回课程总览</button>
+            <button type="button" onClick={() => { void onManageCourse(learningCourse) }}><Settings2 />管理课程与教材</button>
+            {textbookEntry && <button type="button" data-primary="true" onClick={() => onOpenTextbook(textbookEntry.bookId, textbookEntry.pageId)}><BookOpenCheck />进入教材学习</button>}
+          </div>
+        )}
         {conversationActive && <div className="student-orbit-conversation">{conversationContent}</div>}
       </div>
 
@@ -285,4 +318,13 @@ export default function StudentOrbitHome({
       <div className="student-orbit-composer-slot">{composer}</div>
     </section>
   )
+}
+
+function orbitPosition(index: number, count: number): CSSProperties {
+  const safeCount = Math.max(count, 1)
+  const angle = -Math.PI / 2 + (index * Math.PI * 2) / safeCount
+  return {
+    left: `${50 + Math.cos(angle) * 45}%`,
+    top: `${50 + Math.sin(angle) * 39}%`,
+  }
 }

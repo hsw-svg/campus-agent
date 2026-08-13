@@ -25,11 +25,17 @@ class Course(Base):
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     thumbnail_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    deeptutor_book_id: Mapped[str | None] = mapped_column(String(96), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         UniqueConstraint("workspace_id", "template_key", name="uq_course_workspace_template_key"),
+        UniqueConstraint(
+            "workspace_id",
+            "deeptutor_book_id",
+            name="uq_course_workspace_deeptutor_book",
+        ),
     )
 
 
@@ -45,11 +51,18 @@ class CourseChapter(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     knowledge_points: Mapped[list] = mapped_column(JsonColumn, nullable=False, default=list)
+    deeptutor_chapter_id: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    deeptutor_page_ids: Mapped[list] = mapped_column(JsonColumn, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         UniqueConstraint("course_id", "position", name="uq_course_chapter_position"),
+        UniqueConstraint(
+            "course_id",
+            "deeptutor_chapter_id",
+            name="uq_course_chapter_deeptutor_chapter",
+        ),
     )
 
 

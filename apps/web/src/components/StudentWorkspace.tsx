@@ -21,8 +21,11 @@ import {
 } from 'lucide-react';
 import {
   completeCourseChapter,
+  createCourse,
+  createCourseTextbook,
   getCourseDetail,
   initializeDefaultCourses,
+  listWorkspaceAttachments,
   startCourse,
   startCourseChapter,
   type CourseDetail,
@@ -41,6 +44,7 @@ import StudentOrbitHome from './StudentOrbitHome';
 import {
   latestStudentCourseConversation,
   normalizeStudentVisibleText,
+  startedStudentCourses,
   studentChatConversations,
   type TutorRoleId,
 } from '../studentLearning';
@@ -77,9 +81,10 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   const [courseError, setCourseError] = useState<string | null>(null);
   const [deepTutorBookId, setDeepTutorBookId] = useState('');
   const [deepTutorPageId, setDeepTutorPageId] = useState('');
+  const [courseDetailMaterials, setCourseDetailMaterials] = useState<Attachment[]>([]);
   const courseLoadAttemptedRef = useRef(false);
   const restoreVersionRef = useRef(0);
-  const autoRestoreTokenRef = useRef<string | null>(null);
+  const materialUploadCourseIdRef = useRef<string | null>(null);
   const learningChapter = learningCourse?.chapters.find((chapter) => chapter.id === learningChapterId) ?? null;
   const courseContext = useMemo(() => learningCourse ? {
     courseId: learningCourse.id,
@@ -98,7 +103,6 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
     uploadFile,
     error,
     conversations,
-    conversationsLoaded,
     activeConversationId,
     openConversation,
     removeConversation,
@@ -126,6 +130,11 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
     )) : [],
     [attachments, learningCourse?.id],
   );
+  const learningCourses = useMemo(() => startedStudentCourses(courses), [courses]);
+  const courseDetailMaterialsReady = useMemo(() => courseDetailMaterials.some((attachment) => (
+    attachment.status !== 'failed'
+    && ['queued', 'syncing', 'ready'].includes(attachment.knowledge_base_status ?? '')
+  )), [courseDetailMaterials]);
 
   const describeMaterialUpload = (attachment: Attachment): string => {
     if (attachment.status === 'failed') {
@@ -141,11 +150,22 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   };
 
   const uploadLearningMaterial = async (file: File) => {
+    const targetCourseId = materialUploadCourseIdRef.current ?? learningCourse?.id ?? null;
     setMaterialNotice(`正在上传「${file.name}」…`);
-    const attachment = learningCourse
-      ? await uploadFile(file, 'workspace', learningCourse.id)
+    const attachment = targetCourseId
+      ? await uploadFile(file, 'workspace', targetCourseId)
       : await uploadFile(file);
-    if (attachment) setMaterialNotice(describeMaterialUpload(attachment));
+    if (attachment) {
+      setMaterialNotice(describeMaterialUpload(attachment));
+      if (courseDetail?.id === targetCourseId) {
+        setCourseDetailMaterials((current) => [attachment, ...current.filter((item) => item.id !== attachment.id)]);
+      }
+    }
+  };
+
+  const openMaterialUpload = (courseId: string | null) => {
+    materialUploadCourseIdRef.current = courseId;
+    fileInputRef.current?.click();
   };
 
   useEffect(() => {
@@ -250,13 +270,6 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
   }, [conversations, learningChapterId, learningCourse?.id, openConversation, pendingConversationId])
 
   useEffect(() => {
-    if (!token || !conversationsLoaded || autoRestoreTokenRef.current === token) return
-    autoRestoreTokenRef.current = token
-    const latest = latestStudentCourseConversation(conversations)
-    if (latest) void restoreStudentConversation(latest)
-  }, [conversations, conversationsLoaded, restoreStudentConversation, token])
-
-  useEffect(() => {
     if ((activeSection === 'learning' || activeSection === 'courses') && courses.length === 0 && !courseLoadAttemptedRef.current) {
       void refreshCourses()
     }
@@ -267,14 +280,86 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
     setCourseDetail(null)
   }
 
-  const openCourseDetail = async (course: CourseSummary) => {
+  const showLearningOverview = () => {
+    restoreVersionRef.current += 1
+    setPendingConversationId(null)
+    clearChat()
+    setLearningCourse(null)
+    setLearningChapterId(null)
+    setLearningSessionOpen(false)
+    setActiveSection('learning')
+  }
+
+  const openCourseDetail = async (course: CourseSummary | CourseDetail) => {
     if (!token) return
     setCourseLoading(true)
     setCourseError(null)
     try {
-      const detail = await getCourseDetail(token, course.id)
+      const [detail, materials] = await Promise.all([
+        getCourseDetail(token, course.id),
+        listWorkspaceAttachments(token, course.id),
+      ])
       setCourseDetail(detail)
+      setCourseDetailMaterials(materials)
       setActiveSection('course-detail')
+    } catch (reason) {
+      setCourseError(reason instanceof Error ? reason.message : '课程详情加载失败。')
+    } finally {
+      setCourseLoading(false)
+    }
+  }
+
+  const createStudentCourse = async (name: string, description: string) => {
+    if (!token) throw new Error('学生工作空间尚未就绪。')
+    setCourseLoading(true)
+    setCourseError(null)
+    try {
+      const created = await createCourse(token, name, description || undefined)
+      const refreshed = await initializeDefaultCourses(token)
+      setCourses(refreshed)
+      setCourseDetail(await getCourseDetail(token, created.id))
+      setCourseDetailMaterials([])
+      setActiveSection('course-detail')
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : '课程创建失败，请重试。'
+      setCourseError(message)
+      throw new Error(message)
+    } finally {
+      setCourseLoading(false)
+    }
+  }
+
+  const createTextbookForCourse = async (courseId: string, topic: string, useCourseMaterials: boolean) => {
+    if (!token) throw new Error('学生工作空间尚未就绪。')
+    setCourseLoading(true)
+    setCourseError(null)
+    try {
+      const detail = await createCourseTextbook(token, courseId, topic, useCourseMaterials)
+      setCourseDetail(detail)
+      setCourses((current) => current.map((item) => item.id === detail.id ? detail : item))
+      if (learningCourse?.id === detail.id) setLearningCourse(detail)
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : '交互教材创建失败，请重试。'
+      setCourseError(message)
+      throw new Error(message)
+    } finally {
+      setCourseLoading(false)
+    }
+  }
+
+  const openLearningCourse = async (course: CourseSummary) => {
+    if (!token) return
+    setCourseLoading(true)
+    setCourseError(null)
+    clearChat()
+    setPendingConversationId(null)
+    try {
+      const detail = await getCourseDetail(token, course.id)
+      setLearningCourse(detail)
+      setLearningChapterId(null)
+      setLearningSessionOpen(false)
+      setCourseDetail(detail)
+      setActiveSection('learning')
     } catch (reason) {
       setCourseError(reason instanceof Error ? reason.message : '课程详情加载失败。')
     } finally {
@@ -290,12 +375,12 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
       const detail = chapterId
         ? await startCourseChapter(token, course.id, chapterId)
         : await startCourse(token, course.id)
-      const nextChapterId = chapterId ?? detail.current_chapter_id ?? detail.chapters[0]?.id ?? null
+      const nextChapterId = chapterId ?? null
       clearChat()
       setPendingConversationId(latestStudentCourseConversation(conversations, detail.id, nextChapterId)?.id ?? null)
       setLearningCourse(detail)
       setLearningChapterId(nextChapterId)
-      setLearningSessionOpen(true)
+      setLearningSessionOpen(nextChapterId !== null)
       setCourseDetail(detail)
       setCourses((current) => current.map((item) => item.id === detail.id ? detail : item))
       setActiveSection('learning')
@@ -350,10 +435,9 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
       />
       <div className="student-shared-composer-tools">
         <div>
-          <button type="button" aria-label={learningCourse ? '上传课程教材' : '上传学习资料'} onClick={() => fileInputRef.current?.click()}>
+          <button type="button" aria-label={learningCourse ? '上传课程教材' : '上传学习资料'} onClick={() => openMaterialUpload(learningCourse?.id ?? null)}>
             <Paperclip />
           </button>
-          <input ref={fileInputRef} type="file" className="hidden" accept=".txt,.md,.docx,.pdf,.xlsx,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadLearningMaterial(file); event.currentTarget.value = ''; }} />
           <button type="button" aria-label="使用语音输入"><Mic /></button>
           {attachments.length > 0 && <span className="student-shared-composer-attachment">已添加 {attachments.length} 份资料</span>}
         </div>
@@ -414,6 +498,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
 
   return (
     <div className="student-orbit-shell flex h-screen w-full overflow-hidden bg-background font-sans text-on-surface antialiased">
+      <input ref={fileInputRef} type="file" className="hidden" accept=".txt,.md,.docx,.pdf,.xlsx,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadLearningMaterial(file); event.currentTarget.value = ''; }} />
       
       {/* MAIN CONTENT AREA */}
       <main className="relative flex h-screen min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
@@ -436,7 +521,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
           </div>
 
           <div className="student-agent-trail-links">
-            <button type="button" aria-current={activeSection === 'learning' ? 'page' : undefined} data-active={activeSection === 'learning'} onClick={() => { restoreVersionRef.current += 1; setPendingConversationId(null); clearChat(); setLearningCourse(null); setLearningChapterId(null); setLearningSessionOpen(false); setActiveSection('learning') }}>
+            <button type="button" aria-current={activeSection === 'learning' ? 'page' : undefined} data-active={activeSection === 'learning'} onClick={showLearningOverview}>
               <Compass /><span><small>学习智能体</small>学习中心</span>
             </button>
             <button type="button" aria-current={activeSection === 'courses' || activeSection === 'course-detail' ? 'page' : undefined} data-active={activeSection === 'courses' || activeSection === 'course-detail'} onClick={showCourseCenter}>
@@ -520,6 +605,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                 onRetry={() => { void refreshCourses() }}
                 onOpen={(course) => { void openCourseDetail(course) }}
                 onStart={(course) => { void enterCourseLearning(course) }}
+                onCreate={createStudentCourse}
               />
             )}
 
@@ -529,17 +615,27 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                 loading={courseLoading}
                 onBack={showCourseCenter}
                 onStart={(chapterId) => { void enterCourseLearning(courseDetail, chapterId) }}
+                materialCount={courseDetailMaterials.length}
+                courseMaterialsReady={courseDetailMaterialsReady}
+                materialNotice={materialNotice}
+                onUploadMaterial={() => openMaterialUpload(courseDetail.id)}
+                onCreateTextbook={(topic, useCourseMaterials) => createTextbookForCourse(courseDetail.id, topic, useCourseMaterials)}
+                onOpenTextbook={(bookId, pageId) => { setDeepTutorBookId(bookId); setDeepTutorPageId(pageId); setActiveSection('deep-tutor') }}
               />
             )}
 
             {activeSection === 'learning' && (
               <StudentOrbitHome
-                courses={courses}
+                courses={learningCourses}
                 learningCourse={learningCourse}
                 learningChapterId={learningChapterId}
                 loading={courseLoading}
                 onOpenCourses={showCourseCenter}
-                onStartCourse={(course, chapterId) => enterCourseLearning(course, chapterId)}
+                onSelectCourse={(course) => openLearningCourse(course)}
+                onSelectChapter={(course, chapterId) => enterCourseLearning(course, chapterId)}
+                onBackToOverview={showLearningOverview}
+                onManageCourse={(course) => openCourseDetail(course)}
+                onOpenTextbook={(bookId, pageId) => { setDeepTutorBookId(bookId); setDeepTutorPageId(pageId); setActiveSection('deep-tutor') }}
                 onOpenBook={() => { setDeepTutorBookId(''); setDeepTutorPageId(''); setActiveSection('deep-tutor') }}
                 onOpenLearningSpace={() => setActiveSection('learning-space')}
                 onAsk={(prompt) => handleSendMessage(prompt)}
@@ -550,7 +646,7 @@ export default function StudentWorkspace({ token, onBackToRoles }: StudentWorksp
                 conversationContent={orbitConversationContent}
                 materialCount={courseMaterials.length}
                 materialNotice={materialNotice}
-                onUploadMaterial={() => fileInputRef.current?.click()}
+                onUploadMaterial={() => openMaterialUpload(learningCourse?.id ?? null)}
               />
             )}
           </section>

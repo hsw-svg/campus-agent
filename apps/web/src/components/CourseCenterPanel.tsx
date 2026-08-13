@@ -1,5 +1,6 @@
-import { ArrowRight, BookOpenCheck, CalendarDays, Clock3, RefreshCw, UserRound } from 'lucide-react'
+import { ArrowRight, BookOpenCheck, CalendarDays, Clock3, LoaderCircle, Plus, RefreshCw, UserRound, X } from 'lucide-react'
 import { motion } from 'motion/react'
+import { useState, type FormEvent } from 'react'
 import type { CourseSummary } from '../api'
 import CourseArtwork from './CourseArtwork'
 
@@ -10,6 +11,7 @@ interface CourseCenterPanelProps {
   onRetry: () => void
   onOpen: (course: CourseSummary) => void
   onStart: (course: CourseSummary) => void
+  onCreate: (name: string, description: string) => Promise<void>
 }
 
 export default function CourseCenterPanel({
@@ -19,7 +21,31 @@ export default function CourseCenterPanel({
   onRetry,
   onOpen,
   onStart,
+  onCreate,
 }: CourseCenterPanelProps) {
+  const [createOpen, setCreateOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+
+  const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!name.trim() || creating) return
+    setCreating(true)
+    setCreateError(null)
+    try {
+      await onCreate(name.trim(), description.trim())
+      setName('')
+      setDescription('')
+      setCreateOpen(false)
+    } catch (reason) {
+      setCreateError(reason instanceof Error ? reason.message : '课程创建失败，请重试。')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="w-full py-3 sm:py-7">
       <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -30,9 +56,14 @@ export default function CourseCenterPanel({
             从通识基础出发，按章节进入 AI 辅导，让每一次学习都有清晰进度。
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-2xl border border-outline-variant/70 bg-surface-container-lowest px-4 py-3 text-xs font-bold text-on-surface-variant shadow-xs">
-          <BookOpenCheck className="h-4 w-4 text-secondary" />
-          {courses.length} 门课程 · {courses.filter((course) => course.started).length} 门学习中
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 rounded-2xl border border-outline-variant/70 bg-surface-container-lowest px-4 py-3 text-xs font-bold text-on-surface-variant shadow-xs">
+            <BookOpenCheck className="h-4 w-4 text-secondary" />
+            {courses.length} 门课程 · {courses.filter((course) => course.started).length} 门学习中
+          </div>
+          <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-secondary px-4 py-2.5 text-xs font-black text-on-secondary shadow-sm transition hover:opacity-90">
+            <Plus className="h-4 w-4" />创建课程
+          </button>
         </div>
       </div>
 
@@ -97,6 +128,23 @@ export default function CourseCenterPanel({
               </div>
             </motion.article>
           ))}
+        </div>
+      )}
+
+      {createOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-scrim/55 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !creating) setCreateOpen(false) }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="create-student-course-title" className="w-full max-w-lg rounded-3xl border border-outline-variant bg-surface-container-lowest p-6 shadow-2xl">
+            <header className="flex items-start justify-between gap-4">
+              <div><p className="text-xs font-black uppercase tracking-[0.2em] text-secondary">New course</p><h3 id="create-student-course-title" className="mt-1 text-xl font-black text-on-surface">创建自己的课程</h3></div>
+              <button type="button" disabled={creating} onClick={() => setCreateOpen(false)} className="grid h-11 w-11 place-items-center rounded-xl text-on-surface-variant hover:bg-surface-container" aria-label="关闭创建课程"><X className="h-5 w-5" /></button>
+            </header>
+            <form className="mt-6 space-y-4" onSubmit={(event) => { void submitCreate(event) }}>
+              <label className="block text-xs font-black text-on-surface">课程名称<input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={160} placeholder="例如：线性代数自学" className="mt-2 h-12 w-full rounded-xl border border-outline-variant bg-surface px-4 text-sm font-semibold outline-none focus:border-secondary" /></label>
+              <label className="block text-xs font-black text-on-surface">课程说明（可选）<textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={2000} rows={4} placeholder="写下学习目标、适用阶段或重点内容" className="mt-2 w-full resize-none rounded-xl border border-outline-variant bg-surface px-4 py-3 text-sm leading-6 outline-none focus:border-secondary" /></label>
+              {createError && <p role="alert" className="rounded-xl bg-error-container px-3 py-2 text-xs font-bold text-on-error-container">{createError}</p>}
+              <button type="submit" disabled={!name.trim() || creating} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-secondary px-5 text-sm font-black text-on-secondary disabled:opacity-50">{creating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{creating ? '正在创建课程' : '创建并进入课程'}</button>
+            </form>
+          </section>
         </div>
       )}
     </div>

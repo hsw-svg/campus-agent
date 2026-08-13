@@ -24,6 +24,7 @@ export interface Course {
   starts_at: string | null
   thumbnail_key: string | null
   category: string | null
+  deeptutor_book_id: string | null
   created_at: string
   updated_at: string
 }
@@ -43,6 +44,8 @@ export interface CourseChapter {
   position: number
   estimated_minutes: number | null
   knowledge_points: string[]
+  deeptutor_chapter_id: string | null
+  deeptutor_page_ids: string[]
   completed: boolean
   current: boolean
 }
@@ -675,6 +678,19 @@ export function createConversation(token: string, courseId?: string | null, chap
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agent_id: null, course_id: courseId ?? null, chapter_id: chapterId ?? null }),
+  }, token)
+}
+
+export function createCourseTextbook(
+  token: string,
+  courseId: string,
+  topic: string,
+  useCourseMaterials: boolean,
+): Promise<CourseDetail> {
+  return request<CourseDetail>(`/courses/${courseId}/textbook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, use_course_materials: useCourseMaterials }),
   }, token)
 }
 

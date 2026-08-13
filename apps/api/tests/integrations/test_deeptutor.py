@@ -52,6 +52,11 @@ async def test_create_book_completes_the_three_stage_deeptutor_workflow(
             )
         if request.url.path.endswith("/confirm-spine"):
             return httpx.Response(200, json={"pages": [{"id": "page-1"}]})
+        if request.url.path.endswith("/spine"):
+            return httpx.Response(
+                200,
+                json={"spine": {"chapters": [{"id": "chapter-1", "page_ids": ["page-1"]}]}},
+            )
         return httpx.Response(
             200,
             json={"book": {"id": "book-1", "status": "draft"}, "proposal": {"title": "Python"}},
@@ -69,12 +74,14 @@ async def test_create_book_completes_the_three_stage_deeptutor_workflow(
 
     assert result["book"]["status"] == "spine_ready"
     assert result["pages"] == [{"id": "page-1"}]
+    assert result["spine"]["chapters"][0]["page_ids"] == ["page-1"]
     assert [request.url.path for request in requests] == [
         "/api/v1/book/books",
         "/api/v1/book/books/confirm-proposal",
         "/api/v1/book/books/confirm-spine",
+        "/api/v1/book/books/book-1/spine",
     ]
-    assert json.loads(requests[-1].content) == {"book_id": "book-1", "auto_compile": True}
+    assert json.loads(requests[-2].content) == {"book_id": "book-1", "auto_compile": True}
 
 
 @pytest.mark.asyncio

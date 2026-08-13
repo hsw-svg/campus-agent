@@ -7,6 +7,26 @@ export interface TutorRecommendedQuestion {
   prompt: string
 }
 
+export function startedStudentCourses(courses: CourseSummary[]): CourseSummary[] {
+  return courses
+    .filter((course) => course.started)
+    .slice()
+    .sort((left, right) => (
+      (right.last_studied_at ?? '').localeCompare(left.last_studied_at ?? '')
+      || left.name.localeCompare(right.name, 'zh-CN')
+    ))
+}
+
+export function firstCourseTextbookPage(
+  course: CourseDetail | null,
+  chapter?: CourseChapter | null,
+): { bookId: string; pageId: string } | null {
+  if (!course?.deeptutor_book_id) return null
+  const target = chapter ?? course.chapters.find((item) => item.deeptutor_page_ids.length > 0)
+  const pageId = target?.deeptutor_page_ids[0]
+  return pageId ? { bookId: course.deeptutor_book_id, pageId } : null
+}
+
 const INTERNAL_BRAND_PATTERN = /deep\s*tutor(?:助手|助教)?/gi
 
 export function normalizeStudentVisibleText(content: string): string {

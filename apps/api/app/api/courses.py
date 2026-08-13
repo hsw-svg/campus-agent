@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.repositories import AgentHistoryRecord, AgentRunRepository
@@ -9,6 +9,7 @@ from app.agents.dependencies import get_agent_run_repository
 from app.core.errors import AppError
 from app.repositories.courses import CourseRepository
 from app.services.student_courses import StudentCourseService
+from app.services.course_textbooks import CourseTextbookService
 from app.workspaces.dependencies import get_current_workspace, get_session
 from app.workspaces.models import AnonymousWorkspace
 from sqlalchemy.orm import Session
@@ -25,6 +26,7 @@ class CourseResponse(BaseModel):
     starts_at: datetime | None
     thumbnail_key: str | None
     category: str | None
+    deeptutor_book_id: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -62,6 +64,8 @@ class CourseChapterResponse(BaseModel):
     position: int
     estimated_minutes: int | None
     knowledge_points: list[str]
+    deeptutor_chapter_id: str | None
+    deeptutor_page_ids: list[str]
     completed: bool
     current: bool
 
@@ -77,6 +81,11 @@ class CourseDetailResponse(CourseSummaryResponse):
     chapters: list[CourseChapterResponse]
     current_chapter_id: UUID | None
     weak_points: list[CourseWeakPointResponse]
+
+
+class CreateCourseTextbookRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=500)
+    use_course_materials: bool = False
 
 
 class CourseArtifactResponse(BaseModel):
@@ -161,6 +170,24 @@ def start_course(
 ) -> dict:
     require_student_workspace(workspace)
     return student_courses.start_course(workspace.id, course_id)
+
+
+@router.post("/{course_id}/textbook", response_model=CourseDetailResponse)
+async def create_course_textbook(
+    course_id: UUID,
+    payload: CreateCourseTextbookRequest,
+    request: Request,
+    workspace: AnonymousWorkspace = Depends(get_current_workspace),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_student_workspace(workspace)
+    service = CourseTextbookService(session, request.app.state.deeptutor_client)
+    return await service.create_textbook(
+        workspace.id,
+        course_id,
+        topic=payload.topic.strip(),
+        use_course_materials=payload.use_course_materials,
+    )
 
 
 @router.post("/{course_id}/chapters/{chapter_id}/start", response_model=CourseDetailResponse)

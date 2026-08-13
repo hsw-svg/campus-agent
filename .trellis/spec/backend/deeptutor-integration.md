@@ -33,6 +33,7 @@ The adapter lives in `app.integrations.deeptutor.client.DeepTutorClient`. Browse
 - Page Q&A uses a unified `start_turn` payload with `capability="chat"` and `book_references: [{ book_id, page_ids: [page_id] }]`. The legacy `/api/v1/chat` endpoint ignores `book_id` and `page_id`; `page-chat-session` only persists navigation metadata and does not inject page text into a prompt.
 - Unified WebSocket `thinking`, status, tool, and result events are not answer deltas. The browser appends only eligible `content` events and stores the server-issued session ID from `session` events; this prevents reasoning traces such as `<think>` from appearing in the student-facing answer and preserves multi-turn history.
 - Creating a usable book is a three-stage upstream workflow: create the proposal, confirm the proposal to generate a spine, then confirm the spine with `auto_compile=true` to create page shells and enqueue compilation. The browser-facing `POST /api/deeptutor/books` owns this orchestration; the React component must not open a proposal-only draft as though its spine already exists.
+- `confirm-proposal` returns a pre-compilation spine whose chapters may not yet contain `page_ids`. After `confirm-spine`, `DeepTutorClient.create_or_compile_book` must re-fetch `GET /api/v1/book/books/{book_id}/spine` and return that latest spine to course-binding consumers.
 - Compose allows up to 300 seconds for each local DeepTutor HTTP stage and Nginx allows 900 seconds for the complete browser request. Spine generation can exceed two minutes even with a healthy provider, so the shorter general-purpose API timeout must not be reused for book creation in the demo container.
 - Local container development layers `docker-compose.dev.yml` over the production Compose file. It bind-mounts `apps/api/app` and the editable `apps/web` source paths with repository-relative paths, runs Uvicorn reload and Vite HMR inside the same `app` container, and swaps in `nginx.dev.conf`; Nginx still exposes only port `8080`, and DeepTutor remains private on `127.0.0.1:8001`.
 - Student-side reading progress, notes, and saved questions are demo-only browser state under `campus-agent:deeptutor-study:<workspace-token-suffix>`; they do not replace DeepTutor's server-side book data or introduce a second application chat state.
@@ -68,6 +69,7 @@ With `CAMPUS_DEV_MODE=true`, the entrypoint starts DeepTutor on `127.0.0.1:8001`
 | DeepTutor connection/timeout failure | Adapter maps to `503 deeptutor_unavailable`; WebSocket closes with code `1011`. |
 | DeepTutor non-success HTTP response | Adapter maps to `502 deeptutor_upstream_error` with the upstream status and path in details. |
 | Invalid upstream JSON | Adapter maps to `502 deeptutor_invalid_response`. |
+| Final post-confirmation spine has no usable chapter page IDs | Course textbook endpoint returns `502 deeptutor_invalid_response` and does not bind local course rows. |
 | DeepTutor startup readiness timeout | Container entrypoint exits non-zero before starting FastAPI or Nginx. |
 | Critical child process exits after startup | Entrypoint terminates remaining children and exits non-zero. |
 | Code-only edit under a development mount | Vite HMR or Uvicorn reload applies the change without rebuilding the image. |
@@ -80,6 +82,7 @@ With `CAMPUS_DEV_MODE=true`, the entrypoint starts DeepTutor on `127.0.0.1:8001`
 - Good: local development starts `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`; source edits are observed through the mounted paths and the container remains healthy.
 - Good: changing the embedding endpoint or dimension is done through environment variables and the knowledge base is rebuilt before the demo.
 - Good: a page reader consumes normalized `DeepTutorPage.blocks` and can render a `payload.markdown` block without knowing the upstream envelope.
+- Good: course textbook creation re-fetches the post-confirmation spine and persists page IDs that load through the same-origin page endpoint.
 - Base: DeepTutor is unavailable while the existing workspace remains usable; `/api/health` is readable and marks the integration as degraded.
 - Bad: adding a browser fetch to `http://localhost:8001`, publishing `8001:8001`, or importing DeepTutor Python modules into `apps/api`.
 - Bad: mounting the host Windows `apps/web/node_modules` into the Linux container or changing the production Compose target to `development`.
@@ -89,6 +92,7 @@ With `CAMPUS_DEV_MODE=true`, the entrypoint starts DeepTutor on `127.0.0.1:8001`
 ### 6. Tests Required
 
 - Adapter tests assert exact upstream book/knowledge paths and disabled integration errors.
+- Book workflow tests assert the fourth request is the final spine GET and its page IDs replace the pre-compilation spine.
 - Health tests assert the optional `deep_tutor` component does not alter the legacy response when disabled and marks a healthy probe when enabled.
 - Compose tests assert the single `app` service, DeepTutor data volume, and absence of an `8001` host publication.
 - Frontend checks run `npm.cmd run lint` and `npm.cmd run build`; the build must include `DeepTutorBookPanel` and same-origin WebSocket URL construction.
@@ -125,6 +129,20 @@ The overlay selects the development target, mounts repository-relative source pa
 
 ```tsx
 new WebSocket(getDeepTutorChatWebSocketUrl())
+```
+
+#### Wrong: bind the proposal spine
+
+```python
+return {"spine": proposal_result["spine"]}
+```
+
+#### Correct: bind the post-confirmation spine
+
+```python
+await client.confirm_spine(book_id, auto_compile=True)
+latest_spine = await client.get_spine(book_id)
+return {"spine": latest_spine["spine"]}
 ```
 
 The helper builds a same-origin `/api/deeptutor/chat` URL; Nginx and FastAPI perform the private hop to DeepTutor.

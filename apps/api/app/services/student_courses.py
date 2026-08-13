@@ -180,6 +180,8 @@ class StudentCourseService:
                 "position": chapter.position,
                 "estimated_minutes": chapter.estimated_minutes,
                 "knowledge_points": chapter.knowledge_points,
+                "deeptutor_chapter_id": chapter.deeptutor_chapter_id,
+                "deeptutor_page_ids": chapter.deeptutor_page_ids or [],
                 "completed": chapter.id in completed,
                 "current": progress is not None and progress.current_chapter_id == chapter.id,
             }
@@ -310,6 +312,7 @@ class StudentCourseService:
             "starts_at": course.starts_at,
             "thumbnail_key": course.thumbnail_key,
             "category": course.category,
+            "deeptutor_book_id": course.deeptutor_book_id,
             "chapter_count": chapter_count,
             "completed_chapter_count": completed_count,
             "progress_percent": round(completed_count * 100 / chapter_count) if chapter_count else 0,

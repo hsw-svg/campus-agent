@@ -178,10 +178,16 @@ class DeepTutorClient:
             f"{self.book_prefix}/books/confirm-spine",
             payload={"book_id": book_id, "auto_compile": True},
         )
+        latest_spine_result = await self.get_spine(book_id)
+        latest_spine = (
+            latest_spine_result.get("spine")
+            if isinstance(latest_spine_result, Mapping)
+            else None
+        )
         return {
             "book": proposal_result.get("book", book),
             "proposal": created.get("proposal"),
-            "spine": spine,
+            "spine": latest_spine if isinstance(latest_spine, Mapping) else spine,
             "pages": pages_result.get("pages", [])
             if isinstance(pages_result, Mapping)
             else [],
